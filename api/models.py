@@ -422,3 +422,146 @@ class SourceStatusResponse(BaseModel):
 class ErrorResponse(BaseModel):
     error: str
     message: str
+
+
+# ============================================
+# LMS API Models
+# ============================================
+
+# User models
+class UserCreate(BaseModel):
+    email: str = Field(..., description="User email address")
+    name: Optional[str] = Field(None, description="User display name")
+    role: str = Field("student", description="User role: student, instructor, admin")
+    external_id: Optional[str] = Field(None, description="External ID for SSO/OAuth")
+
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = Field(None, description="User display name")
+    role: Optional[str] = Field(None, description="User role: student, instructor, admin")
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    name: Optional[str]
+    role: str
+    external_id: Optional[str]
+    created: str
+    updated: str
+
+
+# Course models
+class CourseCreate(BaseModel):
+    title: str = Field(..., description="Course title")
+    description: Optional[str] = Field(None, description="Course description")
+    instructor_id: Optional[str] = Field(None, description="Instructor user ID")
+
+
+class CourseUpdate(BaseModel):
+    title: Optional[str] = Field(None, description="Course title")
+    description: Optional[str] = Field(None, description="Course description")
+    instructor_id: Optional[str] = Field(None, description="Instructor user ID")
+    archived: Optional[bool] = Field(None, description="Archive status")
+
+
+class CourseResponse(BaseModel):
+    id: str
+    title: str
+    description: Optional[str]
+    instructor_id: Optional[str]
+    archived: bool
+    created: str
+    updated: str
+    module_count: int = 0
+    student_count: int = 0
+
+
+# Course membership models
+class EnrollmentCreate(BaseModel):
+    user_id: str = Field(..., description="User ID to enroll")
+    role: str = Field("student", description="Enrollment role: student, instructor")
+
+
+class EnrollmentResponse(BaseModel):
+    user_id: str
+    course_id: str
+    role: str
+    enrolled_at: str
+
+
+# Learning goal models
+class LearningGoalCreate(BaseModel):
+    module_id: str = Field(..., description="Module ID this goal belongs to")
+    description: str = Field(..., description="Learning goal description")
+    mastery_criteria: Optional[str] = Field(None, description="Criteria for mastery")
+    order: int = Field(0, description="Display order")
+
+
+class LearningGoalUpdate(BaseModel):
+    description: Optional[str] = Field(None, description="Learning goal description")
+    mastery_criteria: Optional[str] = Field(None, description="Criteria for mastery")
+    order: Optional[int] = Field(None, description="Display order")
+
+
+class LearningGoalResponse(BaseModel):
+    id: str
+    module_id: str
+    description: str
+    mastery_criteria: Optional[str]
+    order: int
+    created: str
+
+
+# Student progress models
+class ProgressUpdate(BaseModel):
+    status: str = Field(..., description="Progress status: not_started, in_progress, mastered")
+    confidence_score: Optional[float] = Field(None, description="Confidence score 0-1")
+    notes: Optional[str] = Field(None, description="Progress notes")
+
+
+class ProgressResponse(BaseModel):
+    id: str
+    user_id: str
+    learning_goal_id: str
+    status: str
+    confidence_score: Optional[float]
+    notes: Optional[str]
+    last_activity: Optional[str]
+    created: str
+
+
+# Module prerequisite models
+class PrerequisiteCreate(BaseModel):
+    prerequisite_module_id: str = Field(..., description="ID of the prerequisite module")
+    is_required: bool = Field(True, description="Whether this prerequisite is required")
+    notes: Optional[str] = Field(None, description="Notes about this prerequisite")
+
+
+class PrerequisiteResponse(BaseModel):
+    id: str
+    module_id: str
+    prerequisite_module_id: str
+    prerequisite_module_name: Optional[str]
+    is_required: bool
+    notes: Optional[str]
+
+
+# Extended module response with LMS fields
+class ModuleLMSResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    archived: bool
+    created: str
+    updated: str
+    source_count: int
+    note_count: int
+    # LMS fields
+    course_id: Optional[str] = None
+    course_title: Optional[str] = None
+    overview: Optional[str] = None
+    order: int = 0
+    due_date: Optional[str] = None
+    learning_goal_count: int = 0
+    prerequisite_count: int = 0

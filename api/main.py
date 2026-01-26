@@ -22,6 +22,7 @@ from api.routers import (
     chat,
     config,
     context,
+    courses,
     embedding,
     embedding_rebuild,
     episode_profiles,
@@ -30,12 +31,14 @@ from api.routers import (
     modules,
     notes,
     podcasts,
+    progress,
     search,
     settings,
     source_chat,
     sources,
     speaker_profiles,
     transformations,
+    users,
 )
 from api.routers import commands as commands_router
 from backpack.database.async_migrate import AsyncMigrationManager
@@ -168,6 +171,11 @@ app.include_router(episode_profiles.router, prefix="/api", tags=["episode-profil
 app.include_router(speaker_profiles.router, prefix="/api", tags=["speaker-profiles"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
+
+# LMS routers
+app.include_router(users.router, prefix="/api", tags=["users"])
+app.include_router(courses.router, prefix="/api", tags=["courses"])
+app.include_router(progress.router, prefix="/api", tags=["progress"])
 
 
 @app.get("/")
