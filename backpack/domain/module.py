@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Tuple, Union
 
@@ -15,9 +16,16 @@ from backpack.exceptions import DatabaseOperationError, InvalidInputError
 
 class Module(ObjectModel):
     table_name: ClassVar[str] = "module"
+    nullable_fields: ClassVar[set[str]] = {"course", "overview", "due_date"}
+    
     name: str
     description: str
     archived: Optional[bool] = False
+    # LMS fields (optional - module works standalone without these)
+    course: Optional[str] = None  # record<course>
+    overview: Optional[str] = None
+    order: int = 0
+    due_date: Optional[datetime] = None
 
     @field_validator("name")
     @classmethod
@@ -83,6 +91,91 @@ class Module(ObjectModel):
                 f"Error fetching chat sessions for module {self.id}: {str(e)}"
             )
             logger.exception(e)
+            raise DatabaseOperationError(e)
+
+    # LMS methods
+    async def get_learning_goals(self) -> List[Any]:
+        """Get all learning goals for this module."""
+        try:
+            from backpack.domain.lms import LearningGoal
+            
+            result = await repo_query(
+                """
+                SELECT * FROM learning_goal 
+                WHERE module == $module_id 
+                ORDER BY order ASC
+                """,
+                {"module_id": ensure_record_id(self.id)},
+            )
+            return [LearningGoal(**r) for r in result] if result else []
+        except Exception as e:
+            logger.error(f"Error fetching learning goals for module {self.id}: {e}")
+            raise DatabaseOperationError(e)
+
+    async def get_prerequisites(self) -> List["Module"]:
+        """Get all prerequisite modules for this module."""
+        try:
+            result = await repo_query(
+                """
+                SELECT out.* as module, is_required, notes 
+                FROM module_prerequisite 
+                WHERE in == $module_id
+                FETCH out
+                """,
+                {"module_id": ensure_record_id(self.id)},
+            )
+            return [Module(**r["module"]) for r in result] if result else []
+        except Exception as e:
+            logger.error(f"Error fetching prerequisites for module {self.id}: {e}")
+            raise DatabaseOperationError(e)
+
+    async def get_dependent_modules(self) -> List["Module"]:
+        """Get modules that depend on this module as a prerequisite."""
+        try:
+            result = await repo_query(
+                """
+                SELECT in.* as module, is_required 
+                FROM module_prerequisite 
+                WHERE out == $module_id
+                FETCH in
+                """,
+                {"module_id": ensure_record_id(self.id)},
+            )
+            return [Module(**r["module"]) for r in result] if result else []
+        except Exception as e:
+            logger.error(f"Error fetching dependent modules for {self.id}: {e}")
+            raise DatabaseOperationError(e)
+
+    async def add_prerequisite(
+        self, prerequisite_module_id: str, is_required: bool = True, notes: Optional[str] = None
+    ) -> Any:
+        """Add a prerequisite module to this module."""
+        if not prerequisite_module_id:
+            raise InvalidInputError("Prerequisite module ID must be provided")
+        from backpack.database.repository import repo_relate
+        return await repo_relate(
+            source=str(self.id),
+            relationship="module_prerequisite",
+            target=prerequisite_module_id,
+            data={"is_required": is_required, "notes": notes},
+        )
+
+    async def get_documents(self) -> List[Any]:
+        """Get all documents linked to this module."""
+        try:
+            from backpack.domain.lms import ModuleDocument
+            
+            result = await repo_query(
+                """
+                SELECT * FROM module_document 
+                WHERE module == $module_id 
+                ORDER BY order ASC
+                """,
+                {"module_id": ensure_record_id(self.id)},
+            )
+            return [ModuleDocument(**r) for r in result] if result else []
+        except Exception as e:
+            logger.error(f"Error fetching documents for module {self.id}: {e}")
             raise DatabaseOperationError(e)
 
 
