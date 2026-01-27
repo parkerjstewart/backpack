@@ -7,7 +7,29 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card"
       className={cn(
-        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
+        // Base card styles with updated border radius (16px)
+        "bg-card text-card-foreground flex flex-col gap-6 rounded-md border py-6 shadow-sm",
+        // Transition for hover states
+        "transition-all duration-200",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+// Interactive card variant with hover/click states
+// Figma: hover changes to surface/secondary (#f0f1eb) - neutral, not accent
+function CardInteractive({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card"
+      className={cn(
+        // Base card styles with updated border radius (8px for cards per Figma)
+        "bg-card text-card-foreground flex flex-col gap-2 rounded-sm border px-6 py-4",
+        // Hover: neutral secondary background (not sage accent)
+        "transition-all duration-200 cursor-pointer",
+        "hover:bg-secondary",
         className
       )}
       {...props}
@@ -32,7 +54,11 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-title"
-      className={cn("leading-none font-semibold", className)}
+      className={cn(
+        // Use heading font for card titles
+        "leading-none font-semibold font-heading text-card-title",
+        className
+      )}
       {...props}
     />
   )
@@ -83,6 +109,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
 
 export {
   Card,
+  CardInteractive,
   CardHeader,
   CardFooter,
   CardTitle,
