@@ -26,7 +26,6 @@ import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { LanguageToggle } from '@/components/common/LanguageToggle'
 import { TranslationKeys } from '@/lib/locales'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { Separator } from '@/components/ui/separator'
 import {
   Book,
   Search,
@@ -42,6 +41,9 @@ import {
   Wrench,
   Command,
 } from 'lucide-react'
+
+// Brand name for the sidebar - using serif font (EB Garamond)
+const BRAND_NAME = "Margin"
 
 const getNavigation = (t: TranslationKeys) => [
   {
@@ -109,7 +111,7 @@ export function AppSidebar() {
       <div
         className={cn(
           'app-sidebar flex h-full flex-col bg-sidebar border-sidebar-border border-r transition-all duration-300',
-          isCollapsed ? 'w-16' : 'w-64'
+          isCollapsed ? 'w-16' : 'w-60'  // Updated width to 240px expanded
         )}
       >
         <div
@@ -122,7 +124,7 @@ export function AppSidebar() {
             <div className="relative flex items-center justify-center w-full">
               <Image
                 src="/logo.svg"
-                alt="Backpack"
+                alt={BRAND_NAME}
                 width={32}
                 height={32}
                 className="transition-opacity group-hover:opacity-0"
@@ -139,9 +141,10 @@ export function AppSidebar() {
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <Image src="/logo.svg" alt={t.common.appName} width={32} height={32} />
-                <span className="text-base font-medium text-sidebar-foreground">
-                  {t.common.appName}
+                <Image src="/logo.svg" alt={BRAND_NAME} width={32} height={32} />
+                {/* Brand name using serif font (EB Garamond) */}
+                <span className="text-xl font-heading font-medium text-sidebar-foreground tracking-tight">
+                  {BRAND_NAME}
                 </span>
               </div>
               <Button
@@ -240,32 +243,40 @@ export function AppSidebar() {
             </DropdownMenu>
           </div>
 
-          {navigation.map((section, index) => (
-            <div key={section.title}>
-              {index > 0 && (
-                <Separator className="my-3" />
-              )}
-              <div className="space-y-1">
+          {navigation.map((section) => (
+            <div key={section.title} className="mb-4">
+              <div className="space-y-0.5">
+                {/* Figma: EB Garamond Regular 18px, underlined, primary color, -1% letter spacing */}
                 {!isCollapsed && (
-                  <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60">
+                  <h3 className="mb-1 font-heading text-lg font-normal text-foreground underline underline-offset-4 decoration-1 tracking-tight">
                     {section.title}
                   </h3>
                 )}
 
                 {section.items.map((item) => {
                   const isActive = pathname?.startsWith(item.href) || false
+                  // Figma sidebar item: Figtree Regular 14px, rounded-sm (8px)
+                  // Active: bg-sidebar-accent (#ecf1d5), text-foreground (#14302e)
+                  // Default: no bg, text-teal-800 (secondary text)
+                  // Hover: bg-secondary (#f0f1eb), text-foreground
                   const button = (
-                    <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
+                    <div
                       className={cn(
-                        'w-full gap-3 text-sidebar-foreground sidebar-menu-item',
-                        isActive && 'bg-sidebar-accent text-sidebar-accent-foreground',
+                        'flex items-center gap-3 w-full px-1 py-2 rounded-sm text-sm font-normal transition-all',
+                        // Default: secondary text color
+                        'text-teal-800',
+                        // Hover: secondary background, primary text
+                        'hover:bg-secondary hover:text-foreground',
+                        // Active: accent background, primary text
+                        isActive && 'bg-sidebar-accent text-foreground',
                         isCollapsed ? 'justify-center px-2' : 'justify-start'
                       )}
                     >
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.name}</span>}
-                    </Button>
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      {!isCollapsed && (
+                        <span>{item.name}</span>
+                      )}
+                    </div>
                   )
 
                   if (isCollapsed) {
