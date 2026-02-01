@@ -29,7 +29,6 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import {
   Book,
   Search,
-  Mic,
   Bot,
   Shuffle,
   Settings,
@@ -55,14 +54,9 @@ const getNavigation = (t: TranslationKeys) => [
   {
     title: t.navigation.process,
     items: [
+      { name: 'Courses', href: '/courses', icon: Book },
       { name: t.navigation.modules, href: '/modules', icon: Book },
       { name: t.navigation.askAndSearch, href: '/search', icon: Search },
-    ],
-  },
-  {
-    title: t.navigation.create,
-    items: [
-      { name: t.navigation.podcasts, href: '/podcasts', icon: Mic },
     ],
   },
   {
@@ -76,7 +70,7 @@ const getNavigation = (t: TranslationKeys) => [
   },
 ] as const
 
-type CreateTarget = 'source' | 'module' | 'podcast'
+type CreateTarget = 'source' | 'module'
 
 export function AppSidebar() {
   const { t } = useTranslation()
@@ -84,7 +78,7 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { logout } = useAuth()
   const { isCollapsed, toggleCollapse } = useSidebarStore()
-  const { openSourceDialog, openModuleDialog, openPodcastDialog } = useCreateDialogs()
+  const { openSourceDialog, openModuleDialog } = useCreateDialogs()
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const [isMac, setIsMac] = useState(true) // Default to Mac for SSR
@@ -101,8 +95,6 @@ export function AppSidebar() {
       openSourceDialog()
     } else if (target === 'module') {
       openModuleDialog()
-    } else if (target === 'podcast') {
-      openPodcastDialog()
     }
   }
 
@@ -228,16 +220,6 @@ export function AppSidebar() {
                 >
                    <Book className="h-4 w-4" />
                   {t.common.module}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    handleCreateSelection('podcast')
-                  }}
-                  className="gap-2"
-                >
-                   <Mic className="h-4 w-4" />
-                  {t.common.podcast}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
