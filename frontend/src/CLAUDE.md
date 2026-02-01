@@ -132,11 +132,43 @@ User interactions trigger mutations/queries via hooks, which communicate with th
 
 **Root layout** (`app/layout.tsx`) wraps app with (outermost → innermost):
 1. `ErrorBoundary` — React error boundary (catches all render errors)
-2. `ThemeProvider` — next-themes for light/dark mode
+2. `ThemeProvider` — forces light mode (dark mode temporarily disabled)
 3. `QueryProvider` — TanStack Query client
 4. `I18nProvider` — i18next initialization and language loading overlay
 5. `ConnectionGuard` — checks backend connectivity on startup
 6. `Toaster` — sonner toast notification system (inside ConnectionGuard)
+
+## Design System
+
+Design tokens are based on Figma designs and defined in `globals.css` and `tailwind.config.ts`.
+
+### Fonts (loaded in `layout.tsx`)
+- **EB Garamond** (`--font-heading`): Serif font for headings, titles, brand name
+- **Figtree** (`--font-sans`): Sans-serif for body text, UI elements
+
+### Color Palette
+- **Background**: Warm cream `#fefcf6` (not pure white)
+- **Primary/Text**: Teal `#14302e`
+- **Secondary**: Light neutral `#f0f1eb` (hover states)
+- **Accent**: Sage green `#d4e297` (active/selected states)
+- **Borders**: Opacity-based `rgba(20, 48, 46, 0.2)`
+
+### Styling Conventions
+- **Hover states use `secondary` (neutral), NOT `accent`** — accent is for active/selected only
+- **Button default**: 48px height, 16px radius, 32px horizontal padding
+- **Card hover**: `bg-secondary` background, no accent color
+
+### Theme State
+- **Currently light-mode only** — dark mode temporarily disabled
+- Theme toggle hidden in sidebar; `ThemeProvider` forces light mode
+- `dark:` Tailwind classes exist but don't apply
+
+### Figma Integration
+When implementing designs from Figma, use the MCP tools:
+1. `get_design_context` — fetches component code and tokens from Figma node
+2. `get_screenshot` — gets visual reference of the component
+3. Always call `get_screenshot` after `get_design_context` for visual context
+4. Convert Figma's inline styles to existing CSS variables and Tailwind classes
 
 ## Important Gotchas & Design Decisions
 
@@ -146,6 +178,9 @@ User interactions trigger mutations/queries via hooks, which communicate with th
 - **Modal lifecycle**: Dialogs not auto-reset; parent must clear form state after submit
 - **Focus management**: Dialog auto-focuses first input; can cause layout shifts if inputs are conditional
 - **Cache invalidation breadth**: Trade-off between precision + simplicity; broad invalidation simpler but may over-fetch
+- **Dark mode disabled**: Theme store forces light mode; don't add new dark mode styles until re-enabled
+- **Translation keys are lowercase**: Use `t.modules.x`, NOT `t.Modules.x` — wrong case breaks translations
+- **Hover vs Active colors**: Hover uses `secondary` (neutral), active uses `accent` (sage green) — don't mix them
 
 ## How to Add a New Feature
 
