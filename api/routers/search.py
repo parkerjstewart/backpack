@@ -1,12 +1,12 @@
 import json
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
-from backpack.ai.models import Model, model_manager
+from backpack.ai.models import model_manager
 from backpack.domain.module import text_search, vector_search
 from backpack.exceptions import DatabaseOperationError, InvalidInputError
 from backpack.graphs.ask import graph as ask_graph
@@ -59,21 +59,27 @@ async def search_knowledge_base(search_request: SearchRequest):
 
 
 async def stream_ask_response(
-    question: str, strategy_model: Model, answer_model: Model, final_answer_model: Model
+    question: str,
+    strategy_model: Optional[str],
+    answer_model: Optional[str],
+    final_answer_model: Optional[str],
 ) -> AsyncGenerator[str, None]:
     """Stream the ask response as Server-Sent Events."""
     try:
         final_answer = None
 
+        # Build config - only include model specs that are provided
+        configurable: dict = {}
+        if strategy_model:
+            configurable["strategy_model"] = strategy_model
+        if answer_model:
+            configurable["answer_model"] = answer_model
+        if final_answer_model:
+            configurable["final_answer_model"] = final_answer_model
+
         async for chunk in ask_graph.astream(
             input=dict(question=question),  # type: ignore[arg-type]
-            config=dict(
-                configurable=dict(
-                    strategy_model=strategy_model.id,
-                    answer_model=answer_model.id,
-                    final_answer_model=final_answer_model.id,
-                )
-            ),
+            config=dict(configurable=configurable),
             stream_mode="updates",
         ):
             if "agent" in chunk:
@@ -111,38 +117,20 @@ async def stream_ask_response(
 async def ask_knowledge_base(ask_request: AskRequest):
     """Ask the knowledge base a question using AI models."""
     try:
-        # Validate models exist
-        strategy_model = await Model.get(ask_request.strategy_model)
-        answer_model = await Model.get(ask_request.answer_model)
-        final_answer_model = await Model.get(ask_request.final_answer_model)
-
-        if not strategy_model:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Strategy model {ask_request.strategy_model} not found",
-            )
-        if not answer_model:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Answer model {ask_request.answer_model} not found",
-            )
-        if not final_answer_model:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Final answer model {ask_request.final_answer_model} not found",
-            )
-
         # Check if embedding model is available
         if not await model_manager.get_embedding_model():
             raise HTTPException(
                 status_code=400,
-                detail="Ask feature requires an embedding model. Please configure one in the Models section.",
+                detail="Ask feature requires an embedding model. Please configure DEFAULT_EMBEDDING_MODEL in environment.",
             )
 
-        # For streaming response
+        # For streaming response - pass model specs directly (or None to use defaults)
         return StreamingResponse(
             stream_ask_response(
-                ask_request.question, strategy_model, answer_model, final_answer_model
+                ask_request.question,
+                ask_request.strategy_model,
+                ask_request.answer_model,
+                ask_request.final_answer_model,
             ),
             media_type="text/plain",
         )
@@ -158,45 +146,27 @@ async def ask_knowledge_base(ask_request: AskRequest):
 async def ask_knowledge_base_simple(ask_request: AskRequest):
     """Ask the knowledge base a question and return a simple response (non-streaming)."""
     try:
-        # Validate models exist
-        strategy_model = await Model.get(ask_request.strategy_model)
-        answer_model = await Model.get(ask_request.answer_model)
-        final_answer_model = await Model.get(ask_request.final_answer_model)
-
-        if not strategy_model:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Strategy model {ask_request.strategy_model} not found",
-            )
-        if not answer_model:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Answer model {ask_request.answer_model} not found",
-            )
-        if not final_answer_model:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Final answer model {ask_request.final_answer_model} not found",
-            )
-
         # Check if embedding model is available
         if not await model_manager.get_embedding_model():
             raise HTTPException(
                 status_code=400,
-                detail="Ask feature requires an embedding model. Please configure one in the Models section.",
+                detail="Ask feature requires an embedding model. Please configure DEFAULT_EMBEDDING_MODEL in environment.",
             )
+
+        # Build config - only include model specs that are provided
+        configurable: dict = {}
+        if ask_request.strategy_model:
+            configurable["strategy_model"] = ask_request.strategy_model
+        if ask_request.answer_model:
+            configurable["answer_model"] = ask_request.answer_model
+        if ask_request.final_answer_model:
+            configurable["final_answer_model"] = ask_request.final_answer_model
 
         # Run the ask graph and get final result
         final_answer = None
         async for chunk in ask_graph.astream(
             input=dict(question=ask_request.question),  # type: ignore[arg-type]
-            config=dict(
-                configurable=dict(
-                    strategy_model=strategy_model.id,
-                    answer_model=answer_model.id,
-                    final_answer_model=final_answer_model.id,
-                )
-            ),
+            config=dict(configurable=configurable),
             stream_mode="updates",
         ):
             if "write_final_answer" in chunk:

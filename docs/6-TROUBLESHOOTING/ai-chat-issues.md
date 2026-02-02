@@ -4,15 +4,15 @@ Problems with AI models, chat, and response quality.
 
 ---
 
-## "Models not available" or "Models not showing"
+## "Invalid API key" or "Unauthorized"
 
-**Symptom:** Settings → Models shows empty, or "No models configured"
+**Symptom:** Error when trying to chat: "Invalid API key"
 
-**Cause:** Missing or invalid API key
+**Cause:** Missing, invalid, or expired API key
 
 **Solutions:**
 
-### Solution 1: Add API Key
+### Solution 1: Add or Verify API Key
 ```bash
 # Check .env has your API key:
 cat .env | grep -i "OPENAI\|ANTHROPIC\|GOOGLE"
@@ -39,26 +39,7 @@ curl https://api.openai.com/v1/models \
 # If error: key is invalid
 ```
 
-### Solution 3: Switch Provider
-```bash
-# Try a different provider:
-# Remove: OPENAI_API_KEY
-# Add: ANTHROPIC_API_KEY=sk-ant-...
-
-# Restart and check Settings → Models
-```
-
----
-
-## "Invalid API key" or "Unauthorized"
-
-**Symptom:** Error when trying to chat: "Invalid API key"
-
-**Cause:** API key wrong, expired, or revoked
-
-**Solutions:**
-
-### Step 1: Verify Key Format
+### Solution 3: Verify Key Format
 ```bash
 # OpenAI: Should start with sk-proj-
 # Anthropic: Should start with sk-ant-
@@ -68,7 +49,7 @@ curl https://api.openai.com/v1/models \
 cat .env | grep OPENAI_API_KEY
 ```
 
-### Step 2: Get Fresh Key
+### Solution 4: Get Fresh Key
 ```bash
 # Go to provider's dashboard:
 # - OpenAI: https://platform.openai.com/api-keys
@@ -79,7 +60,7 @@ cat .env | grep OPENAI_API_KEY
 # Copy exactly (no extra spaces)
 ```
 
-### Step 3: Update .env
+### Solution 5: Update .env and Restart
 ```bash
 # Edit .env:
 OPENAI_API_KEY=sk-proj-new-key-here
@@ -87,14 +68,6 @@ OPENAI_API_KEY=sk-proj-new-key-here
 
 # Save and restart:
 docker compose restart api
-```
-
-### Step 4: Verify in UI
-```
-1. Open Open Notebook
-2. Go to Settings → Models
-3. Select your provider
-4. Should show available models
 ```
 
 ---
@@ -126,17 +99,18 @@ Good:    "Summarize X in 3 bullet points with page citations"
 ```
 
 ### Solution 3: Use Stronger Model
-```
-OpenAI:
-  Current: gpt-4o-mini → Switch to: gpt-4o
 
-Anthropic:
-  Current: claude-3-5-haiku → Switch to: claude-3-5-sonnet
+Change model in your `.env` file:
 
-To change:
-1. Settings → Models
-2. Select model
-3. Try chat again
+```bash
+# OpenAI - use gpt-4o instead of gpt-4o-mini:
+DEFAULT_CHAT_MODEL=openai/gpt-4o
+
+# Anthropic - use sonnet instead of haiku:
+DEFAULT_CHAT_MODEL=anthropic/claude-sonnet-4-20250514
+
+# Restart after changing:
+docker compose restart api
 ```
 
 ### Solution 4: Add More Sources
@@ -156,13 +130,21 @@ Try: Add more relevant sources to provide context
 **Solutions:**
 
 ### Solution 1: Use Faster Model
-```bash
-Fastest: Groq (any model)
-Fast: OpenAI gpt-4o-mini
-Medium: Anthropic claude-3-5-haiku
-Slow: Anthropic claude-3-5-sonnet
 
-Switch in: Settings → Models
+Change `DEFAULT_CHAT_MODEL` in your `.env` file:
+
+```bash
+# Fastest: Groq
+DEFAULT_CHAT_MODEL=groq/llama-3.1-70b-versatile
+
+# Fast: OpenAI gpt-4o-mini
+DEFAULT_CHAT_MODEL=openai/gpt-4o-mini
+
+# Medium: Anthropic haiku
+DEFAULT_CHAT_MODEL=anthropic/claude-3-5-haiku-20241022
+
+# After changing, restart:
+docker compose restart api
 ```
 
 ### Solution 2: Reduce Context
@@ -259,11 +241,18 @@ Google: Google Cloud Console
 **Solutions:**
 
 ### Solution 1: Use Model with Longer Context
-```
-Current: GPT-4o (128K tokens) → Switch to: Claude (200K tokens)
-Current: Claude Haiku (200K) → Switch to: Gemini (1M tokens)
 
-To change: Settings → Models
+Change `LARGE_CONTEXT_MODEL` in your `.env` file:
+
+```bash
+# Claude has 200K context (auto-used for large content >105k tokens)
+LARGE_CONTEXT_MODEL=anthropic/claude-sonnet-4-20250514
+
+# Or Gemini has 1M+ context
+LARGE_CONTEXT_MODEL=google/gemini-1.5-pro
+
+# Restart after changing:
+docker compose restart api
 ```
 
 ### Solution 2: Reduce Context
@@ -305,10 +294,16 @@ Groq: Check website
 ```
 
 ### Use Different Model/Provider
-```
-1. Settings → Models
-2. Try different provider
-3. If OpenAI down, use Anthropic
+
+Change provider in your `.env` file:
+
+```bash
+# If OpenAI down, switch to Anthropic:
+DEFAULT_CHAT_MODEL=anthropic/claude-sonnet-4-20250514
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Restart:
+docker compose restart api
 ```
 
 ### Check Network

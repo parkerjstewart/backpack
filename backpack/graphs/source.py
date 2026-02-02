@@ -9,7 +9,7 @@ from langgraph.types import Send
 from loguru import logger
 from typing_extensions import Annotated, TypedDict
 
-from backpack.ai.models import Model, ModelManager
+from backpack.ai.models import ModelManager
 from backpack.domain.content_settings import ContentSettings
 from backpack.domain.module import Asset, Source
 from backpack.domain.transformation import Transformation
@@ -59,18 +59,15 @@ async def content_process(state: SourceState) -> dict:
     )
     content_state["output_format"] = "markdown"
 
-    # Add speech-to-text model configuration from Default Models
+    # Add speech-to-text model configuration from environment
     try:
         model_manager = ModelManager()
-        defaults = await model_manager.get_defaults()
-        if defaults.default_speech_to_text_model:
-            stt_model = await Model.get(defaults.default_speech_to_text_model)
-            if stt_model:
-                content_state["audio_provider"] = stt_model.provider
-                content_state["audio_model"] = stt_model.name
-                logger.debug(
-                    f"Using speech-to-text model: {stt_model.provider}/{stt_model.name}"
-                )
+        config = model_manager.get_defaults()
+        if config.default_stt_model:
+            provider, model_name = config.get_provider_and_model(config.default_stt_model)
+            content_state["audio_provider"] = provider
+            content_state["audio_model"] = model_name
+            logger.debug(f"Using speech-to-text model: {provider}/{model_name}")
     except Exception as e:
         logger.warning(f"Failed to retrieve speech-to-text model configuration: {e}")
         # Continue without custom audio model (content-core will use its default)
