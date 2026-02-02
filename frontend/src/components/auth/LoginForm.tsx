@@ -1,72 +1,85 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/lib/hooks/use-auth'
-import { useAuthStore } from '@/lib/stores/auth-store'
-import { getConfig } from '@/lib/config'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { AlertCircle } from 'lucide-react'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { useTranslation } from '@/lib/hooks/use-translation'
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/hooks/use-auth";
+import { useAuthStore } from "@/lib/stores/auth-store";
+import { getConfig } from "@/lib/config";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { AlertCircle } from "lucide-react";
+import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { useTranslation } from "@/lib/hooks/use-translation";
 
 export function LoginForm() {
-  const { t, language } = useTranslation()
-  const [password, setPassword] = useState('')
-  const { login, isLoading, error } = useAuth()
-  const { authRequired, checkAuthRequired, hasHydrated, isAuthenticated } = useAuthStore()
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
-  const [configInfo, setConfigInfo] = useState<{ apiUrl: string; version: string; buildTime: string } | null>(null)
-  const router = useRouter()
+  const { t, language } = useTranslation();
+  const [password, setPassword] = useState("");
+  const { login, isLoading, error } = useAuth();
+  const { authRequired, checkAuthRequired, hasHydrated, isAuthenticated } =
+    useAuthStore();
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [configInfo, setConfigInfo] = useState<{
+    apiUrl: string;
+    version: string;
+    buildTime: string;
+  } | null>(null);
+  const router = useRouter();
 
   // Load config info for debugging
   useEffect(() => {
-    getConfig().then(cfg => {
-      setConfigInfo({
-        apiUrl: cfg.apiUrl,
-        version: cfg.version,
-        buildTime: cfg.buildTime,
+    getConfig()
+      .then((cfg) => {
+        setConfigInfo({
+          apiUrl: cfg.apiUrl,
+          version: cfg.version,
+          buildTime: cfg.buildTime,
+        });
       })
-    }).catch(err => {
-      console.error('Failed to load config:', err)
-    })
-  }, [])
+      .catch((err) => {
+        console.error("Failed to load config:", err);
+      });
+  }, []);
 
   // Check if authentication is required on mount
   useEffect(() => {
     if (!hasHydrated) {
-      return
+      return;
     }
 
     const checkAuth = async () => {
       try {
-        const required = await checkAuthRequired()
+        const required = await checkAuthRequired();
 
-        // If auth is not required, redirect to modules
+        // If auth is not required, redirect to courses
         if (!required) {
-          router.push('/modules')
+          router.push("/courses");
         }
       } catch (error) {
-        console.error('Error checking auth requirement:', error)
+        console.error("Error checking auth requirement:", error);
         // On error, assume auth is required to be safe
       } finally {
-        setIsCheckingAuth(false)
+        setIsCheckingAuth(false);
       }
-    }
+    };
 
     // If we already know auth status, use it
     if (authRequired !== null) {
       if (!authRequired && isAuthenticated) {
-        router.push('/modules')
+        router.push("/courses");
       } else {
-        setIsCheckingAuth(false)
+        setIsCheckingAuth(false);
       }
     } else {
-      void checkAuth()
+      void checkAuth();
     }
-  }, [hasHydrated, authRequired, checkAuthRequired, router, isAuthenticated])
+  }, [hasHydrated, authRequired, checkAuthRequired, router, isAuthenticated]);
 
   // Show loading while checking if auth is required
   if (!hasHydrated || isCheckingAuth) {
@@ -74,7 +87,7 @@ export function LoginForm() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <LoadingSpinner />
       </div>
-    )
+    );
   }
 
   // If we still don't know if auth is required (connection error), show error
@@ -84,27 +97,41 @@ export function LoginForm() {
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle>{t.common.connectionError}</CardTitle>
-            <CardDescription>
-              {t.common.unableToConnect}
-            </CardDescription>
+            <CardDescription>{t.common.unableToConnect}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               <div className="flex items-start gap-2 text-red-600 text-sm">
                 <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  {error || t.auth.connectErrorHint}
-                </div>
+                <div className="flex-1">{error || t.auth.connectErrorHint}</div>
               </div>
 
               {configInfo && (
                 <div className="space-y-2 text-xs text-muted-foreground border-t pt-3">
                   <div className="font-medium">{t.common.diagnosticInfo}:</div>
                   <div className="space-y-1 font-mono">
-                    <div>{t.common.version}: {configInfo.version}</div>
-                    <div>{t.common.built}: {new Date(configInfo.buildTime).toLocaleString(language === 'zh-CN' ? 'zh-CN' : language === 'zh-TW' ? 'zh-TW' : 'en-US')}</div>
-                    <div className="break-all">{t.common.apiUrl}: {configInfo.apiUrl}</div>
-                    <div className="break-all">{t.common.frontendUrl}: {typeof window !== 'undefined' ? window.location.href : 'N/A'}</div>
+                    <div>
+                      {t.common.version}: {configInfo.version}
+                    </div>
+                    <div>
+                      {t.common.built}:{" "}
+                      {new Date(configInfo.buildTime).toLocaleString(
+                        language === "zh-CN"
+                          ? "zh-CN"
+                          : language === "zh-TW"
+                          ? "zh-TW"
+                          : "en-US"
+                      )}
+                    </div>
+                    <div className="break-all">
+                      {t.common.apiUrl}: {configInfo.apiUrl}
+                    </div>
+                    <div className="break-all">
+                      {t.common.frontendUrl}:{" "}
+                      {typeof window !== "undefined"
+                        ? window.location.href
+                        : "N/A"}
+                    </div>
                   </div>
                   <div className="text-xs pt-2">
                     {t.common.checkConsoleLogs}
@@ -122,29 +149,27 @@ export function LoginForm() {
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (password.trim()) {
       try {
-        await login(password)
+        await login(password);
       } catch (error) {
-        console.error('Unhandled error during login:', error)
+        console.error("Unhandled error during login:", error);
         // The auth store should handle most errors, but this catches any unhandled ones
       }
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle>{t.auth.loginTitle}</CardTitle>
-          <CardDescription>
-            {t.auth.loginDesc}
-          </CardDescription>
+          <CardDescription>{t.auth.loginDesc}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -175,7 +200,9 @@ export function LoginForm() {
 
             {configInfo && (
               <div className="text-xs text-center text-muted-foreground pt-2 border-t">
-                <div>{t.common.version} {configInfo.version}</div>
+                <div>
+                  {t.common.version} {configInfo.version}
+                </div>
                 <div className="font-mono text-[10px]">{configInfo.apiUrl}</div>
               </div>
             )}
@@ -183,5 +210,5 @@ export function LoginForm() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
