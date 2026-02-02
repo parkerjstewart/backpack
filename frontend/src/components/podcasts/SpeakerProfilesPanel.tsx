@@ -1,14 +1,14 @@
-'use client'
+"use client";
 
-import { useMemo, useState } from 'react'
-import { Copy, Edit3, MoreVertical, Trash2, Volume2 } from 'lucide-react'
+import { useMemo, useState } from "react";
+import { Copy, Edit3, MoreVertical, Trash2, Volume2 } from "lucide-react";
 
-import { SpeakerProfile } from '@/lib/types/podcasts'
+import { SpeakerProfile } from "@/lib/types/podcasts";
 import {
   useDeleteSpeakerProfile,
   useDuplicateSpeakerProfile,
-} from '@/lib/hooks/use-podcasts'
-import { SpeakerProfileFormDialog } from '@/components/podcasts/forms/SpeakerProfileFormDialog'
+} from "@/lib/hooks/use-podcasts";
+import { SpeakerProfileFormDialog } from "@/components/podcasts/forms/SpeakerProfileFormDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,59 +19,61 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card'
+} from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { useTranslation } from '@/lib/hooks/use-translation'
+} from "@/components/ui/dropdown-menu";
+import { useTranslation } from "@/lib/hooks/use-translation";
 
 interface SpeakerProfilesPanelProps {
-  speakerProfiles: SpeakerProfile[]
-  modelOptions: Record<string, string[]>
-  usage: Record<string, number>
+  speakerProfiles: SpeakerProfile[];
+  usage: Record<string, number>;
 }
 
 export function SpeakerProfilesPanel({
   speakerProfiles,
-  modelOptions,
   usage,
 }: SpeakerProfilesPanelProps) {
-  const { t } = useTranslation()
-  const [createOpen, setCreateOpen] = useState(false)
-  const [editProfile, setEditProfile] = useState<SpeakerProfile | null>(null)
+  const { t } = useTranslation();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editProfile, setEditProfile] = useState<SpeakerProfile | null>(null);
 
-  const deleteProfile = useDeleteSpeakerProfile()
-  const duplicateProfile = useDuplicateSpeakerProfile()
+  const deleteProfile = useDeleteSpeakerProfile();
+  const duplicateProfile = useDuplicateSpeakerProfile();
 
   const sortedProfiles = useMemo(
     () =>
-      [...speakerProfiles].sort((a, b) => a.name.localeCompare(b.name, 'en')), 
+      [...speakerProfiles].sort((a, b) => a.name.localeCompare(b.name, "en")),
     [speakerProfiles]
-  )
+  );
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">{t.podcasts.speakerProfilesTitle}</h2>
+          <h2 className="text-lg font-semibold">
+            {t.podcasts.speakerProfilesTitle}
+          </h2>
           <p className="text-sm text-muted-foreground">
             {t.podcasts.speakerProfilesDesc}
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>{t.podcasts.createSpeaker}</Button>
+        <Button onClick={() => setCreateOpen(true)}>
+          {t.podcasts.createSpeaker}
+        </Button>
       </div>
 
       {sortedProfiles.length === 0 ? (
@@ -81,8 +83,8 @@ export function SpeakerProfilesPanel({
       ) : (
         <div className="space-y-4">
           {sortedProfiles.map((profile) => {
-            const usageCount = usage[profile.name] ?? 0
-            const deleteDisabled = usageCount > 0
+            const usageCount = usage[profile.name] ?? 0;
+            const deleteDisabled = usageCount > 0;
 
             return (
               <Card key={profile.id} className="shadow-sm">
@@ -102,11 +104,16 @@ export function SpeakerProfilesPanel({
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge
-                      variant={usageCount > 0 ? 'secondary' : 'outline'}
+                      variant={usageCount > 0 ? "secondary" : "outline"}
                       className="text-xs"
                     >
                       {usageCount > 0
-                        ? (usageCount === 1 ? t.podcasts.usedByCount_one : t.podcasts.usedByCount_other.replace('{count}', usageCount.toString()))
+                        ? usageCount === 1
+                          ? t.podcasts.usedByCount_one
+                          : t.podcasts.usedByCount_other.replace(
+                              "{count}",
+                              usageCount.toString()
+                            )
                         : t.podcasts.unused}
                     </Badge>
                   </div>
@@ -131,10 +138,16 @@ export function SpeakerProfilesPanel({
                           </span>
                         </div>
                         <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">
-                          <span className="font-semibold">{t.podcasts.backstory}:</span> {speaker.backstory}
+                          <span className="font-semibold">
+                            {t.podcasts.backstory}:
+                          </span>{" "}
+                          {speaker.backstory}
                         </p>
                         <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">
-                          <span className="font-semibold">{t.podcasts.personality}:</span> {speaker.personality}
+                          <span className="font-semibold">
+                            {t.podcasts.personality}:
+                          </span>{" "}
+                          {speaker.personality}
                         </p>
                       </div>
                     ))}
@@ -186,9 +199,14 @@ export function SpeakerProfilesPanel({
                       </DropdownMenu>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>{t.podcasts.deleteSpeakerProfileTitle}</AlertDialogTitle>
+                          <AlertDialogTitle>
+                            {t.podcasts.deleteSpeakerProfileTitle}
+                          </AlertDialogTitle>
                           <AlertDialogDescription>
-                            {t.podcasts.deleteSpeakerProfileDesc.replace('{name}', profile.name)}
+                            {t.podcasts.deleteSpeakerProfileDesc.replace(
+                              "{name}",
+                              profile.name
+                            )}
                           </AlertDialogDescription>
                           {deleteDisabled ? (
                             <p className="mt-2 text-sm text-muted-foreground">
@@ -197,12 +215,16 @@ export function SpeakerProfilesPanel({
                           ) : null}
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+                          <AlertDialogCancel>
+                            {t.common.cancel}
+                          </AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => deleteProfile.mutate(profile.id)}
                             disabled={deleteDisabled || deleteProfile.isPending}
                           >
-                            {deleteProfile.isPending ? t.podcasts.deleting : t.podcasts.delete}
+                            {deleteProfile.isPending
+                              ? t.podcasts.deleting
+                              : t.podcasts.delete}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -210,7 +232,7 @@ export function SpeakerProfilesPanel({
                   </div>
                 </CardContent>
               </Card>
-            )
+            );
           })}
         </div>
       )}
@@ -219,7 +241,6 @@ export function SpeakerProfilesPanel({
         mode="create"
         open={createOpen}
         onOpenChange={setCreateOpen}
-        modelOptions={modelOptions}
       />
 
       <SpeakerProfileFormDialog
@@ -227,12 +248,11 @@ export function SpeakerProfilesPanel({
         open={Boolean(editProfile)}
         onOpenChange={(open) => {
           if (!open) {
-            setEditProfile(null)
+            setEditProfile(null);
           }
         }}
-        modelOptions={modelOptions}
         initialData={editProfile ?? undefined}
       />
     </div>
-  )
+  );
 }

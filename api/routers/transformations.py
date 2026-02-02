@@ -12,7 +12,6 @@ from api.models import (
     TransformationResponse,
     TransformationUpdate,
 )
-from backpack.ai.models import Model
 from backpack.domain.transformation import DefaultPrompts, Transformation
 from backpack.exceptions import InvalidInputError
 from backpack.graphs.transformation import graph as transformation_graph
@@ -87,10 +86,10 @@ async def execute_transformation(execute_request: TransformationExecuteRequest):
         if not transformation:
             raise HTTPException(status_code=404, detail="Transformation not found")
 
-        # Validate model exists
-        model = await Model.get(execute_request.model_id)
-        if not model:
-            raise HTTPException(status_code=404, detail="Model not found")
+        # Build config - model_id is optional (uses default if not provided)
+        configurable: dict = {}
+        if execute_request.model_id:
+            configurable["model_id"] = execute_request.model_id
 
         # Execute the transformation
         result = await transformation_graph.ainvoke(
@@ -98,13 +97,13 @@ async def execute_transformation(execute_request: TransformationExecuteRequest):
                 input_text=execute_request.input_text,
                 transformation=transformation,
             ),
-            config=dict(configurable={"model_id": execute_request.model_id}),
+            config=dict(configurable=configurable),
         )
 
         return TransformationExecuteResponse(
             output=result["output"],
             transformation_id=execute_request.transformation_id,
-            model_id=execute_request.model_id,
+            model_id=execute_request.model_id or "default",
         )
 
     except HTTPException:

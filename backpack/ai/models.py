@@ -1,4 +1,6 @@
-from typing import ClassVar, Dict, Optional, Union
+import os
+from dataclasses import dataclass
+from typing import Optional, Union
 
 from esperanto import (
     AIFactory,
@@ -9,150 +11,157 @@ from esperanto import (
 )
 from loguru import logger
 
-from backpack.database.repository import ensure_record_id, repo_query
-from backpack.domain.base import ObjectModel, RecordModel
-
 ModelType = Union[LanguageModel, EmbeddingModel, SpeechToTextModel, TextToSpeechModel]
 
 
-class Model(ObjectModel):
-    table_name: ClassVar[str] = "model"
-    name: str
-    provider: str
-    type: str
+@dataclass
+class ModelConfig:
+    """Model configuration from environment variables with sensible defaults."""
+
+    # Sensible defaults if env vars not set
+    DEFAULT_CHAT = "openai/gpt-4o"
+    DEFAULT_EMBEDDING = "openai/text-embedding-3-small"
+    DEFAULT_LARGE_CONTEXT = "anthropic/claude-sonnet-4-20250514"
+    DEFAULT_TTS = "openai/tts-1"
+    DEFAULT_STT = "openai/whisper-1"
+
+    default_chat_model: str
+    default_transformation_model: Optional[str]
+    large_context_model: str
+    default_embedding_model: str
+    default_tts_model: str
+    default_stt_model: str
+    default_tools_model: Optional[str]
 
     @classmethod
-    async def get_models_by_type(cls, model_type):
-        models = await repo_query(
-            "SELECT * FROM model WHERE type=$model_type;", {"model_type": model_type}
-        )
-        return [Model(**model) for model in models]
-
-
-class DefaultModels(RecordModel):
-    record_id: ClassVar[str] = "backpack:default_models"
-    default_chat_model: Optional[str] = None
-    default_transformation_model: Optional[str] = None
-    large_context_model: Optional[str] = None
-    default_text_to_speech_model: Optional[str] = None
-    default_speech_to_text_model: Optional[str] = None
-    # default_vision_model: Optional[str]
-    default_embedding_model: Optional[str] = None
-    default_tools_model: Optional[str] = None
-
-    @classmethod
-    async def get_instance(cls) -> "DefaultModels":
-        """Always fetch fresh defaults from database (override parent caching behavior)"""
-        result = await repo_query(
-            "SELECT * FROM ONLY $record_id",
-            {"record_id": ensure_record_id(cls.record_id)},
+    def get_config(cls) -> "ModelConfig":
+        """Load model configuration from environment variables."""
+        return cls(
+            default_chat_model=os.getenv("DEFAULT_CHAT_MODEL", cls.DEFAULT_CHAT),
+            default_transformation_model=os.getenv("DEFAULT_TRANSFORMATION_MODEL")
+            or None,
+            large_context_model=os.getenv(
+                "LARGE_CONTEXT_MODEL", cls.DEFAULT_LARGE_CONTEXT
+            ),
+            default_embedding_model=os.getenv(
+                "DEFAULT_EMBEDDING_MODEL", cls.DEFAULT_EMBEDDING
+            ),
+            default_tts_model=os.getenv("DEFAULT_TTS_MODEL", cls.DEFAULT_TTS),
+            default_stt_model=os.getenv("DEFAULT_STT_MODEL", cls.DEFAULT_STT),
+            default_tools_model=os.getenv("DEFAULT_TOOLS_MODEL") or None,
         )
 
-        if result:
-            if isinstance(result, list) and len(result) > 0:
-                data = result[0]
-            elif isinstance(result, dict):
-                data = result
-            else:
-                data = {}
-        else:
-            data = {}
-
-        # Create new instance with fresh data (bypass singleton cache)
-        instance = object.__new__(cls)
-        object.__setattr__(instance, "__dict__", {})
-        super(RecordModel, instance).__init__(**data)
-        return instance
+    def get_provider_and_model(self, model_spec: str) -> tuple[str, str]:
+        """Parse a model spec in 'provider/model-name' format."""
+        if "/" not in model_spec:
+            raise ValueError(
+                f"Invalid model spec '{model_spec}'. Expected format: 'provider/model-name'"
+            )
+        provider, model_name = model_spec.split("/", 1)
+        return provider, model_name
 
 
 class ModelManager:
-    def __init__(self):
-        pass  # No caching needed
+    """Manages AI model provisioning using environment-based configuration."""
 
-    async def get_model(self, model_id: str, **kwargs) -> Optional[ModelType]:
-        """Get a model by ID. Esperanto will cache the actual model instance."""
-        if not model_id:
+    def __init__(self):
+        self._config: Optional[ModelConfig] = None
+
+    def _get_config(self) -> ModelConfig:
+        """Get or load the model configuration."""
+        if self._config is None:
+            self._config = ModelConfig.get_config()
+        return self._config
+
+    def refresh_config(self) -> None:
+        """Force refresh of configuration from environment variables."""
+        self._config = ModelConfig.get_config()
+
+    async def get_model(
+        self, model_spec: str, model_type: str = "language", **kwargs
+    ) -> Optional[ModelType]:
+        """
+        Get a model by spec (format: provider/model-name).
+
+        Args:
+            model_spec: Model specification in 'provider/model-name' format
+            model_type: Type of model ('language', 'embedding', 'speech_to_text', 'text_to_speech')
+            **kwargs: Additional arguments passed to AIFactory
+
+        Returns:
+            The instantiated model, or None if model_spec is empty
+        """
+        if not model_spec:
             return None
 
-        try:
-            model: Model = await Model.get(model_id)
-        except Exception:
-            raise ValueError(f"Model with ID {model_id} not found")
+        config = self._get_config()
+        provider, model_name = config.get_provider_and_model(model_spec)
 
-        if not model.type or model.type not in [
-            "language",
-            "embedding",
-            "speech_to_text",
-            "text_to_speech",
-        ]:
-            raise ValueError(f"Invalid model type: {model.type}")
+        logger.debug(f"Creating {model_type} model: {provider}/{model_name}")
 
         # Create model based on type (Esperanto will cache the instance)
-        if model.type == "language":
+        if model_type == "language":
             return AIFactory.create_language(
-                model_name=model.name,
-                provider=model.provider,
+                model_name=model_name,
+                provider=provider,
                 config=kwargs,
             )
-        elif model.type == "embedding":
+        elif model_type == "embedding":
             return AIFactory.create_embedding(
-                model_name=model.name,
-                provider=model.provider,
+                model_name=model_name,
+                provider=provider,
                 config=kwargs,
             )
-        elif model.type == "speech_to_text":
+        elif model_type == "speech_to_text":
             return AIFactory.create_speech_to_text(
-                model_name=model.name,
-                provider=model.provider,
+                model_name=model_name,
+                provider=provider,
                 config=kwargs,
             )
-        elif model.type == "text_to_speech":
+        elif model_type == "text_to_speech":
             return AIFactory.create_text_to_speech(
-                model_name=model.name,
-                provider=model.provider,
+                model_name=model_name,
+                provider=provider,
                 config=kwargs,
             )
         else:
-            raise ValueError(f"Invalid model type: {model.type}")
+            raise ValueError(f"Invalid model type: {model_type}")
 
-    async def get_defaults(self) -> DefaultModels:
-        """Get the default models configuration from database"""
-        defaults = await DefaultModels.get_instance()
-        if not defaults:
-            raise RuntimeError("Failed to load default models configuration")
-        return defaults
+    def get_defaults(self) -> ModelConfig:
+        """Get the default models configuration from environment."""
+        return self._get_config()
 
     async def get_speech_to_text(self, **kwargs) -> Optional[SpeechToTextModel]:
-        """Get the default speech-to-text model"""
-        defaults = await self.get_defaults()
-        model_id = defaults.default_speech_to_text_model
-        if not model_id:
+        """Get the default speech-to-text model."""
+        config = self._get_config()
+        model_spec = config.default_stt_model
+        if not model_spec:
             return None
-        model = await self.get_model(model_id, **kwargs)
+        model = await self.get_model(model_spec, model_type="speech_to_text", **kwargs)
         assert model is None or isinstance(model, SpeechToTextModel), (
             f"Expected SpeechToTextModel but got {type(model)}"
         )
         return model
 
     async def get_text_to_speech(self, **kwargs) -> Optional[TextToSpeechModel]:
-        """Get the default text-to-speech model"""
-        defaults = await self.get_defaults()
-        model_id = defaults.default_text_to_speech_model
-        if not model_id:
+        """Get the default text-to-speech model."""
+        config = self._get_config()
+        model_spec = config.default_tts_model
+        if not model_spec:
             return None
-        model = await self.get_model(model_id, **kwargs)
+        model = await self.get_model(model_spec, model_type="text_to_speech", **kwargs)
         assert model is None or isinstance(model, TextToSpeechModel), (
             f"Expected TextToSpeechModel but got {type(model)}"
         )
         return model
 
     async def get_embedding_model(self, **kwargs) -> Optional[EmbeddingModel]:
-        """Get the default embedding model"""
-        defaults = await self.get_defaults()
-        model_id = defaults.default_embedding_model
-        if not model_id:
+        """Get the default embedding model."""
+        config = self._get_config()
+        model_spec = config.default_embedding_model
+        if not model_spec:
             return None
-        model = await self.get_model(model_id, **kwargs)
+        model = await self.get_model(model_spec, model_type="embedding", **kwargs)
         assert model is None or isinstance(model, EmbeddingModel), (
             f"Expected EmbeddingModel but got {type(model)}"
         )
@@ -166,30 +175,32 @@ class ModelManager:
             model_type: The type of model to retrieve (e.g., 'chat', 'embedding', etc.)
             **kwargs: Additional arguments to pass to the model constructor
         """
-        defaults = await self.get_defaults()
-        model_id = None
+        config = self._get_config()
+        model_spec: Optional[str] = None
+        actual_model_type = "language"  # Default Esperanto model type
 
         if model_type == "chat":
-            model_id = defaults.default_chat_model
+            model_spec = config.default_chat_model
         elif model_type == "transformation":
-            model_id = (
-                defaults.default_transformation_model or defaults.default_chat_model
-            )
+            model_spec = config.default_transformation_model or config.default_chat_model
         elif model_type == "tools":
-            model_id = defaults.default_tools_model or defaults.default_chat_model
+            model_spec = config.default_tools_model or config.default_chat_model
         elif model_type == "embedding":
-            model_id = defaults.default_embedding_model
+            model_spec = config.default_embedding_model
+            actual_model_type = "embedding"
         elif model_type == "text_to_speech":
-            model_id = defaults.default_text_to_speech_model
+            model_spec = config.default_tts_model
+            actual_model_type = "text_to_speech"
         elif model_type == "speech_to_text":
-            model_id = defaults.default_speech_to_text_model
+            model_spec = config.default_stt_model
+            actual_model_type = "speech_to_text"
         elif model_type == "large_context":
-            model_id = defaults.large_context_model
+            model_spec = config.large_context_model
 
-        if not model_id:
+        if not model_spec:
             return None
 
-        return await self.get_model(model_id, **kwargs)
+        return await self.get_model(model_spec, model_type=actual_model_type, **kwargs)
 
 
 model_manager = ModelManager()

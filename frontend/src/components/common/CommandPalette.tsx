@@ -1,9 +1,9 @@
-'use client'
+"use client";
 
-import { useEffect, useState, useCallback, useMemo, useId } from 'react'
-import { useRouter } from 'next/navigation'
-import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
-import { useModules } from '@/lib/hooks/use-modules'
+import { useEffect, useState, useCallback, useMemo, useId } from "react";
+import { useRouter } from "next/navigation";
+import { useCreateDialogs } from "@/lib/hooks/use-create-dialogs";
+import { useModules } from "@/lib/hooks/use-modules";
 import {
   CommandDialog,
   CommandInput,
@@ -11,12 +11,11 @@ import {
   CommandGroup,
   CommandItem,
   CommandSeparator,
-} from '@/components/ui/command'
+} from "@/components/ui/command";
 import {
   Book,
   Search,
   Mic,
-  Bot,
   Shuffle,
   Settings,
   FileText,
@@ -24,26 +23,59 @@ import {
   MessageCircleQuestion,
   Plus,
   Loader2,
-} from 'lucide-react'
-import { useTranslation } from '@/lib/hooks/use-translation'
-import { TranslationKeys } from '@/lib/locales'
+} from "lucide-react";
+import { useTranslation } from "@/lib/hooks/use-translation";
+import { TranslationKeys } from "@/lib/locales";
 
 const getNavigationItems = (t: TranslationKeys) => [
-  { name: t.navigation.sources, href: '/sources', icon: FileText, keywords: ['files', 'documents', 'upload'] },
-  { name: t.navigation.modules, href: '/modules', icon: Book, keywords: ['notes', 'research', 'projects'] },
-  { name: t.navigation.askAndSearch, href: '/search', icon: Search, keywords: ['find', 'query'] },
-  { name: t.navigation.podcasts, href: '/podcasts', icon: Mic, keywords: ['audio', 'episodes', 'generate'] },
-  { name: t.navigation.models, href: '/models', icon: Bot, keywords: ['ai', 'llm', 'providers', 'openai', 'anthropic'] },
-  { name: t.navigation.transformations, href: '/transformations', icon: Shuffle, keywords: ['prompts', 'templates', 'actions'] },
-  { name: t.navigation.settings, href: '/settings', icon: Settings, keywords: ['preferences', 'config', 'options'] },
-  { name: t.navigation.advanced, href: '/advanced', icon: Wrench, keywords: ['debug', 'system', 'tools'] },
-]
+  {
+    name: t.navigation.sources,
+    href: "/sources",
+    icon: FileText,
+    keywords: ["files", "documents", "upload"],
+  },
+  {
+    name: t.navigation.modules,
+    href: "/modules",
+    icon: Book,
+    keywords: ["notes", "research", "projects"],
+  },
+  {
+    name: t.navigation.askAndSearch,
+    href: "/search",
+    icon: Search,
+    keywords: ["find", "query"],
+  },
+  {
+    name: t.navigation.podcasts,
+    href: "/podcasts",
+    icon: Mic,
+    keywords: ["audio", "episodes", "generate"],
+  },
+  {
+    name: t.navigation.transformations,
+    href: "/transformations",
+    icon: Shuffle,
+    keywords: ["prompts", "templates", "actions"],
+  },
+  {
+    name: t.navigation.settings,
+    href: "/settings",
+    icon: Settings,
+    keywords: ["preferences", "config", "options"],
+  },
+  {
+    name: t.navigation.advanced,
+    href: "/advanced",
+    icon: Wrench,
+    keywords: ["debug", "system", "tools"],
+  },
+];
 
 const getCreateItems = (t: TranslationKeys) => [
-  { name: t.common.newSource, action: 'source', icon: FileText },
-  { name: t.common.newModule, action: 'module', icon: Book },
-  { name: t.common.newPodcast, action: 'podcast', icon: Mic },
-]
+  { name: t.common.newSource, action: "source", icon: FileText },
+  { name: t.common.newModule, action: "module", icon: Book },
+];
 
 // Theme items temporarily disabled - light mode only
 // const getThemeItems = (t: TranslationKeys) => [
@@ -53,100 +85,112 @@ const getCreateItems = (t: TranslationKeys) => [
 // ]
 
 export function CommandPalette() {
-  const { t } = useTranslation()
-  const commandInputId = useId()
-  const navigationItems = useMemo(() => getNavigationItems(t), [t])
-  const createItems = useMemo(() => getCreateItems(t), [t])
+  const { t } = useTranslation();
+  const commandInputId = useId();
+  const navigationItems = useMemo(() => getNavigationItems(t), [t]);
+  const createItems = useMemo(() => getCreateItems(t), [t]);
 
-  const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
-  const router = useRouter()
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const router = useRouter();
 
-  const { openSourceDialog, openModuleDialog, openPodcastDialog } = useCreateDialogs()
-  const { data: modules, isLoading: modulesLoading } = useModules(false)
+  const { openSourceDialog, openModuleDialog } = useCreateDialogs();
+  const { data: modules, isLoading: modulesLoading } = useModules(false);
 
   // Global keyboard listener for ⌘K / Ctrl+K
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       // Skip if focus is inside editable elements
-      const target = e.target as HTMLElement | null
+      const target = e.target as HTMLElement | null;
       if (
         target &&
         (target.isContentEditable ||
-          ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
       ) {
-        return
+        return;
       }
 
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        e.stopPropagation()
-        setOpen((open) => !open)
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen((open) => !open);
       }
-    }
+    };
 
     // Use capture phase to intercept before other handlers
-    document.addEventListener('keydown', down, true)
-    return () => document.removeEventListener('keydown', down, true)
-  }, [])
+    document.addEventListener("keydown", down, true);
+    return () => document.removeEventListener("keydown", down, true);
+  }, []);
 
   // Reset query when dialog closes
   useEffect(() => {
     if (!open) {
-      setQuery('')
+      setQuery("");
     }
-  }, [open])
+  }, [open]);
 
   const handleSelect = useCallback((callback: () => void) => {
-    setOpen(false)
-    setQuery('')
+    setOpen(false);
+    setQuery("");
     // Use setTimeout to ensure dialog closes before action
-    setTimeout(callback, 0)
-  }, [])
+    setTimeout(callback, 0);
+  }, []);
 
-  const handleNavigate = useCallback((href: string) => {
-    handleSelect(() => router.push(href))
-  }, [handleSelect, router])
+  const handleNavigate = useCallback(
+    (href: string) => {
+      handleSelect(() => router.push(href));
+    },
+    [handleSelect, router]
+  );
 
   const handleSearch = useCallback(() => {
-    if (!query.trim()) return
-    handleSelect(() => router.push(`/search?q=${encodeURIComponent(query)}&mode=search`))
-  }, [handleSelect, router, query])
+    if (!query.trim()) return;
+    handleSelect(() =>
+      router.push(`/search?q=${encodeURIComponent(query)}&mode=search`)
+    );
+  }, [handleSelect, router, query]);
 
   const handleAsk = useCallback(() => {
-    if (!query.trim()) return
-    handleSelect(() => router.push(`/search?q=${encodeURIComponent(query)}&mode=ask`))
-  }, [handleSelect, router, query])
+    if (!query.trim()) return;
+    handleSelect(() =>
+      router.push(`/search?q=${encodeURIComponent(query)}&mode=ask`)
+    );
+  }, [handleSelect, router, query]);
 
-  const handleCreate = useCallback((action: string) => {
-    handleSelect(() => {
-      if (action === 'source') openSourceDialog()
-      else if (action === 'module') openModuleDialog()
-      else if (action === 'podcast') openPodcastDialog()
-    })
-  }, [handleSelect, openSourceDialog, openModuleDialog, openPodcastDialog])
+  const handleCreate = useCallback(
+    (action: string) => {
+      handleSelect(() => {
+        if (action === "source") openSourceDialog();
+        else if (action === "module") openModuleDialog();
+      });
+    },
+    [handleSelect, openSourceDialog, openModuleDialog]
+  );
 
   // Check if query matches any command (navigation, create, or module)
-  const queryLower = query.toLowerCase().trim()
+  const queryLower = query.toLowerCase().trim();
   const hasCommandMatch = useMemo(() => {
-    if (!queryLower) return false
+    if (!queryLower) return false;
     return (
-      navigationItems.some(item =>
-        item.name.toLowerCase().includes(queryLower) ||
-        item.keywords.some(k => k.includes(queryLower))
+      navigationItems.some(
+        (item) =>
+          item.name.toLowerCase().includes(queryLower) ||
+          item.keywords.some((k) => k.includes(queryLower))
       ) ||
-      createItems.some(item =>
+      createItems.some((item) =>
         item.name.toLowerCase().includes(queryLower)
       ) ||
-      (modules?.some(m =>
-        m.name.toLowerCase().includes(queryLower) ||
-        (m.description && m.description.toLowerCase().includes(queryLower))
-      ) ?? false)
-    )
-  }, [queryLower, modules, navigationItems, createItems])
+      (modules?.some(
+        (m) =>
+          m.name.toLowerCase().includes(queryLower) ||
+          (m.description && m.description.toLowerCase().includes(queryLower))
+      ) ??
+        false)
+    );
+  }, [queryLower, modules, navigationItems, createItems]);
 
   // Determine if we should show the Search/Ask section at the top
-  const showSearchFirst = query.trim() && !hasCommandMatch
+  const showSearchFirst = query.trim() && !hasCommandMatch;
 
   return (
     <CommandDialog
@@ -175,7 +219,9 @@ export function CommandPalette() {
               forceMount
             >
               <Search className="h-4 w-4" />
-              <span>{t.searchPage.searchResultsFor.replace('{query}', query)}</span>
+              <span>
+                {t.searchPage.searchResultsFor.replace("{query}", query)}
+              </span>
             </CommandItem>
             <CommandItem
               value={`__ask__ ${query}`}
@@ -183,7 +229,7 @@ export function CommandPalette() {
               forceMount
             >
               <MessageCircleQuestion className="h-4 w-4" />
-              <span>{t.searchPage.askAbout.replace('{query}', query)}</span>
+              <span>{t.searchPage.askAbout.replace("{query}", query)}</span>
             </CommandItem>
           </CommandGroup>
         )}
@@ -193,7 +239,7 @@ export function CommandPalette() {
           {navigationItems.map((item) => (
             <CommandItem
               key={item.href}
-              value={`${item.name} ${item.keywords.join(' ')}`}
+              value={`${item.name} ${item.keywords.join(" ")}`}
               onSelect={() => handleNavigate(item.href)}
             >
               <item.icon className="h-4 w-4" />
@@ -213,8 +259,10 @@ export function CommandPalette() {
             modules.map((m) => (
               <CommandItem
                 key={m.id}
-                value={`module ${m.name} ${m.description || ''}`}
-                onSelect={() => handleNavigate(`/modules/${encodeURIComponent(m.id)}`)}
+                value={`module ${m.name} ${m.description || ""}`}
+                onSelect={() =>
+                  handleNavigate(`/modules/${encodeURIComponent(m.id)}`)
+                }
               >
                 <Book className="h-4 w-4" />
                 <span>{m.name}</span>
@@ -250,7 +298,9 @@ export function CommandPalette() {
                 forceMount
               >
                 <Search className="h-4 w-4" />
-                <span>{t.searchPage.searchResultsFor.replace('{query}', query)}</span>
+                <span>
+                  {t.searchPage.searchResultsFor.replace("{query}", query)}
+                </span>
               </CommandItem>
               <CommandItem
                 value={`__ask__ ${query}`}
@@ -258,12 +308,12 @@ export function CommandPalette() {
                 forceMount
               >
                 <MessageCircleQuestion className="h-4 w-4" />
-                <span>{t.searchPage.askAbout.replace('{query}', query)}</span>
+                <span>{t.searchPage.askAbout.replace("{query}", query)}</span>
               </CommandItem>
             </CommandGroup>
           </>
         )}
       </CommandList>
     </CommandDialog>
-  )
+  );
 }

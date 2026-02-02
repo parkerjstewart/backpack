@@ -28,7 +28,7 @@ export interface UpdateTransformationRequest {
 export interface ExecuteTransformationRequest {
   transformation_id: string
   input_text: string
-  model_id: string
+  model_id?: string  // Optional - uses environment-configured default if not provided
 }
 
 export interface ExecuteTransformationResponse {
