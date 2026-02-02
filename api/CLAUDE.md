@@ -25,7 +25,6 @@ FastAPI application serving three architectural layers: routes (HTTP endpoints),
 - `sources_service.py`: Content ingestion, vectorization, metadata
 - `notes_service.py`: Note creation, linking to sources/insights
 - `transformations_service.py`: Applies transformations to content
-- `models_service.py`: Manages AI provider/model configuration
 - `episode_profiles_service.py`: Manages podcast speaker/episode profiles
 
 ## Component Catalog
@@ -40,7 +39,6 @@ FastAPI application serving three architectural layers: routes (HTTP endpoints),
 - **podcast_service.py**: Generates outline (outline.jinja), then transcript (transcript.jinja) for episodes
 - **sources_service.py**: Ingests files/URLs (content_core), extracts text, vectorizes, saves to SurrealDB
 - **transformations_service.py**: Applies transformations via transformation.py graph
-- **models_service.py**: Manages ModelManager config (AI provider overrides)
 - **episode_profiles_service.py**: CRUD for EpisodeProfile and SpeakerProfile models
 - **insights_service.py**: Generates and retrieves source insights
 - **notes_service.py**: Creates notes linked to sources/insights
@@ -57,7 +55,7 @@ FastAPI application serving three architectural layers: routes (HTTP endpoints),
 - **routers/podcasts.py**: POST /podcasts, GET /podcasts/{id}, etc.
 - **routers/notes.py**: POST /notes, GET /notes/{id}
 - **routers/sources.py**: POST /sources, GET /sources/{id}, DELETE /sources/{id}
-- **routers/models.py**: GET /models, POST /models/config
+- **routers/models.py**: GET /models/providers (provider availability detection)
 - **routers/transformations.py**: POST /transformations
 - **routers/insights.py**: GET /sources/{source_id}/insights
 - **routers/auth.py**: POST /auth/password (password-based auth)
@@ -68,7 +66,6 @@ FastAPI application serving three architectural layers: routes (HTTP endpoints),
 - **Service injection via FastAPI**: Routers import services directly; no DI framework
 - **Async/await throughout**: All DB queries, graph invocations, AI calls are async
 - **SurrealDB transactions**: Services use repo_query, repo_create, repo_upsert from database layer
-- **Config override pattern**: Models/config override via models_service passed to graph.ainvoke(config=...)
 - **Error handling**: Services catch exceptions and return HTTP status codes (400 Bad Request, 404 Not Found, 500 Internal Server Error)
 - **Logging**: loguru logger in main.py; services expected to log key operations
 - **Response normalization**: All responses follow standard schema (data + metadata structure)
@@ -95,7 +92,6 @@ FastAPI application serving three architectural layers: routes (HTTP endpoints),
 - **Service state is stateless**: Services don't cache results; each request re-queries database/AI models
 - **Graph invocation is blocking**: chat/podcast workflows may take minutes; no timeout handling in services
 - **Command job fire-and-forget**: podcast_service.py submits jobs but doesn't wait (async job queue pattern)
-- **Model override scoping**: Model config override via RunnableConfig is per-request only (not persistent)
 - **CORS open by default**: main.py CORS settings allow all origins (restrict before production)
 - **No OpenAPI security scheme**: API docs available without auth (disable before production)
 - **Services don't validate user permission**: All endpoints trust authentication layer; no per-notebook permission checks

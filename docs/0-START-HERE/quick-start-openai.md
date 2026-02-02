@@ -122,9 +122,22 @@ You should see the Open Notebook interface!
 
 ## Using Different Models
 
-In your notebook, go to **Settings** → **Models** to choose:
-- `gpt-4o` - Best quality (recommended)
-- `gpt-4o-mini` - Fast and cheap (good for testing)
+Models are configured via environment variables in your `docker-compose.yml`:
+
+```yaml
+environment:
+  # Chat model (default: openai/gpt-4o)
+  - DEFAULT_CHAT_MODEL=openai/gpt-4o
+
+  # For testing, use a cheaper model:
+  # - DEFAULT_CHAT_MODEL=openai/gpt-4o-mini
+```
+
+After changing, run `docker compose up -d` to apply.
+
+**Available OpenAI models:**
+- `openai/gpt-4o` - Best quality (recommended)
+- `openai/gpt-4o-mini` - Fast and cheap (good for testing)
 
 ---
 

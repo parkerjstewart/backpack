@@ -32,9 +32,10 @@ export interface SearchResponse {
 // Ask types
 export interface AskRequest {
   question: string
-  strategy_model: string
-  answer_model: string
-  final_answer_model: string
+  // Model fields are optional - backend uses defaults from environment if not specified
+  strategy_model?: string
+  answer_model?: string
+  final_answer_model?: string
 }
 
 export interface AskResponse {

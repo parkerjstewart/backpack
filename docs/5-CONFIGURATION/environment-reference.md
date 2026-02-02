@@ -15,6 +15,24 @@ Comprehensive list of all environment variables available in Open Notebook.
 
 ---
 
+## Default AI Models
+
+Configure which models are used for different tasks. Format: `provider/model-name` (e.g., `openai/gpt-4o`).
+
+| Variable | Required? | Default | Description |
+|----------|-----------|---------|-------------|
+| `DEFAULT_CHAT_MODEL` | No | openai/gpt-4o | Chat and general language tasks |
+| `DEFAULT_TRANSFORMATION_MODEL` | No | Uses chat model | Content transformations |
+| `LARGE_CONTEXT_MODEL` | No | anthropic/claude-sonnet-4-20250514 | Large context handling (>105k tokens) |
+| `DEFAULT_EMBEDDING_MODEL` | No | openai/text-embedding-3-small | Semantic search embeddings |
+| `DEFAULT_STT_MODEL` | No | openai/whisper-1 | Speech-to-text for audio processing |
+| `DEFAULT_TTS_MODEL` | No | openai/tts-1 | Text-to-speech for podcasts |
+| `DEFAULT_TOOLS_MODEL` | No | Uses chat model | Function calling tasks |
+
+**Note:** Available providers depend on which API keys you've configured (see AI Provider sections below).
+
+---
+
 ## AI Provider: OpenAI
 
 | Variable | Required? | Default | Description |
@@ -313,8 +331,8 @@ env | grep -E "^[A-Z_]+=" | sort
 - [ ] Add to .env or docker.env
 - [ ] Set `API_URL` if behind reverse proxy
 - [ ] Change `SURREAL_PASSWORD` in production
+- [ ] Optionally configure default models via `DEFAULT_*_MODEL` env vars
 - [ ] Verify with: `docker compose logs api | grep -i "error"`
-- [ ] Test in browser: Go to Settings → Models
 - [ ] Try a test chat
 
 Done!

@@ -22,7 +22,7 @@ User interactions trigger mutations/queries via hooks, which communicate with th
 
 ### Pages (`src/app/`) — Next.js App Router
 - `(auth)/login`: Authentication entry point
-- `(dashboard)/`: Protected routes (modules, sources, search, models, etc.)
+- `(dashboard)/`: Protected routes (modules, sources, search, podcasts, settings, etc.)
 - Directory-based routing; each `page.tsx` is a route endpoint
 - **Key pattern**: Pages call hooks to fetch data, render components with state
 - **Router groups** `(auth)`, `(dashboard)` organize routes by feature without affecting URL
@@ -31,7 +31,7 @@ User interactions trigger mutations/queries via hooks, which communicate with th
 - **layout**: `AppShell.tsx`, `AppSidebar.tsx` — main layout wrapper used by all pages
 - **providers**: `ThemeProvider`, `QueryProvider`, `ModalProvider` — app-wide context setup
 - **auth**: `LoginForm.tsx` — authentication UI
-- **common**: `CommandPalette`, `ErrorBoundary`, `ContextToggle`, `ModelSelector` — shared across pages
+- **common**: `CommandPalette`, `ErrorBoundary`, `ContextToggle` — shared across pages
 - **ui**: Reusable Radix UI building blocks (see child CLAUDE.md)
 - **source**, **modules**, **search**, **podcasts**: Feature-specific components consuming hooks
 

@@ -35,9 +35,9 @@ docker compose restart
 
 ---
 
-## #2: "Invalid API key" or "Models not showing"
+## #2: "Invalid API key" or Chat Not Working
 
-**Symptom:** Settings → Models shows "No models available"
+**Symptom:** Chat returns API key error, or transformations fail
 
 **Cause:** API key missing, wrong, or not set
 
@@ -53,10 +53,9 @@ cat .env | grep OPENAI_API_KEY
 # Step 3: Restart services
 docker compose restart api
 
-# Step 4: Wait 10 seconds, then refresh browser
-# Go to Settings → Models
+# Step 4: Wait 10 seconds, then test chat
 
-# If still no models:
+# If still not working:
 # Check logs for error
 docker compose logs api | grep -i "api key\|error"
 ```
@@ -130,13 +129,15 @@ docker compose restart
 
 ```bash
 # Step 1: Check which model you're using
-# Settings → Models
-# Note the model name
+cat .env | grep DEFAULT_CHAT_MODEL
+# Default is openai/gpt-4o
 
-# Step 2: Try a cheaper/faster model
-# OpenAI: Switch to gpt-4o-mini (10x cheaper, slightly faster)
-# Anthropic: Switch to claude-3-5-haiku (fastest)
-# Groq: Use any model (ultra-fast)
+# Step 2: Try a cheaper/faster model in .env:
+# OpenAI: DEFAULT_CHAT_MODEL=openai/gpt-4o-mini (10x cheaper, slightly faster)
+# Groq: DEFAULT_CHAT_MODEL=groq/llama-3.1-70b-versatile (ultra-fast)
+
+# After changing, restart:
+docker compose restart api
 
 # Step 3: Reduce context
 # Chat: Select fewer sources

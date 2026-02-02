@@ -65,7 +65,7 @@ All components communicate through async/await patterns and use Pydantic for val
 
 - **`graphs/`**: LangGraph state machines for async workflows. Content ingestion (source.py), conversational agents (chat.py), search synthesis (ask.py), and transformations. Uses provision_langchain_model() for smart model selection with token-aware fallback. See `graphs/CLAUDE.md`.
 
-- **`ai/`**: Centralized AI model lifecycle via Esperanto library. ModelManager factory with intelligent fallback (large context detection, type-specific defaults, config override). Supports 8+ providers (OpenAI, Anthropic, Google, Groq, Ollama, Mistral, DeepSeek, xAI). See `ai/CLAUDE.md`.
+- **`ai/`**: Centralized AI model lifecycle via Esperanto library. ModelConfig reads defaults from environment variables; ModelManager factory with intelligent fallback (large context detection, type-specific defaults). Supports 8+ providers (OpenAI, Anthropic, Google, Groq, Ollama, Mistral, DeepSeek, xAI). See `ai/CLAUDE.md`.
 
 - **`utils/`**: Cross-cutting utilities: ContextBuilder (flexible context assembly from sources/notes/insights with token budgeting), TextUtils (truncation, cleaning), TokenUtils (GPT token counting), VersionUtils (schema compatibility). See `utils/CLAUDE.md`.
 
@@ -190,7 +190,7 @@ SurrealDB graph edges link entities: Notebook→Source (has), Source→Note (art
 1. **Token counting rough estimate**: Uses cl100k_base encoding; may differ 5-10% from actual model
 2. **Large context threshold hard-coded**: 105,000 token limit for large_context_model upgrade (not configurable)
 3. **Async loop gymnastics in graphs**: ThreadPoolExecutor workaround for LangGraph sync nodes calling async functions (fragile)
-4. **DefaultModels always fresh**: get_instance() bypasses singleton cache to pick up live config changes
+4. **Model config cached after load**: ModelManager caches ModelConfig; use `refresh_config()` to reload after env changes
 5. **Polymorphic model.get()**: Resolves subclass from ID prefix; fails silently if subclass not imported
 6. **RecordID string inconsistency**: repo_update() accepts both "table:id" format and full RecordID
 7. **Snapshot profiles**: podcast profiles stored as dicts, so config updates don't affect past episodes
@@ -215,10 +215,11 @@ SurrealDB graph edges link entities: Notebook→Source (has), Source→Note (art
 5. Invoke from API endpoint or Streamlit page
 
 **New AI model type**:
-1. Add type string to Model class
-2. Add AIFactory.create_* method in Esperanto
-3. Handle in ModelManager.get_model()
-4. Add DefaultModels field + getter
+1. Add field to ModelConfig dataclass in `ai/models.py`
+2. Add environment variable (e.g., `DEFAULT_VISION_MODEL`)
+3. Add AIFactory.create_* method in Esperanto (if new capability)
+4. Handle in ModelManager.get_default_model() with fallback logic
+5. Document env var in `.env.example`
 
 ## Key Dependencies
 

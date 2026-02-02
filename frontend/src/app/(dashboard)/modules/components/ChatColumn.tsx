@@ -1,68 +1,70 @@
-'use client'
+"use client";
 
-import { useMemo } from 'react'
-import { useModuleChat } from '@/lib/hooks/useModuleChat'
-import { useSources } from '@/lib/hooks/use-sources'
-import { useNotes } from '@/lib/hooks/use-notes'
-import { ChatPanel } from '@/components/source/ChatPanel'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { Card, CardContent } from '@/components/ui/card'
-import { AlertCircle } from 'lucide-react'
-import { ContextSelections } from '../[id]/page'
-import { useTranslation } from '@/lib/hooks/use-translation'
+import { useMemo } from "react";
+import { useModuleChat } from "@/lib/hooks/useModuleChat";
+import { useSources } from "@/lib/hooks/use-sources";
+import { useNotes } from "@/lib/hooks/use-notes";
+import { ChatPanel } from "@/components/source/ChatPanel";
+import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { Card, CardContent } from "@/components/ui/card";
+import { AlertCircle } from "lucide-react";
+import { ContextSelections } from "../[id]/page";
+import { useTranslation } from "@/lib/hooks/use-translation";
 
 interface ChatColumnProps {
-  moduleId: string
-  contextSelections: ContextSelections
+  moduleId: string;
+  contextSelections: ContextSelections;
 }
 
 export function ChatColumn({ moduleId, contextSelections }: ChatColumnProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation();
 
   // Fetch sources and notes for this module
-  const { data: sources = [], isLoading: sourcesLoading } = useSources(moduleId)
-  const { data: notes = [], isLoading: notesLoading } = useNotes(moduleId)
+  const { data: sources = [], isLoading: sourcesLoading } =
+    useSources(moduleId);
+  const { data: notes = [], isLoading: notesLoading } = useNotes(moduleId);
 
   // Initialize module chat hook
   const chat = useModuleChat({
     moduleId,
     sources,
     notes,
-    contextSelections
-  })
+    contextSelections,
+  });
 
   // Calculate context stats for indicator
   const contextStats = useMemo(() => {
-    let sourcesInsights = 0
-    let sourcesFull = 0
-    let notesCount = 0
+    let sourcesInsights = 0;
+    let sourcesFull = 0;
+    let notesCount = 0;
 
     // Count sources by mode
-    sources.forEach(source => {
-      const mode = contextSelections.sources[source.id]
-      if (mode === 'insights') {
-        sourcesInsights++
-      } else if (mode === 'full') {
-        sourcesFull++
+    sources.forEach((source) => {
+      const mode = contextSelections.sources[source.id];
+      if (mode === "insights") {
+        sourcesInsights++;
+      } else if (mode === "full") {
+        sourcesFull++;
       }
-    })
+    });
 
     // Count notes that are included (not 'off')
-    notes.forEach(note => {
-      const mode = contextSelections.notes[note.id]
-      if (mode === 'full') {
-        notesCount++
+    // Notes default to 'full' if not explicitly set in contextSelections
+    notes.forEach((note) => {
+      const mode = contextSelections.notes?.[note.id] ?? "full";
+      if (mode === "full") {
+        notesCount++;
       }
-    })
+    });
 
     return {
       sourcesInsights,
       sourcesFull,
       notesCount,
       tokenCount: chat.tokenCount,
-      charCount: chat.charCount
-    }
-  }, [sources, notes, contextSelections, chat.tokenCount, chat.charCount])
+      charCount: chat.charCount,
+    };
+  }, [sources, notes, contextSelections, chat.tokenCount, chat.charCount]);
 
   // Show loading state while sources/notes are being fetched
   if (sourcesLoading || notesLoading) {
@@ -72,7 +74,7 @@ export function ChatColumn({ moduleId, contextSelections }: ChatColumnProps) {
           <LoadingSpinner size="lg" />
         </CardContent>
       </Card>
-    )
+    );
   }
 
   // Show error state if data fetch failed (unlikely but good to handle)
@@ -83,11 +85,13 @@ export function ChatColumn({ moduleId, contextSelections }: ChatColumnProps) {
           <div className="text-center text-muted-foreground">
             <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p className="text-sm">{t.chat.unableToLoadChat}</p>
-            <p className="text-xs mt-2">{t.common.refreshPage || 'Please try refreshing the page'}</p>
+            <p className="text-xs mt-2">
+              {t.common.refreshPage || "Please try refreshing the page"}
+            </p>
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   return (
@@ -97,18 +101,18 @@ export function ChatColumn({ moduleId, contextSelections }: ChatColumnProps) {
       messages={chat.messages}
       isStreaming={chat.isSending}
       contextIndicators={null}
-      onSendMessage={(message, modelOverride) => chat.sendMessage(message, modelOverride)}
-      modelOverride={chat.currentSession?.model_override ?? chat.pendingModelOverride ?? undefined}
-      onModelChange={(model) => chat.setModelOverride(model ?? null)}
+      onSendMessage={(message) => chat.sendMessage(message)}
       sessions={chat.sessions}
       currentSessionId={chat.currentSessionId}
       onCreateSession={(title) => chat.createSession(title)}
       onSelectSession={chat.switchSession}
-      onUpdateSession={(sessionId, title) => chat.updateSession(sessionId, { title })}
+      onUpdateSession={(sessionId, title) =>
+        chat.updateSession(sessionId, { title })
+      }
       onDeleteSession={chat.deleteSession}
       loadingSessions={chat.loadingSessions}
       moduleContextStats={contextStats}
       moduleId={moduleId}
     />
-  )
+  );
 }

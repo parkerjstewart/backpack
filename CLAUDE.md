@@ -97,9 +97,9 @@ User documentation is at @docs/
 
 ### 3. Multi-Provider AI
 - **Esperanto library**: Unified interface to 8+ AI providers
+- **ModelConfig**: Environment-based configuration for default models (`provider/model-name` format)
 - **ModelManager**: Factory pattern with fallback logic
-- **Smart selection**: Detects large contexts, prefers long-context models
-- **Override support**: Per-request model configuration
+- **Smart selection**: Detects large contexts (>105k tokens), auto-upgrades to large_context_model
 
 ### 4. Database Schema
 - **Automatic migrations**: AsyncMigrationManager runs on API startup

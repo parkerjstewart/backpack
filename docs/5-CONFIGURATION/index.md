@@ -225,6 +225,12 @@ AZURE_OPENAI_API_VERSION=2024-12-01-preview
 - Docker networking
 - Troubleshooting
 
+### [Model Migration Guide](model-migration.md)
+- Migrating from UI-based model configuration
+- Environment variable format for models
+- Default model values
+- Troubleshooting model configuration
+
 ### [Complete Reference](environment-reference.md)
 - All environment variables
 - Grouped by category
@@ -284,10 +290,9 @@ After configuration, verify it works:
 
 ```
 1. Open your notebook
-2. Go to Settings → Models
-3. You should see your configured provider
-4. Try a simple Chat question
-5. If it responds, configuration is correct!
+2. Try a simple Chat question
+3. If it responds, configuration is correct!
+4. Check API logs for model loading confirmation
 ```
 
 ---
