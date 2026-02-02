@@ -155,8 +155,10 @@ Design tokens are based on Figma designs and defined in `globals.css` and `tailw
 
 ### Styling Conventions
 - **Hover states use `secondary` (neutral), NOT `accent`** — accent is for active/selected only
+- **Never use `hover:bg-muted`** — muted is for disabled/placeholder, use `hover:bg-secondary` instead
 - **Button default**: 48px height, 16px radius, 32px horizontal padding
 - **Card hover**: `bg-secondary` background, no accent color
+- **Sidebar nav**: Use `SidebarNavLink` component for consistent hover/active states
 
 ### Theme State
 - **Currently light-mode only** — dark mode temporarily disabled
@@ -180,7 +182,7 @@ When implementing designs from Figma, use the MCP tools:
 - **Cache invalidation breadth**: Trade-off between precision + simplicity; broad invalidation simpler but may over-fetch
 - **Dark mode disabled**: Theme store forces light mode; don't add new dark mode styles until re-enabled
 - **Translation keys are lowercase**: Use `t.modules.x`, NOT `t.Modules.x` — wrong case breaks translations
-- **Hover vs Active colors**: Hover uses `secondary` (neutral), active uses `accent` (sage green) — don't mix them
+- **Hover vs Active colors**: Hover uses `secondary` (neutral), active uses `accent` (sage green) — don't mix them. See `components/ui/CLAUDE.md` for detailed examples.
 
 ## How to Add a New Feature
 

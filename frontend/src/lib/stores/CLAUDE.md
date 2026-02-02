@@ -1,10 +1,13 @@
 # Stores Module
 
-Zustand-based state management for authentication, modals, and application-level settings with localStorage persistence.
+Zustand-based state management for authentication, modals, UI state, and application-level settings with localStorage persistence.
 
 ## Key Components
 
 - **`auth-store.ts`**: Authentication state (token, isAuthenticated) with login, logout, auth checking, and Zustand persistence
+- **`sidebar-store.ts`**: Sidebar collapse state with persistence
+- **`courses-store.ts`**: Course/class management (CRUD, archive/restore)
+- **`user-store.ts`**: User profile state (name, role, avatar) with persistence
 - **Modal stores** (imported via hooks): Modal visibility and data state management
 - **Settings persistence**: Auto-saves sensitive state (token, auth status) to localStorage via Zustand persist middleware
 
