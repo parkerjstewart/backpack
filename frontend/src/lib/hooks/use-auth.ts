@@ -47,7 +47,7 @@ export function useAuth() {
         sessionStorage.removeItem('redirectAfterLogin')
         router.push(redirectPath)
       } else {
-        router.push('/modules')
+        router.push('/courses')
       }
     }
     return success

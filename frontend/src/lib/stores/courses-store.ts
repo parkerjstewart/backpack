@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+export type CourseColor = 'sage' | 'amber' | 'sky' | 'coral'
+
 export interface Course {
   id: string
   name: string
@@ -8,6 +10,10 @@ export interface Course {
   archived?: boolean
   createdAt: string
   updatedAt: string
+  /** Filename of uploaded syllabus (stored locally for display) */
+  syllabusFileName?: string
+  /** Card color variant for visual distinction */
+  color?: CourseColor
 }
 
 export interface ModuleMetadata {
@@ -38,31 +44,35 @@ const createInitialCourses = (): Course[] => {
   return [
     {
       id: 'cs-224n',
-      name: 'CS 224N: Natural Language Processing with Deep Learning',
-      description: 'Graduate-level NLP course focusing on modern deep learning methods.',
+      name: 'CS 224N',
+      description: 'Natural Language Processing with Deep Learning',
       createdAt: now,
       updatedAt: now,
+      color: 'sage',
     },
     {
       id: 'cee-33b',
-      name: 'CEE 33B: Japanese Modern Architecture',
-      description: 'Survey of modern Japanese architectural movements and key figures.',
+      name: 'CEE 33B',
+      description: 'Japanese Modern Architecture',
       createdAt: now,
       updatedAt: now,
+      color: 'amber',
     },
     {
       id: 'arthist-129',
-      name: 'ARTHIST 129: Fashion',
-      description: 'History and theory of fashion as cultural practice.',
+      name: 'ARTHIST 129',
+      description: 'Fashion',
       createdAt: now,
       updatedAt: now,
+      color: 'sky',
     },
     {
       id: 'cs-111',
-      name: 'CS 111: Operating Systems Principles',
-      description: 'Core concepts in modern operating systems design and implementation.',
+      name: 'CS 111',
+      description: 'Operating Systems Principles',
       createdAt: now,
       updatedAt: now,
+      color: 'coral',
     },
   ]
 }

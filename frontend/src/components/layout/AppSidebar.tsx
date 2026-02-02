@@ -89,7 +89,7 @@ export function AppSidebar() {
             {/* Classes Section */}
             <div className="mb-4">
               <h3 className="mb-2 font-heading text-lg font-normal text-foreground underline underline-offset-4 decoration-1 tracking-tight">
-                Classes
+                Courses
               </h3>
 
               <div className="space-y-0.5">
