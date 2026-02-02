@@ -49,10 +49,42 @@ Design tokens are defined in `globals.css` and `tailwind.config.ts`. Based on Fi
 
 ## Component Styling Conventions
 
-### Hover States
+### Hover vs Active States (IMPORTANT)
+
+**This is a common source of bugs. Follow these rules strictly:**
+
+| State | Background Color | Token | When to Use |
+|-------|-----------------|-------|-------------|
+| **Hover** | `#f0f1eb` | `bg-secondary` | Mouse over any interactive element |
+| **Active/Selected** | `#ecf1d5` | `bg-sidebar-accent` or `bg-accent` | Current page, selected item, toggled on |
+
 - **Use `secondary` for hover, NOT `accent`** — hover states should use neutral colors (`hover:bg-secondary`)
-- Accent (sage green) is reserved for **active/selected states** only
-- Example: sidebar items hover → `bg-secondary`, active → `bg-sidebar-accent`
+- **Use `accent` ONLY for active/selected states** — sage green indicates "this is the current selection"
+- **Never use `hover:bg-accent`** — this violates the design system (accent = active, not hover)
+- **Never use `hover:bg-muted`** — muted is for disabled/placeholder states, not hover
+
+**Correct Examples:**
+```tsx
+// Sidebar nav item
+className="hover:bg-secondary bg-sidebar-accent" // hover=neutral, active=sage
+
+// Card hover
+className="hover:bg-secondary" // neutral hover, no accent
+
+// Button (ghost variant)
+className="hover:bg-secondary hover:text-foreground"
+```
+
+**Incorrect Examples:**
+```tsx
+// DON'T use accent for hover
+className="hover:bg-accent" // WRONG - accent is for active state only
+
+// DON'T use muted for hover  
+className="hover:bg-muted" // WRONG - muted is for disabled/placeholder
+```
+
+For sidebar navigation specifically, use the `SidebarNavLink` component from `components/layout/SidebarNavLink.tsx` which encapsulates these patterns.
 
 ### Button Variants
 - **`default`/`dark`**: Teal background, cream text (primary actions)
