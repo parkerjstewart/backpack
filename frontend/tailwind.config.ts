@@ -26,6 +26,19 @@ const config: Config = {
         },
         success: "var(--success)",
         warning: "var(--warning)",
+        // Course card colors (from Figma variables)
+        amber: {
+          400: "var(--amber-400)",
+          600: "var(--amber-600)",
+        },
+        sky: {
+          500: "var(--sky-500)",
+          700: "var(--sky-700)",
+        },
+        coral: {
+          500: "var(--coral-500)",
+          700: "var(--coral-700)",
+        },
       },
       borderRadius: {
         sm: "var(--radius-sm)",

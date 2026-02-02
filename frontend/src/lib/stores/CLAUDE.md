@@ -6,7 +6,10 @@ Zustand-based state management for authentication, modals, UI state, and applica
 
 - **`auth-store.ts`**: Authentication state (token, isAuthenticated) with login, logout, auth checking, and Zustand persistence
 - **`sidebar-store.ts`**: Sidebar collapse state with persistence
-- **`courses-store.ts`**: Course/class management (CRUD, archive/restore)
+- **`courses-store.ts`**: Course/class management (CRUD, archive/restore, color variants)
+  - `Course` interface: `id`, `name`, `description`, `archived`, `createdAt`, `updatedAt`, `syllabusFileName?`, `color?`
+  - `CourseColor` type: `'sage' | 'amber' | 'sky' | 'coral'` — maps to course card color variants
+  - Actions: `createCourse()`, `updateCourse()`, `deleteCourse()`, `archiveCourse()`, `restoreCourse()`
 - **`user-store.ts`**: User profile state (name, role, avatar) with persistence
 - **Modal stores** (imported via hooks): Modal visibility and data state management
 - **Settings persistence**: Auto-saves sensitive state (token, auth status) to localStorage via Zustand persist middleware

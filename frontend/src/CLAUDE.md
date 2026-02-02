@@ -33,6 +33,7 @@ User interactions trigger mutations/queries via hooks, which communicate with th
 - **auth**: `LoginForm.tsx` — authentication UI
 - **common**: `CommandPalette`, `ErrorBoundary`, `ContextToggle` — shared across pages
 - **ui**: Reusable Radix UI building blocks (see child CLAUDE.md)
+- **courses**: `CourseCard.tsx`, `CreateCourseDialog.tsx` — course listing and creation UI
 - **source**, **modules**, **search**, **podcasts**: Feature-specific components consuming hooks
 
 **Component composition pattern**: Pages → Feature components → UI components. Feature components handle page-level state (loading, error), UI components remain stateless and styled.

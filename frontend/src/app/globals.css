@@ -50,6 +50,14 @@
   --color-teal-300: var(--teal-300);
   --color-teal-200: var(--teal-200);
   --color-neutral-400: var(--neutral-400);
+  
+  /* Course card colors (from Figma variables) */
+  --color-amber-400: var(--amber-400);
+  --color-amber-600: var(--amber-600);
+  --color-sky-500: var(--sky-500);
+  --color-sky-700: var(--sky-700);
+  --color-coral-500: var(--coral-500);
+  --color-coral-700: var(--coral-700);
 }
 
 :root {
@@ -102,6 +110,14 @@
   --sage-300: #ade297;
   --sage-500: #d4e297;
   --sage-700: #588f58;
+  
+  /* Course card color palette (from Figma variables) */
+  --amber-400: #f6e587;
+  --amber-600: #eab71d;
+  --sky-500: #a4c7e0;
+  --sky-700: #1a6e70;
+  --coral-500: #f7b59d;
+  --coral-700: #cb6a52;
   
   /* Additional teal shades */
   --teal-800: rgba(20, 48, 46, 0.8);

@@ -14,6 +14,12 @@ Design tokens are defined in `globals.css` and `tailwind.config.ts`. Based on Fi
 - **Muted**: `#e7e8e4` (disabled, placeholder)
 - **Border**: `rgba(20, 48, 46, 0.2)` (opacity-based for consistency)
 
+### Course Card Colors (from Figma variables)
+- **Sage**: `--sage-500` (#d4e297) / `--sage-700` (#588f58) — default green
+- **Amber**: `--amber-400` (#f6e587) / `--amber-600` (#eab71d) — yellow
+- **Sky**: `--sky-500` (#a4c7e0) / `--sky-700` (#1a6e70) — blue
+- **Coral**: `--coral-500` (#f7b59d) / `--coral-700` (#cb6a52) — orange/red
+
 ### Typography
 - **Heading font**: EB Garamond (serif) — use `font-heading` class
 - **Body font**: Figtree (sans-serif) — default, use `font-sans` class
@@ -32,7 +38,7 @@ Design tokens are defined in `globals.css` and `tailwind.config.ts`. Based on Fi
 
 - **Primitives** (`button.tsx`, `dialog.tsx`, `select.tsx`, `dropdown-menu.tsx`): Radix UI wrappers with Tailwind styling
 - **Composite components** (`checkbox-list.tsx`, `wizard-container.tsx`, `command.tsx`): Multi-part patterns combining primitives
-- **Form components** (`input.tsx`, `textarea.tsx`, `label.tsx`, `form-section.tsx`): Input handling with accessibility
+- **Form components** (`input.tsx`, `textarea.tsx`, `label.tsx`, `form-label.tsx`, `form-section.tsx`, `file-upload-zone.tsx`): Input handling with accessibility
 - **Feedback** (`alert.tsx`, `alert-dialog.tsx`, `sonner.tsx`, `progress.tsx`): User notifications and status
 - **Layout** (`card.tsx`, `accordion.tsx`, `tabs.tsx`, `scroll-area.tsx`): Structural wrappers
 - **Utilities** (`badge.tsx`, `separator.tsx`, `tooltip.tsx`, `popover.tsx`, `collapsible.tsx`): Small focused components
@@ -97,6 +103,19 @@ For sidebar navigation specifically, use the `SidebarNavLink` component from `co
 ### Input Focus States
 - Focus ring uses sage color (`focus-visible:border-sage-500`)
 - 2px border on focus, 3px ring spread
+
+### Form Labels
+- **`FormLabel`** (`form-label.tsx`): EB Garamond 24px labels for forms (uses `.text-title` class)
+- Supports `required` prop to show asterisk suffix
+- Color: `text-teal-800` (80% opacity teal)
+- **Use instead of `Label`** when form labels should match Figma's serif typography
+
+### File Upload Zone
+- **`FileUploadZone`** (`file-upload-zone.tsx`): Drag-and-drop file upload component
+- **Empty state**: Dashed border, upload icon, placeholder text
+- **Uploaded state**: Solid border, file icon, filename with remove button
+- Props: `files`, `onFilesChange`, `accept`, `maxSize`, `placeholder`, `multiple`
+- Supports drag-and-drop via `onDrop`/`onDragOver` handlers
 
 ### Cards
 - Use `CardInteractive` for clickable cards (has hover state)
