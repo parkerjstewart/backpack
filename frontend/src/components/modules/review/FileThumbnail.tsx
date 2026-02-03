@@ -29,19 +29,19 @@ export function FileThumbnail({
     switch (status) {
       case "processing":
         return (
-          <div className="absolute top-1 right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+          <div className="absolute top-1 right-1 w-4 h-4 bg-sky-700 rounded-full flex items-center justify-center">
             <Loader2 className="h-2.5 w-2.5 text-white animate-spin" />
           </div>
         );
       case "completed":
         return (
-          <div className="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+          <div className="absolute top-1 right-1 w-4 h-4 bg-sage-700 rounded-full flex items-center justify-center">
             <CheckCircle className="h-2.5 w-2.5 text-white" />
           </div>
         );
       case "failed":
         return (
-          <div className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+          <div className="absolute top-1 right-1 w-4 h-4 bg-coral-700 rounded-full flex items-center justify-center">
             <AlertTriangle className="h-2.5 w-2.5 text-white" />
           </div>
         );
@@ -67,9 +67,9 @@ export function FileThumbnail({
       onClick={onClick}
       className={cn(
         "relative w-16 h-16 rounded-lg transition-colors",
-        "bg-[#c4c6bd] hover:bg-secondary",
+        "bg-neutral-400 hover:bg-secondary",
         "flex items-center justify-center",
-        "focus:outline-none focus:ring-2 focus:ring-[#d4e297] focus:ring-offset-2"
+        "focus:outline-none focus:ring-2 focus:ring-sage-500 focus:ring-offset-2"
       )}
       title={title || sourceId}
     >
