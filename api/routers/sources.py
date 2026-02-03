@@ -18,6 +18,8 @@ from surreal_commands import execute_command_sync
 from api.command_service import CommandService
 from api.models import (
     AssetModel,
+    BatchDeleteSourcesRequest,
+    BatchDeleteSourcesResponse,
     CreateSourceInsightRequest,
     SourceCreate,
     SourceInsightResponse,
@@ -925,6 +927,35 @@ async def delete_source(source_id: str):
     except Exception as e:
         logger.error(f"Error deleting source {source_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting source: {str(e)}")
+
+
+@router.post("/sources/batch-delete", response_model=BatchDeleteSourcesResponse)
+async def batch_delete_sources(request: BatchDeleteSourcesRequest):
+    """Delete multiple sources at once (for draft cleanup)."""
+    deleted = 0
+    failed = 0
+    errors: List[str] = []
+
+    for source_id in request.source_ids:
+        try:
+            source = await Source.get(source_id)
+            if source:
+                await source.delete()
+                deleted += 1
+            else:
+                # Source not found is not an error - it may have been deleted already
+                logger.warning(f"Source {source_id} not found during batch delete")
+        except Exception as e:
+            failed += 1
+            error_msg = f"Failed to delete source {source_id}: {str(e)}"
+            errors.append(error_msg)
+            logger.error(error_msg)
+
+    return BatchDeleteSourcesResponse(
+        deleted=deleted,
+        failed=failed,
+        errors=errors if errors else None,
+    )
 
 
 @router.get("/sources/{source_id}/insights", response_model=List[SourceInsightResponse])

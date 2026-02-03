@@ -9,6 +9,7 @@ import {
   UpdateModuleRequest,
   CreateLearningGoalRequest,
   UpdateLearningGoalRequest,
+  PreviewModuleContentRequest,
 } from '@/lib/types/api'
 
 export function useModules(archived?: boolean) {
@@ -214,5 +215,17 @@ export function useGenerateLearningGoals() {
         queryKey: QUERY_KEYS.learningGoals(id),
       })
     },
+  })
+}
+
+/**
+ * Hook to preview module content (overview + learning goals) without creating a module.
+ * Used during the draft module creation flow.
+ */
+export function usePreviewModuleContent() {
+  return useMutation({
+    mutationFn: (data: PreviewModuleContentRequest) =>
+      modulesApi.previewContent(data),
+    // No cache invalidation needed - this is a preview operation
   })
 }

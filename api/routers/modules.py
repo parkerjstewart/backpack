@@ -13,6 +13,8 @@ from api.models import (
     ModuleCreate,
     ModuleResponse,
     ModuleUpdate,
+    PreviewModuleContentRequest,
+    PreviewModuleContentResponse,
 )
 from backpack.ai.provision import provision_langchain_model
 from backpack.database.repository import ensure_record_id, repo_query
@@ -33,8 +35,8 @@ async def get_modules(
         # Build the query with counts
         query = f"""
             SELECT *,
-            count(<-reference.in) as source_count,
-            count(<-artifact.in) as note_count
+            count(<-reference) as source_count,
+            count(<-artifact) as note_count
             FROM module
             ORDER BY {order_by}
         """
@@ -103,8 +105,8 @@ async def get_module(module_id: str):
         # Query with counts for single module
         query = """
             SELECT *,
-            count(<-reference.in) as source_count,
-            count(<-artifact.in) as note_count
+            count(<-reference) as source_count,
+            count(<-artifact) as note_count
             FROM $module_id
         """
         result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
@@ -156,8 +158,8 @@ async def update_module(module_id: str, module_update: ModuleUpdate):
         # Query with counts after update
         query = """
             SELECT *,
-            count(<-reference.in) as source_count,
-            count(<-artifact.in) as note_count
+            count(<-reference) as source_count,
+            count(<-artifact) as note_count
             FROM $module_id
         """
         result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
@@ -254,8 +256,9 @@ async def remove_source_from_module(module_id: str, source_id: str):
             raise HTTPException(status_code=404, detail="Module not found")
 
         # Delete the reference record linking source to module
+        # Note: RELATE source->reference->module means out=source, in=module
         await repo_query(
-            "DELETE FROM reference WHERE out = $module_id AND in = $source_id",
+            "DELETE FROM reference WHERE out = $source_id AND in = $module_id",
             {
                 "module_id": ensure_record_id(module_id),
                 "source_id": ensure_record_id(source_id),
@@ -373,8 +376,8 @@ async def generate_module_overview(
         # Return updated module
         query = """
             SELECT *,
-            count(<-reference.in) as source_count,
-            count(<-artifact.in) as note_count
+            count(<-reference) as source_count,
+            count(<-artifact) as note_count
             FROM $module_id
         """
         result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
@@ -682,4 +685,130 @@ async def generate_module_learning_goals(
         )
         raise HTTPException(
             status_code=500, detail=f"Error generating learning goals: {str(e)}"
+        )
+
+
+# ============================================
+# Preview Content Endpoint (for draft modules)
+# ============================================
+
+
+@router.post("/modules/preview-content", response_model=PreviewModuleContentResponse)
+async def preview_module_content(request: PreviewModuleContentRequest):
+    """Generate overview and learning goals from sources without creating a module.
+    
+    This endpoint is used during the draft module creation flow to preview
+    AI-generated content before the module is created.
+    """
+    try:
+        # Fetch sources
+        sources = []
+        for source_id in request.source_ids:
+            source = await Source.get(source_id)
+            if source:
+                sources.append(source)
+            else:
+                logger.warning(f"Source {source_id} not found for preview")
+
+        if not sources:
+            return PreviewModuleContentResponse(
+                overview=None,
+                learning_goals=[],
+            )
+
+        # Build context from sources
+        sources_context = []
+        for source in sources:
+            source_data = {
+                "title": source.title,
+                "full_text": source.full_text,
+                "insights": [],
+            }
+            try:
+                insights = await source.get_insights()
+                for insight in insights:
+                    source_data["insights"].append({
+                        "insight_type": insight.insight_type,
+                        "content": insight.content,
+                    })
+            except Exception as e:
+                logger.warning(f"Error getting insights for source {source.id}: {e}")
+            sources_context.append(source_data)
+
+        # Generate overview
+        overview_prompt_data = {
+            "name": request.name,
+            "description": "",
+            "sources": sources_context,
+            "notes": [],
+        }
+        overview_system_prompt = Prompter(prompt_template="module/overview").render(
+            data=overview_prompt_data
+        )
+
+        overview_model = await provision_langchain_model(
+            overview_system_prompt,
+            None,  # Use default model
+            "transformation",
+            max_tokens=2000,
+        )
+        overview_message = await overview_model.ainvoke(overview_system_prompt)
+        overview_content = (
+            overview_message.content
+            if isinstance(overview_message.content, str)
+            else str(overview_message.content)
+        )
+        overview_content = clean_thinking_content(overview_content)
+
+        # Generate learning goals
+        goals_prompt_data = {
+            "name": request.name,
+            "description": "",
+            "sources": sources_context,
+            "notes": [],
+        }
+        goals_system_prompt = Prompter(prompt_template="module/learning_goals").render(
+            data=goals_prompt_data
+        )
+
+        goals_model = await provision_langchain_model(
+            goals_system_prompt,
+            None,  # Use default model
+            "transformation",
+            max_tokens=2000,
+        )
+        goals_message = await goals_model.ainvoke(goals_system_prompt)
+        goals_content = (
+            goals_message.content
+            if isinstance(goals_message.content, str)
+            else str(goals_message.content)
+        )
+        goals_content = clean_thinking_content(goals_content)
+
+        # Parse learning goals
+        goal_lines = [
+            line.strip()
+            for line in goals_content.strip().split("\n")
+            if line.strip() and not line.strip().startswith("#")
+        ]
+
+        # Clean up goal lines
+        learning_goals = []
+        for i, line in enumerate(goal_lines):
+            cleaned = line.lstrip("0123456789.-*) ").strip()
+            if cleaned:
+                learning_goals.append({
+                    "description": cleaned,
+                    "order": i,
+                })
+
+        return PreviewModuleContentResponse(
+            overview=overview_content,
+            learning_goals=learning_goals,
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating preview content: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error generating preview content: {str(e)}"
         )

@@ -6,6 +6,8 @@ import {
   LearningGoalResponse,
   CreateLearningGoalRequest,
   UpdateLearningGoalRequest,
+  PreviewModuleContentRequest,
+  PreviewModuleContentResponse,
 } from '@/lib/types/api'
 
 export const modulesApi = {
@@ -83,6 +85,18 @@ export const modulesApi = {
     const response = await apiClient.post<LearningGoalResponse[]>(
       `/modules/${moduleId}/generate-learning-goals`,
       modelId ? { model_id: modelId } : {}
+    )
+    return response.data
+  },
+
+  /**
+   * Preview module content (overview + learning goals) without creating a module.
+   * Used during draft module creation flow.
+   */
+  previewContent: async (data: PreviewModuleContentRequest) => {
+    const response = await apiClient.post<PreviewModuleContentResponse>(
+      '/modules/preview-content',
+      data
     )
     return response.data
   },
