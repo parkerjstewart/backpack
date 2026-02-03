@@ -249,3 +249,28 @@ export interface BuildContextResponse {
   token_count: number
   char_count: number
 }
+
+// Batch Delete Sources Types
+export interface BatchDeleteSourcesRequest {
+  source_ids: string[]
+}
+
+export interface BatchDeleteSourcesResponse {
+  deleted: number
+  failed: number
+  errors?: string[]
+}
+
+// Preview Module Content Types (for draft module creation)
+export interface PreviewModuleContentRequest {
+  source_ids: string[]
+  name: string
+}
+
+export interface PreviewModuleContentResponse {
+  overview: string | null
+  learning_goals: Array<{
+    description: string
+    order: number
+  }>
+}

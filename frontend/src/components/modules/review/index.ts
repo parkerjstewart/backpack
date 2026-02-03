@@ -1,0 +1,5 @@
+export { DeleteDraftModal } from './DeleteDraftModal'
+export { FileThumbnail } from './FileThumbnail'
+export { FilesSidebar } from './FilesSidebar'
+export { LearningGoalsPanel } from './LearningGoalsPanel'
+export { ModuleInfoPanel } from './ModuleInfoPanel'
