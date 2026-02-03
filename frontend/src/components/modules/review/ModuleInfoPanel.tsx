@@ -28,42 +28,39 @@ export function ModuleInfoPanel({
       {/* Name */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label htmlFor="draft-name" className="font-heading text-lg">
+          <Label
+            htmlFor="draft-name"
+            className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+          >
             Name
           </Label>
           {isNameGenerating && (
-            <span className="flex items-center text-xs text-muted-foreground">
+            <span className="flex items-center font-sans text-[14px] font-normal text-teal-800">
               <Loader2 className="h-3 w-3 mr-1 animate-spin" />
               Generating...
             </span>
           )}
         </div>
-        <div className="relative">
-          <Input
-            id="draft-name"
-            value={name}
-            onChange={(e) => setModuleField("name", e.target.value)}
-            placeholder={
-              isNameGenerating ? "Generating name..." : "Module name"
-            }
-            disabled={isNameGenerating}
-            className={cn(
-              "border-2 border-[rgba(20,48,46,0.2)] focus:border-[#d4e297] focus:ring-0",
-              isNameGenerating && "opacity-50"
-            )}
-          />
-          {isNameGenerating && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-md">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            </div>
+        <Input
+          id="draft-name"
+          value={name}
+          onChange={(e) => setModuleField("name", e.target.value)}
+          placeholder={isNameGenerating ? "Generating name..." : "Module name"}
+          disabled={isNameGenerating}
+          className={cn(
+            "border-2 focus-visible:border-sage-500 focus-visible:ring-sage-500/30 disabled:opacity-100",
+            isNameGenerating ? "animate-border-pulse" : "border-input"
           )}
-        </div>
+        />
       </div>
 
       {/* Overview */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label htmlFor="draft-overview" className="font-heading text-lg">
+          <Label
+            htmlFor="draft-overview"
+            className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+          >
             Overview
           </Label>
           <Button
@@ -72,7 +69,7 @@ export function ModuleInfoPanel({
             size="sm"
             onClick={onRegenerateOverview}
             disabled={isGenerating}
-            className="h-7 px-2 text-xs"
+            className="h-7 px-2 font-sans text-[14px] font-normal"
           >
             {isGenerating ? (
               <>
@@ -87,33 +84,27 @@ export function ModuleInfoPanel({
             )}
           </Button>
         </div>
-        <div className="relative">
-          <Textarea
-            id="draft-overview"
-            value={overview || ""}
-            onChange={(e) => setModuleField("overview", e.target.value)}
-            placeholder={
-              isGenerating
-                ? "Generating overview..."
-                : "Enter module overview..."
-            }
-            disabled={isGenerating}
-            className={cn(
-              "min-h-[361px] border-2 border-[rgba(20,48,46,0.2)] focus:border-[#d4e297] focus:ring-0 resize-none",
-              isGenerating && "opacity-50"
-            )}
-          />
-          {isGenerating && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-md">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
+        <Textarea
+          id="draft-overview"
+          value={overview || ""}
+          onChange={(e) => setModuleField("overview", e.target.value)}
+          placeholder={
+            isGenerating ? "Generating overview..." : "Enter module overview..."
+          }
+          disabled={isGenerating}
+          className={cn(
+            "min-h-[361px] max-h-[361px] overflow-y-auto border-2 focus-visible:border-sage-500 focus-visible:ring-sage-500/30 resize-none disabled:opacity-100",
+            isGenerating ? "animate-border-pulse" : "border-input"
           )}
-        </div>
+        />
       </div>
 
       {/* Due Date */}
       <div className="space-y-2">
-        <Label htmlFor="draft-due-date" className="font-heading text-lg">
+        <Label
+          htmlFor="draft-due-date"
+          className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+        >
           Due Date
         </Label>
         <Input
@@ -121,13 +112,16 @@ export function ModuleInfoPanel({
           type="date"
           value={dueDate || ""}
           onChange={(e) => setModuleField("dueDate", e.target.value || null)}
-          className="border-2 border-[rgba(20,48,46,0.2)] focus:border-[#d4e297] focus:ring-0"
+          className="border-2 border-input focus-visible:border-sage-500 focus-visible:ring-sage-500/30"
         />
       </div>
 
       {/* Prerequisites */}
       <div className="space-y-2">
-        <Label htmlFor="draft-prerequisites" className="font-heading text-lg">
+        <Label
+          htmlFor="draft-prerequisites"
+          className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+        >
           Prerequisites
         </Label>
         <Input
@@ -137,7 +131,7 @@ export function ModuleInfoPanel({
             setModuleField("prerequisites", e.target.value || null)
           }
           placeholder="e.g., CS 101, MATH 201"
-          className="border-2 border-[rgba(20,48,46,0.2)] focus:border-[#d4e297] focus:ring-0"
+          className="border-2 border-input focus-visible:border-sage-500 focus-visible:ring-sage-500/30"
         />
       </div>
     </div>
