@@ -2,20 +2,14 @@
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
   useModuleDraftStore,
   DraftLearningGoal,
 } from "@/lib/stores/module-draft-store";
-import {
-  Plus,
-  X,
-  ChevronDown,
-  ChevronRight,
-  Sparkles,
-  Loader2,
-} from "lucide-react";
+import { Plus, X, ChevronDown, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface LearningGoalsPanelProps {
@@ -28,7 +22,7 @@ interface ExpandableGoalProps {
   index: number;
   isExpanded: boolean;
   onToggle: () => void;
-  onUpdate: (description: string) => void;
+  onUpdate: (updates: Partial<Omit<DraftLearningGoal, "order">>) => void;
   onRemove: () => void;
 }
 
@@ -43,16 +37,16 @@ function ExpandableGoal({
   return (
     <div
       className={cn(
-        "border rounded-lg overflow-hidden transition-all",
-        "border-[rgba(20,48,46,0.2)]",
-        isExpanded && "border-[#d4e297]"
+        "border rounded-[16px] overflow-hidden transition-all",
+        "border-border",
+        isExpanded && "bg-white"
       )}
     >
       {/* Collapsed/Header view */}
       <div
         className={cn(
-          "flex items-center gap-2 p-3 cursor-pointer hover:bg-secondary/50 transition-colors",
-          isExpanded && "border-b border-[rgba(20,48,46,0.1)]"
+          "flex items-center gap-2 p-4 cursor-pointer transition-colors",
+          !isExpanded && "hover:bg-secondary/50"
         )}
         onClick={onToggle}
       >
@@ -64,16 +58,27 @@ function ExpandableGoal({
             onToggle();
           }}
         >
-          {isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          )}
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 text-muted-foreground transition-transform",
+              isExpanded && "rotate-180"
+            )}
+          />
         </button>
 
-        <span className="flex-1 text-sm font-medium truncate">
-          {goal.description || `Goal ${index + 1}`}
-        </span>
+        {isExpanded ? (
+          <Input
+            value={goal.description}
+            onChange={(e) => onUpdate({ description: e.target.value })}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Goal title"
+            className="flex-1 h-10 px-2 py-2 text-[18px] md:text-[18px] font-medium tracking-[-0.01em] border border-border rounded-lg bg-white placeholder:italic placeholder:text-primary/40 placeholder:font-normal"
+          />
+        ) : (
+          <span className="flex-1 font-sans text-[18px] font-medium tracking-[-0.01em] text-primary truncate">
+            {goal.description || `Goal ${index + 1}`}
+          </span>
+        )}
 
         <button
           type="button"
@@ -89,37 +94,31 @@ function ExpandableGoal({
 
       {/* Expanded content */}
       {isExpanded && (
-        <div className="p-4 space-y-4 bg-secondary/20">
-          {/* Title input */}
-          <div className="space-y-2">
-            <Input
-              value={goal.description}
-              onChange={(e) => onUpdate(e.target.value)}
-              placeholder="Goal title"
-              className="border-2 border-[rgba(20,48,46,0.2)] focus:border-[#d4e297] focus:ring-0"
-            />
-          </div>
-
+        <div className="px-6 pb-8 space-y-4">
           {/* Takeaways section */}
           <div className="space-y-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              The Takeaways
+            <h4 className="font-sans text-[14px] font-normal text-primary">
+              THE TAKEAWAYS
             </h4>
-            <ul className="space-y-1 text-sm text-muted-foreground list-disc list-inside">
-              <li>Key concept or skill to be learned</li>
-              <li>Understanding that will be gained</li>
-            </ul>
+            <Textarea
+              value={goal.takeaways}
+              onChange={(e) => onUpdate({ takeaways: e.target.value })}
+              placeholder="Key concepts or skills to be learned..."
+              className="bg-white border border-border rounded-lg px-4 py-2 min-h-[40px] text-[14px] md:text-[14px] font-normal tracking-[-0.01em] text-primary placeholder:italic placeholder:text-primary/40 resize-none"
+            />
           </div>
 
           {/* Competencies section */}
           <div className="space-y-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Competencies
+            <h4 className="font-sans text-[14px] font-normal text-primary">
+              COMPETENCIES
             </h4>
-            <ul className="space-y-1 text-sm text-muted-foreground list-disc list-inside">
-              <li>Ability to apply learned concepts</li>
-              <li>Skill demonstration criteria</li>
-            </ul>
+            <Textarea
+              value={goal.competencies}
+              onChange={(e) => onUpdate({ competencies: e.target.value })}
+              placeholder="Abilities to apply learned concepts..."
+              className="bg-white border border-border rounded-lg px-4 py-2 min-h-[40px] text-[14px] md:text-[14px] font-normal tracking-[-0.01em] text-primary placeholder:italic placeholder:text-primary/40 resize-none"
+            />
           </div>
         </div>
       )}
@@ -146,22 +145,24 @@ export function LearningGoalsPanel({
 
   const handleAdd = () => {
     addLearningGoal("New learning goal");
-    // Auto-expand the newly added goal
-    setExpandedIndex(learningGoals.length);
+    // Auto-expand the newly added goal (now at index 0)
+    setExpandedIndex(0);
   };
 
   return (
     <div className="flex-1 min-w-0">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <Label className="font-heading text-lg">Learning Goals</Label>
+        <Label className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800">
+          Learning Goals
+        </Label>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           onClick={onRegenerateLearningGoals}
           disabled={isGenerating}
-          className="h-7 px-2 text-xs"
+          className="h-7 px-2 font-sans text-[14px] font-normal"
         >
           {isGenerating ? (
             <>
@@ -180,28 +181,24 @@ export function LearningGoalsPanel({
       {/* Goals list */}
       <div className="space-y-3">
         {/* Add new goal button */}
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={handleAdd}
           disabled={isGenerating}
-          className={cn(
-            "w-full p-3 rounded-lg transition-colors",
-            "border-2 border-dashed border-[rgba(20,48,46,0.3)]",
-            "hover:border-[rgba(20,48,46,0.5)] hover:bg-secondary/30",
-            "flex items-center justify-center gap-2",
-            "text-sm text-muted-foreground",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          )}
+          className="w-full"
         >
           <Plus className="h-4 w-4" />
           Add new goal
-        </button>
+        </Button>
 
         {/* Loading state */}
         {isGenerating && learningGoals.length === 0 && (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-            Generating learning goals...
+          <div className="border-2 rounded-[16px] p-8 animate-border-pulse">
+            <div className="flex items-center justify-center font-sans text-[16px] font-normal tracking-[-0.01em] text-teal-800">
+              <Loader2 className="h-5 w-5 mr-2 animate-spin text-sage-700" />
+              Generating learning goals...
+            </div>
           </div>
         )}
 
@@ -213,7 +210,7 @@ export function LearningGoalsPanel({
               index={index}
               isExpanded={expandedIndex === index}
               onToggle={() => handleToggle(index)}
-              onUpdate={(description) => updateLearningGoal(index, description)}
+              onUpdate={(updates) => updateLearningGoal(index, updates)}
               onRemove={() => {
                 removeLearningGoal(index);
                 if (expandedIndex === index) {
@@ -228,7 +225,7 @@ export function LearningGoalsPanel({
 
         {/* Empty state */}
         {!isGenerating && learningGoals.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-4">
+          <p className="font-sans text-[16px] font-normal tracking-[-0.01em] text-teal-800 text-center py-4">
             No learning goals yet. Add a goal or wait for auto-generation.
           </p>
         )}

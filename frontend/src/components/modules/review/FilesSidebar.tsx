@@ -30,7 +30,9 @@ export function FilesSidebar({
 
   return (
     <div className="w-16 flex-shrink-0">
-      <Label className="font-heading text-lg mb-4 block">Files</Label>
+      <Label className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800 mb-4 block">
+        Files
+      </Label>
 
       <div className="flex flex-col gap-2">
         {/* Add button */}
@@ -39,10 +41,10 @@ export function FilesSidebar({
           onClick={onAddMore}
           className={cn(
             "w-16 h-16 rounded-lg transition-colors",
-            "border-2 border-dashed border-[rgba(20,48,46,0.8)]",
+            "border-2 border-dashed border-teal-800",
             "hover:bg-secondary",
             "flex items-center justify-center",
-            "focus:outline-none focus:ring-2 focus:ring-[#d4e297] focus:ring-offset-2"
+            "focus:outline-none focus:ring-2 focus:ring-sage-500 focus:ring-offset-2"
           )}
           title="Add more files"
         >

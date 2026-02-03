@@ -4,6 +4,8 @@ export type SourceStatus = 'processing' | 'completed' | 'failed'
 
 export interface DraftLearningGoal {
   description: string
+  takeaways: string
+  competencies: string
   order: number
 }
 
@@ -33,7 +35,7 @@ interface ModuleDraftState {
   setModuleField: <K extends keyof ModuleDraftFields>(field: K, value: ModuleDraftFields[K]) => void
   setGeneratedContent: (overview: string | null, learningGoals: DraftLearningGoal[]) => void
   addLearningGoal: (description: string) => void
-  updateLearningGoal: (index: number, description: string) => void
+  updateLearningGoal: (index: number, updates: Partial<Omit<DraftLearningGoal, 'order'>>) => void
   removeLearningGoal: (index: number) => void
   setTargetCourseId: (courseId: string | null) => void
   reset: () => void
@@ -115,16 +117,16 @@ export const useModuleDraftStore = create<ModuleDraftState>()((set, get) => ({
   addLearningGoal: (description: string) => {
     set((state) => ({
       learningGoals: [
-        ...state.learningGoals,
-        { description, order: state.learningGoals.length },
+        { description, takeaways: '', competencies: '', order: 0 },
+        ...state.learningGoals.map((goal, i) => ({ ...goal, order: i + 1 })),
       ],
     }))
   },
 
-  updateLearningGoal: (index: number, description: string) => {
+  updateLearningGoal: (index: number, updates: Partial<Omit<DraftLearningGoal, 'order'>>) => {
     set((state) => ({
       learningGoals: state.learningGoals.map((goal, i) =>
-        i === index ? { ...goal, description } : goal
+        i === index ? { ...goal, ...updates } : goal
       ),
     }))
   },

@@ -324,7 +324,7 @@ export default function ModuleReviewPage() {
           >
             <X className="h-5 w-5" />
           </Button>
-          <h1 className="font-heading text-2xl">
+          <h1 className="font-heading text-[32px] font-medium tracking-[-0.02em] text-primary">
             Create Module {">"} Review and Edit
           </h1>
         </div>
@@ -367,15 +367,15 @@ export default function ModuleReviewPage() {
           </div>
 
           {/* Progress percentage */}
-          <span className="text-sm text-muted-foreground w-12 text-right">
+          <span className="font-sans text-[14px] font-normal text-teal-800 w-12 text-right">
             {allComplete ? 100 : progressPercentage}%
           </span>
 
           {/* Confirm button */}
           <Button
+            variant="accent"
             onClick={handleConfirm}
             disabled={!canConfirm}
-            className="bg-[#d4e297] text-primary hover:bg-[#c4d287] h-12 px-8 rounded-2xl"
           >
             {isConfirming ? "Creating..." : "Confirm"}
           </Button>

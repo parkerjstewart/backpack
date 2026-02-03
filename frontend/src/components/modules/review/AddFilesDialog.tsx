@@ -95,7 +95,7 @@ export function AddFilesDialog({
     <Dialog open={open} onOpenChange={isUploading ? undefined : onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="sm:max-w-[600px] bg-[#fefcf6] rounded-[32px] border-none p-0 gap-0 overflow-hidden"
+        className="sm:max-w-[600px] bg-background rounded-xl border-none p-0 gap-0 overflow-hidden"
       >
         {/* Visually hidden title for accessibility */}
         <DialogTitle className="sr-only">Add More Files</DialogTitle>
@@ -113,21 +113,21 @@ export function AddFilesDialog({
             )}
             aria-label="Close"
           >
-            <X className="h-5 w-5 text-[#14302e]" />
+            <X className="h-5 w-5 text-foreground" />
           </button>
 
           {/* Title - centered */}
-          <h2 className="font-heading font-medium text-[32px] text-[#14302e] tracking-[-0.64px]">
+          <h2 className="font-heading text-[32px] font-medium tracking-[-0.02em] text-primary">
             Add More Files
           </h2>
 
           {/* File upload area */}
           <div
             className={cn(
-              "w-full bg-[#f0f1eb] border-2 border-dashed border-[rgba(20,48,46,0.2)] rounded-[24px] transition-colors",
+              "w-full bg-secondary border-2 border-dashed border-input rounded-lg transition-colors",
               isUploading
                 ? "cursor-wait"
-                : "cursor-pointer hover:border-[rgba(20,48,46,0.4)]"
+                : "cursor-pointer hover:border-teal-300"
             )}
             onDrop={isUploading ? undefined : handleDrop}
             onDragOver={isUploading ? undefined : handleDragOver}
@@ -151,19 +151,21 @@ export function AddFilesDialog({
               <div className="flex flex-col items-center justify-center gap-3">
                 <div className="w-12 h-12 flex items-center justify-center">
                   {isUploading ? (
-                    <Loader2 className="h-6 w-6 text-[rgba(20,48,46,0.8)] animate-spin" />
+                    <Loader2 className="h-6 w-6 text-teal-800 animate-spin" />
                   ) : (
-                    <Upload className="h-6 w-6 text-[rgba(20,48,46,0.8)]" />
+                    <Upload className="h-6 w-6 text-teal-800" />
                   )}
                 </div>
-                <div className="flex flex-col gap-1 text-center text-[rgba(20,48,46,0.8)]">
-                  <span className="text-lg tracking-[-0.18px]">
+                <div className="flex flex-col gap-1 text-center">
+                  <span className="font-sans text-[18px] font-normal tracking-[-0.01em] text-teal-800">
                     {isUploading
                       ? "Uploading..."
                       : "Drag and drop or click to upload"}
                   </span>
                   {!isUploading && (
-                    <span className="text-sm">*maximum 30Mb per file</span>
+                    <span className="font-sans text-[14px] font-normal text-teal-800">
+                      *maximum 30Mb per file
+                    </span>
                   )}
                 </div>
               </div>
