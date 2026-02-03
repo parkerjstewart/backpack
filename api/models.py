@@ -440,6 +440,30 @@ class SourceStatusResponse(BaseModel):
     command_id: Optional[str] = Field(None, description="Command ID if available")
 
 
+# Batch delete request/response
+class BatchDeleteSourcesRequest(BaseModel):
+    source_ids: List[str] = Field(..., description="List of source IDs to delete")
+
+
+class BatchDeleteSourcesResponse(BaseModel):
+    deleted: int = Field(..., description="Number of sources deleted")
+    failed: int = Field(0, description="Number of sources that failed to delete")
+    errors: Optional[List[str]] = Field(None, description="Error messages for failed deletions")
+
+
+# Preview module content request/response
+class PreviewModuleContentRequest(BaseModel):
+    source_ids: List[str] = Field(..., description="List of source IDs to generate content from")
+    name: str = Field(..., description="Module name for context")
+
+
+class PreviewModuleContentResponse(BaseModel):
+    overview: Optional[str] = Field(None, description="Generated module overview")
+    learning_goals: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Generated learning goals"
+    )
+
+
 # Error response
 class ErrorResponse(BaseModel):
     error: str

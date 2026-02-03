@@ -1,38 +1,40 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import Link from "next/link";
+import { useParams } from "next/navigation";
 
-import { AppShell } from '@/components/layout/AppShell'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useModules } from '@/lib/hooks/use-modules'
-import { useCoursesStore } from '@/lib/stores/courses-store'
-import { CreateModuleDialog } from '@/components/modules/CreateModuleDialog'
-import { ModuleList } from '@/app/(dashboard)/modules/components/ModuleList'
-import { useState, useMemo } from 'react'
+import { AppShell } from "@/components/layout/AppShell";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useModules } from "@/lib/hooks/use-modules";
+import { useCoursesStore } from "@/lib/stores/courses-store";
+import { CreateModuleWizard } from "@/components/modules/CreateModuleWizard";
+import { ModuleList } from "@/app/(dashboard)/modules/components/ModuleList";
+import { useState, useMemo } from "react";
 
 export default function CoursePage() {
-  const params = useParams()
-  const courseId = params?.courseId ? decodeURIComponent(params.courseId as string) : ''
+  const params = useParams();
+  const courseId = params?.courseId
+    ? decodeURIComponent(params.courseId as string)
+    : "";
 
-  const { courses, moduleCourseMap, assignModuleToCourse } = useCoursesStore()
-  const course = courses.find((c) => c.id === courseId)
+  const { courses, moduleCourseMap } = useCoursesStore();
+  const course = courses.find((c) => c.id === courseId);
 
-  const { data: modules, isLoading } = useModules(false)
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const { data: modules, isLoading } = useModules(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const courseModules = useMemo(
     () => (modules ?? []).filter((m) => moduleCourseMap[m.id] === courseId),
     [modules, moduleCourseMap, courseId]
-  )
+  );
 
   const currentModule = useMemo(() => {
-    if (!courseModules.length) return undefined
+    if (!courseModules.length) return undefined;
     return [...courseModules].sort(
       (a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime()
-    )[0]
-  }, [courseModules])
+    )[0];
+  }, [courseModules]);
 
   if (!course) {
     return (
@@ -47,7 +49,7 @@ export default function CoursePage() {
           </Button>
         </div>
       </AppShell>
-    )
+    );
   }
 
   return (
@@ -85,9 +87,9 @@ export default function CoursePage() {
                     </div>
                     <Button variant="outline" asChild>
                       <Link
-                        href={`/courses/${encodeURIComponent(course.id)}/modules/${encodeURIComponent(
-                          currentModule.id
-                        )}`}
+                        href={`/courses/${encodeURIComponent(
+                          course.id
+                        )}/modules/${encodeURIComponent(currentModule.id)}`}
                       >
                         View details
                       </Link>
@@ -96,7 +98,8 @@ export default function CoursePage() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  This course does not have any modules yet. Create a module to get started.
+                  This course does not have any modules yet. Create a module to
+                  get started.
                 </p>
               )}
             </CardContent>
@@ -117,14 +120,11 @@ export default function CoursePage() {
         </div>
       </div>
 
-      <CreateModuleDialog
+      <CreateModuleWizard
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
-        onCreated={(module) => {
-          assignModuleToCourse(module.id, course.id)
-        }}
+        courseId={course.id}
       />
     </AppShell>
-  )
+  );
 }
-
