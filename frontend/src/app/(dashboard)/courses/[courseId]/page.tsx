@@ -6,8 +6,10 @@ import { useParams } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CourseHeader } from "@/components/courses";
 import { useModules } from "@/lib/hooks/use-modules";
 import { useCoursesStore } from "@/lib/stores/courses-store";
+import { useCourse } from "@/lib/hooks/use-courses";
 import { CreateModuleWizard } from "@/components/modules/CreateModuleWizard";
 import { ModuleList } from "@/app/(dashboard)/modules/components/ModuleList";
 import { useState, useMemo } from "react";
@@ -18,10 +20,12 @@ export default function CoursePage() {
     ? decodeURIComponent(params.courseId as string)
     : "";
 
-  const { courses, moduleCourseMap } = useCoursesStore();
-  const course = courses.find((c) => c.id === courseId);
+  const { moduleCourseMap } = useCoursesStore();
 
-  const { data: modules, isLoading } = useModules(false);
+  // Fetch course from backend API
+  const { data: course, isLoading: courseLoading } = useCourse(courseId);
+
+  const { data: modules, isLoading: modulesLoading } = useModules(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const courseModules = useMemo(
@@ -35,6 +39,18 @@ export default function CoursePage() {
       (a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime()
     )[0];
   }, [courseModules]);
+
+  const isLoading = courseLoading || modulesLoading;
+
+  if (isLoading) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center h-full">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-800" />
+        </div>
+      </AppShell>
+    );
+  }
 
   if (!course) {
     return (
@@ -55,18 +71,9 @@ export default function CoursePage() {
   return (
     <AppShell>
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">{course.name}</h1>
-              {course.description && (
-                <p className="text-muted-foreground">{course.description}</p>
-              )}
-            </div>
-            <Button onClick={() => setCreateDialogOpen(true)}>
-              + New Module
-            </Button>
-          </div>
+        <div className="flex flex-col gap-8 p-8">
+          {/* Course Header with tabs */}
+          <CourseHeader courseId={courseId} courseName={course.title} />
 
           {/* Current module summary */}
           <Card>

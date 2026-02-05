@@ -24,7 +24,9 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
 export default function CourseStudentsPage() {
   const params = useParams();
-  const courseId = params.courseId as string;
+  const courseId = params.courseId
+    ? decodeURIComponent(params.courseId as string)
+    : "";
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: students, isLoading: studentsLoading } = useCourseStudents(courseId);
