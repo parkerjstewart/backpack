@@ -24,7 +24,7 @@ export function ModuleInfoPanel({
   const isNameGenerating = isGenerating && !name;
 
   return (
-    <div className="w-[236px] flex-shrink-0 space-y-6">
+    <div className="w-[236px] flex-shrink-0 overflow-y-auto space-y-6">
       {/* Name */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -47,10 +47,7 @@ export function ModuleInfoPanel({
           onChange={(e) => setModuleField("name", e.target.value)}
           placeholder={isNameGenerating ? "Generating name..." : "Module name"}
           disabled={isNameGenerating}
-          className={cn(
-            "border-2 focus-visible:border-sage-500 focus-visible:ring-sage-500/30 disabled:opacity-100",
-            isNameGenerating ? "animate-border-pulse" : "border-input"
-          )}
+          className={cn(isNameGenerating && "animate-border-pulse disabled:opacity-100")}
         />
       </div>
 
@@ -93,8 +90,8 @@ export function ModuleInfoPanel({
           }
           disabled={isGenerating}
           className={cn(
-            "min-h-[361px] max-h-[361px] overflow-y-auto border-2 focus-visible:border-sage-500 focus-visible:ring-sage-500/30 resize-none disabled:opacity-100",
-            isGenerating ? "animate-border-pulse" : "border-input"
+            "min-h-[361px] max-h-[361px] resize-none",
+            isGenerating && "animate-border-pulse disabled:opacity-100"
           )}
         />
       </div>
@@ -112,7 +109,6 @@ export function ModuleInfoPanel({
           type="date"
           value={dueDate || ""}
           onChange={(e) => setModuleField("dueDate", e.target.value || null)}
-          className="border-2 border-input focus-visible:border-sage-500 focus-visible:ring-sage-500/30"
         />
       </div>
 
@@ -131,7 +127,6 @@ export function ModuleInfoPanel({
             setModuleField("prerequisites", e.target.value || null)
           }
           placeholder="e.g., CS 101, MATH 201"
-          className="border-2 border-input focus-visible:border-sage-500 focus-visible:ring-sage-500/30"
         />
       </div>
     </div>

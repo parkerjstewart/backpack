@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/button";
 import { SidebarNavLink } from "@/components/layout/SidebarNavLink";
 import { useSidebarStore } from "@/lib/stores/sidebar-store";
 import { useCoursesStore } from "@/lib/stores/courses-store";
@@ -46,14 +46,13 @@ export function AppSidebar() {
           )}
         >
           {isCollapsed ? (
-            <Button
-              variant="ghost"
-              size="sm"
+            <IconButton
               onClick={toggleCollapse}
-              className="text-sidebar-foreground hover:bg-secondary hover:text-foreground"
+              className="text-sidebar-foreground"
+              aria-label="Expand sidebar"
             >
-              <PanelLeft className="h-5 w-5" />
-            </Button>
+              <PanelLeft />
+            </IconButton>
           ) : (
             <>
               <Link
@@ -68,15 +67,14 @@ export function AppSidebar() {
                   {BRAND_NAME}
                 </span>
               </Link>
-              <Button
-                variant="ghost"
-                size="sm"
+              <IconButton
                 onClick={toggleCollapse}
-                className="text-sidebar-foreground hover:bg-secondary hover:text-foreground p-2"
+                className="text-sidebar-foreground"
                 data-testid="sidebar-toggle"
+                aria-label="Collapse sidebar"
               >
-                <PanelLeft className="h-5 w-5" />
-              </Button>
+                <PanelLeft />
+              </IconButton>
             </>
           )}
         </div>
