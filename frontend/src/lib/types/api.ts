@@ -274,3 +274,73 @@ export interface PreviewModuleContentResponse {
     order: number
   }>
 }
+
+// ============================================
+// User Types
+// ============================================
+export interface UserResponse {
+  id: string
+  email: string
+  name: string | null
+  role: string
+  created: string
+  updated: string
+}
+
+export interface UserLoginRequest {
+  email: string
+}
+
+// ============================================
+// Course Types
+// ============================================
+export interface CourseResponse {
+  id: string
+  title: string
+  description: string | null
+  instructor_id: string | null
+  archived: boolean
+  created: string
+  updated: string
+  module_count: number
+  student_count: number
+}
+
+export interface CreateCourseRequest {
+  title: string
+  description?: string
+}
+
+export interface UpdateCourseRequest {
+  title?: string
+  description?: string
+  archived?: boolean
+}
+
+export interface CourseMemberResponse {
+  id: string
+  email: string
+  name: string | null
+  role: string  // 'student', 'instructor', 'ta'
+  enrolled_at: string
+}
+
+export interface AddCourseMemberRequest {
+  email: string
+  role?: 'student' | 'instructor' | 'ta'
+}
+
+export type MasteryStatus = 'mastered' | 'progressing' | 'struggling' | 'incomplete'
+
+export interface ModuleMasteryResponse {
+  module_id: string
+  module_name: string
+  status: MasteryStatus
+}
+
+export interface StudentWithMasteryResponse {
+  id: string
+  email: string
+  name: string | null
+  module_mastery: ModuleMasteryResponse[]
+}
