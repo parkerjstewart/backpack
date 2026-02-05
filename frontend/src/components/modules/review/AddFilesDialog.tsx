@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { Upload, Loader2, X } from "lucide-react";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { IconButton } from "@/components/ui/button";
 import { useCreateSource } from "@/lib/hooks/use-sources";
 import { useModuleDraftStore } from "@/lib/stores/module-draft-store";
 import { cn } from "@/lib/utils";
@@ -102,19 +103,15 @@ export function AddFilesDialog({
 
         <div className="relative flex flex-col gap-8 items-center pt-8 pb-16 px-16">
           {/* X close button - top left */}
-          <button
+          <IconButton
             onClick={closeDialog}
             disabled={isUploading}
-            className={cn(
-              "absolute left-16 top-8 w-8 h-8 flex items-center justify-center rounded-sm transition-opacity focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-              isUploading
-                ? "opacity-30 cursor-not-allowed"
-                : "opacity-70 hover:opacity-100"
-            )}
+            size="sm"
+            className="absolute left-16 top-8"
             aria-label="Close"
           >
-            <X className="h-5 w-5 text-foreground" />
-          </button>
+            <X className="text-foreground" />
+          </IconButton>
 
           {/* Title - centered */}
           <h2 className="font-heading text-[32px] font-medium tracking-[-0.02em] text-primary">

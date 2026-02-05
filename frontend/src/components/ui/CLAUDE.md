@@ -15,7 +15,7 @@ Design tokens are defined in `globals.css` and `tailwind.config.ts`. Based on Fi
 - **Border**: `rgba(20, 48, 46, 0.2)` (opacity-based for consistency)
 
 ### Course Card Colors (from Figma variables)
-- **Sage**: `--sage-500` (#d4e297) / `--sage-700` (#588f58) — default green
+- **Sage**: `--sage-500` (#d4e297) / `--sage-700` (#445956) — default green
 - **Amber**: `--amber-400` (#f6e587) / `--amber-600` (#eab71d) — yellow
 - **Sky**: `--sky-500` (#a4c7e0) / `--sky-700` (#1a6e70) — blue
 - **Coral**: `--coral-500` (#f7b59d) / `--coral-700` (#cb6a52) — orange/red

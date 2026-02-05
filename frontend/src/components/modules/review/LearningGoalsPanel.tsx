@@ -150,9 +150,9 @@ export function LearningGoalsPanel({
   };
 
   return (
-    <div className="flex-1 min-w-0">
+    <div className="flex-1 min-w-0 flex flex-col min-h-0">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex-shrink-0 flex items-center justify-between mb-4">
         <Label className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800">
           Learning Goals
         </Label>
@@ -178,8 +178,13 @@ export function LearningGoalsPanel({
         </Button>
       </div>
 
-      {/* Goals list */}
-      <div className="space-y-3">
+      {/* Goals list - scrollable (p-1 -m-1 to prevent border/ring clipping) */}
+      <div
+        className={cn(
+          "flex-1 min-h-0 overflow-y-auto space-y-3 p-4 -m-1 border rounded-[16px] transition-all",
+          isGenerating ? "animate-border-pulse" : "border-input"
+        )}
+      >
         {/* Add new goal button */}
         <Button
           type="button"
@@ -192,13 +197,11 @@ export function LearningGoalsPanel({
           Add new goal
         </Button>
 
-        {/* Loading state */}
+        {/* Loading state - empty */}
         {isGenerating && learningGoals.length === 0 && (
-          <div className="border-2 rounded-[16px] p-8 animate-border-pulse">
-            <div className="flex items-center justify-center font-sans text-[16px] font-normal tracking-[-0.01em] text-teal-800">
-              <Loader2 className="h-5 w-5 mr-2 animate-spin text-sage-700" />
-              Generating learning goals...
-            </div>
+          <div className="flex items-center justify-center py-8 font-sans text-[16px] font-normal tracking-[-0.01em] text-teal-800">
+            <Loader2 className="h-5 w-5 mr-2 animate-spin text-sage-700" />
+            Generating learning goals...
           </div>
         )}
 

@@ -29,26 +29,26 @@ export function FilesSidebar({
   const overflowCount = sourceIds.length - visibleCount;
 
   return (
-    <div className="w-16 flex-shrink-0">
-      <Label className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800 mb-4 block">
+    <div className="w-16 flex-shrink-0 flex flex-col min-h-0">
+      <Label className="flex-shrink-0 font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800 mb-4 block">
         Files
       </Label>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
         {/* Add button */}
         <button
           type="button"
           onClick={onAddMore}
           className={cn(
-            "w-16 h-16 rounded-lg transition-colors",
+            "w-16 h-16 rounded-lg transition-all",
             "border-2 border-dashed border-teal-800",
             "hover:bg-secondary",
             "flex items-center justify-center",
-            "focus:outline-none focus:ring-2 focus:ring-sage-500 focus:ring-offset-2"
+            "outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]",
           )}
           title="Add more files"
         >
-          <Plus className="h-6 w-6 text-muted-foreground" />
+          <Plus className="h-6 w-6 text-sage-700" />
         </button>
 
         {/* Source thumbnails */}
