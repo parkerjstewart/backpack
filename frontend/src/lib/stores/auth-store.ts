@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { getApiUrl } from '@/lib/config'
+import type { UserResponse } from '@/lib/types/api'
 
 interface AuthState {
   isAuthenticated: boolean
   token: string | null
+  currentUser: UserResponse | null
   isLoading: boolean
   error: string | null
   lastAuthCheck: number | null
@@ -12,8 +14,10 @@ interface AuthState {
   hasHydrated: boolean
   authRequired: boolean | null
   setHasHydrated: (state: boolean) => void
+  setCurrentUser: (user: UserResponse | null) => void
   checkAuthRequired: () => Promise<boolean>
   login: (password: string) => Promise<boolean>
+  loginWithEmail: (email: string) => Promise<UserResponse | null>
   logout: () => void
   checkAuth: () => Promise<boolean>
 }
@@ -23,6 +27,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       isAuthenticated: false,
       token: null,
+      currentUser: null,
       isLoading: false,
       error: null,
       lastAuthCheck: null,
@@ -32,6 +37,10 @@ export const useAuthStore = create<AuthState>()(
 
       setHasHydrated: (state: boolean) => {
         set({ hasHydrated: state })
+      },
+
+      setCurrentUser: (user: UserResponse | null) => {
+        set({ currentUser: user })
       },
 
       checkAuthRequired: async () => {
@@ -140,11 +149,65 @@ export const useAuthStore = create<AuthState>()(
       },
       
       logout: () => {
-        set({ 
-          isAuthenticated: false, 
-          token: null, 
-          error: null 
+        set({
+          isAuthenticated: false,
+          token: null,
+          currentUser: null,
+          error: null
         })
+      },
+
+      loginWithEmail: async (email: string) => {
+        set({ isLoading: true, error: null })
+        try {
+          const apiUrl = await getApiUrl()
+
+          const response = await fetch(`${apiUrl}/api/users/login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email })
+          })
+
+          if (response.ok) {
+            const user = await response.json()
+            set({
+              isAuthenticated: true,
+              // Use user ID as token for API calls
+              token: user.id,
+              currentUser: user,
+              isLoading: false,
+              lastAuthCheck: Date.now(),
+              error: null
+            })
+            return user
+          } else {
+            const errorMessage = `Login failed (${response.status})`
+            set({
+              error: errorMessage,
+              isLoading: false,
+              isAuthenticated: false,
+              token: null,
+              currentUser: null
+            })
+            return null
+          }
+        } catch (error) {
+          console.error('Network error during login:', error)
+          const errorMessage = error instanceof TypeError && error.message.includes('Failed to fetch')
+            ? 'Unable to connect to server. Please check if the API is running.'
+            : 'An unexpected error occurred during login'
+
+          set({
+            error: errorMessage,
+            isLoading: false,
+            isAuthenticated: false,
+            token: null,
+            currentUser: null
+          })
+          return null
+        }
       },
       
       checkAuth: async () => {
@@ -212,7 +275,8 @@ export const useAuthStore = create<AuthState>()(
       name: 'auth-storage',
       partialize: (state) => ({
         token: state.token,
-        isAuthenticated: state.isAuthenticated
+        isAuthenticated: state.isAuthenticated,
+        currentUser: state.currentUser
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true)
