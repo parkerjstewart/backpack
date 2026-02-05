@@ -51,7 +51,7 @@ class User(ObjectModel):
         try:
             result = await repo_query(
                 """
-                SELECT out.* as course FROM course_membership
+                SELECT out as course FROM course_membership
                 WHERE in = $user_id
                 FETCH course
                 """,
@@ -128,7 +128,7 @@ class Course(ObjectModel):
             if role:
                 result = await repo_query(
                     """
-                    SELECT in.* as user, role, enrolled_at
+                    SELECT in as user, role, enrolled_at
                     FROM course_membership
                     WHERE out = $course_id AND role = $role
                     FETCH user
@@ -138,7 +138,7 @@ class Course(ObjectModel):
             else:
                 result = await repo_query(
                     """
-                    SELECT in.* as user, role, enrolled_at
+                    SELECT in as user, role, enrolled_at
                     FROM course_membership
                     WHERE out = $course_id
                     FETCH user
@@ -159,7 +159,7 @@ class Course(ObjectModel):
         try:
             result = await repo_query(
                 """
-                SELECT in.* as user, role, enrolled_at
+                SELECT in as user, role, enrolled_at
                 FROM course_membership
                 WHERE out = $course_id AND (role = 'instructor' OR role = 'ta')
                 FETCH user
@@ -179,13 +179,13 @@ class Course(ObjectModel):
         try:
             result = await repo_query(
                 """
-                SELECT DISTINCT
-                    sp.user.* as user,
-                    count(sp.id) as struggling_count
-                FROM student_progress as sp
-                WHERE sp.status = 'struggling'
-                  AND sp.learning_goal.module.course = $course_id
-                GROUP BY sp.user
+                SELECT
+                    user as user,
+                    count() as struggling_count
+                FROM student_progress
+                WHERE status = 'struggling'
+                  AND learning_goal.module.course = $course_id
+                GROUP BY user
                 ORDER BY struggling_count DESC
                 FETCH user
                 """,
