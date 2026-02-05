@@ -16,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormLabel } from "@/components/ui/form-label";
 import { FileUploadZone } from "@/components/ui/file-upload-zone";
-import { useCoursesStore, type Course } from "@/lib/stores/courses-store";
+import { useCreateCourse } from "@/lib/hooks/use-courses";
+import type { CourseResponse } from "@/lib/types/api";
 
 const createCourseSchema = z.object({
   code: z.string().min(1, "Course code is required"),
@@ -28,7 +29,7 @@ type CreateCourseFormData = z.infer<typeof createCourseSchema>;
 interface CreateCourseDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated?: (course: Course) => void;
+  onCreated?: (course: CourseResponse) => void;
 }
 
 /**
@@ -52,7 +53,7 @@ export function CreateCourseDialog({
   onOpenChange,
   onCreated,
 }: CreateCourseDialogProps) {
-  const { createCourse } = useCoursesStore();
+  const createCourseMutation = useCreateCourse();
   const [files, setFiles] = useState<File[]>([]);
 
   const {
@@ -77,13 +78,14 @@ export function CreateCourseDialog({
 
   const onSubmit = async (data: CreateCourseFormData) => {
     try {
-      // Create the course with code as name and name as description
-      const course = createCourse(data.code, data.name);
+      // Create the course with code as title and name as description
+      const course = await createCourseMutation.mutateAsync({
+        title: data.code,
+        description: data.name,
+      });
 
-      // TODO: When backend is ready, upload syllabus files here
-      // For now, we store the file name in the course if files were selected
+      // TODO: Upload syllabus files when backend supports it
       if (files.length > 0) {
-        // Future: Upload to backend and store reference
         console.log(
           "Syllabus files to upload:",
           files.map((f) => f.name)
@@ -95,6 +97,7 @@ export function CreateCourseDialog({
       }
       closeDialog();
     } catch (error) {
+      // Error handling is done in the mutation
       console.error("Error creating course:", error);
     }
   };
@@ -171,9 +174,9 @@ export function CreateCourseDialog({
             type="submit"
             variant={isValid ? "accent" : "light"}
             className="w-full"
-            disabled={!isValid}
+            disabled={!isValid || createCourseMutation.isPending}
           >
-            Create
+            {createCourseMutation.isPending ? "Creating..." : "Create"}
           </Button>
         </form>
       </DialogContent>
