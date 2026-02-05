@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, IconButton } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useModuleDraftStore } from "@/lib/stores/module-draft-store";
@@ -314,16 +314,11 @@ export default function ModuleReviewPage() {
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b">
+      <header className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b">
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleClose}
-            className="h-8 w-8 p-0"
-          >
-            <X className="h-5 w-5" />
-          </Button>
+          <IconButton size="sm" onClick={handleClose} aria-label="Close">
+            <X />
+          </IconButton>
           <h1 className="font-heading text-[32px] font-medium tracking-[-0.02em] text-primary">
             Create Module {">"} Review and Edit
           </h1>
@@ -331,7 +326,7 @@ export default function ModuleReviewPage() {
       </header>
 
       {/* Content - 3 column layout */}
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 min-h-0 overflow-hidden p-6">
         <div className="flex gap-6 h-full">
           {/* Left column - Module info */}
           <ModuleInfoPanel
@@ -356,7 +351,7 @@ export default function ModuleReviewPage() {
       </main>
 
       {/* Footer with progress and confirm */}
-      <footer className="px-6 py-4 border-t bg-background">
+      <footer className="flex-shrink-0 px-6 py-4 border-t bg-background">
         <div className="flex items-center gap-4">
           {/* Progress bar */}
           <div className="flex-1">

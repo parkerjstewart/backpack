@@ -35,8 +35,8 @@ export function FileThumbnail({
         );
       case "completed":
         return (
-          <div className="absolute top-1 right-1 w-4 h-4 bg-sage-700 rounded-full flex items-center justify-center">
-            <CheckCircle className="h-2.5 w-2.5 text-white" />
+          <div className="absolute top-1 right-1 w-4 h-4 bg-accent rounded-full flex items-center justify-center">
+            <CheckCircle className="h-2.5 w-2.5 text-accent-foreground" />
           </div>
         );
       case "failed":
@@ -66,10 +66,10 @@ export function FileThumbnail({
       type="button"
       onClick={onClick}
       className={cn(
-        "relative w-16 h-16 rounded-lg transition-colors",
-        "bg-neutral-400 hover:bg-secondary",
+        "relative w-16 h-16 rounded-lg transition-all",
+        "bg-secondary hover:bg-muted",
         "flex items-center justify-center",
-        "focus:outline-none focus:ring-2 focus:ring-sage-500 focus:ring-offset-2"
+        "outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]",
       )}
       title={title || sourceId}
     >
