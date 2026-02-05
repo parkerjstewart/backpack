@@ -7,7 +7,9 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CourseHeader } from "@/components/courses";
 import { useModule } from "@/lib/hooks/use-modules";
+import { useCourse } from "@/lib/hooks/use-courses";
 import { useModuleSources } from "@/lib/hooks/use-sources";
 import { AddSourceDialog } from "@/components/sources/AddSourceDialog";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
@@ -17,7 +19,7 @@ import { useModuleColumnsStore } from "@/lib/stores/module-columns-store";
 import { useIsDesktop } from "@/lib/hooks/use-media-query";
 import { useTranslation } from "@/lib/hooks/use-translation";
 import { cn } from "@/lib/utils";
-import { FileText, ArrowLeft } from "lucide-react";
+import { FileText } from "lucide-react";
 
 type ContextMode = "off" | "insights" | "full";
 
@@ -36,6 +38,7 @@ export default function CourseModuleOverviewPage() {
     ? decodeURIComponent(params.moduleId as string)
     : "";
 
+  const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: module, isLoading: moduleLoading } = useModule(moduleId);
   const {
     sources,
@@ -95,7 +98,7 @@ export default function CourseModuleOverviewPage() {
     }));
   };
 
-  if (moduleLoading) {
+  if (moduleLoading || courseLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
@@ -125,30 +128,29 @@ export default function CourseModuleOverviewPage() {
   return (
     <AppShell>
       <div className="flex flex-col flex-1 min-h-0">
-        {/* Header with back button and title */}
-        <div className="flex-shrink-0 p-6 pb-0">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" asChild>
-                <Link href={`/courses/${encodeURIComponent(courseId)}`}>
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to course
-                </Link>
-              </Button>
+        {/* Course Header with tabs */}
+        <div className="flex-shrink-0 px-8 pt-8">
+          {course && (
+            <CourseHeader courseId={courseId} courseName={course.title} />
+          )}
+        </div>
+
+        {/* Module header and upload button */}
+        <div className="flex-shrink-0 px-8 pt-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">{module.name}</h2>
+              {module.description && (
+                <p className="text-muted-foreground">{module.description}</p>
+              )}
             </div>
             <Button onClick={() => setUploadOpen(true)}>
               Upload documents
             </Button>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">{module.name}</h1>
-            {module.description && (
-              <p className="text-muted-foreground">{module.description}</p>
-            )}
-          </div>
         </div>
 
-        <div className="flex-1 p-6 pt-6 overflow-x-auto flex flex-col">
+        <div className="flex-1 px-8 pt-6 pb-8 overflow-x-auto flex flex-col">
           {/* Mobile: Tabbed interface */}
           {!isDesktop && (
             <>
