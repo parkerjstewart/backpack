@@ -321,7 +321,7 @@ backpack/
 ```
 
 See component-specific CLAUDE.md files for detailed architecture:
-- [frontend/CLAUDE.md](frontend/CLAUDE.md)
+- [frontend/CLAUDE.md](frontend/src/CLAUDE.md)
 - [api/CLAUDE.md](api/CLAUDE.md)
 - [backpack/CLAUDE.md](backpack/CLAUDE.md)
 
