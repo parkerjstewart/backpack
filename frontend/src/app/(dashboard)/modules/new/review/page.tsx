@@ -11,6 +11,8 @@ import { useModuleDraftStore } from "@/lib/stores/module-draft-store";
 import { useSourcePolling } from "@/lib/hooks/use-source-polling";
 import {
   usePreviewModuleContent,
+  usePreviewOverview,
+  usePreviewLearningGoals,
   useCreateModule,
 } from "@/lib/hooks/use-modules";
 import { useBatchDeleteSources } from "@/lib/hooks/use-sources";
@@ -48,6 +50,8 @@ export default function ModuleReviewPage() {
     statuses: sourceStatuses,
   } = useSourcePolling(pendingSourceIds);
   const previewContent = usePreviewModuleContent();
+  const previewOverview = usePreviewOverview();
+  const previewLearningGoals = usePreviewLearningGoals();
   const createModule = useCreateModule();
   const batchDelete = useBatchDeleteSources();
 
@@ -193,16 +197,30 @@ export default function ModuleReviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allComplete, sourceStatuses, previewContent.isPending]);
 
-  // Handle regenerate overview/goals
-  const handleRegenerateContent = () => {
+  // Handle regenerate overview only
+  const handleRegenerateOverview = () => {
     if (pendingSourceIds.length === 0) return;
 
-    previewContent.mutate(
+    previewOverview.mutate(
+      { source_ids: pendingSourceIds, name: name || "New Module" },
+      {
+        onSuccess: (data) => {
+          setModuleField("overview", data.overview);
+        },
+      }
+    );
+  };
+
+  // Handle regenerate learning goals only
+  const handleRegenerateLearningGoals = () => {
+    if (pendingSourceIds.length === 0) return;
+
+    previewLearningGoals.mutate(
       { source_ids: pendingSourceIds, name: name || "New Module" },
       {
         onSuccess: (data) => {
           setGeneratedContent(
-            data.overview,
+            overview,
             data.learning_goals.map((g) => ({
               description: g.description,
               order: g.order,
@@ -304,7 +322,10 @@ export default function ModuleReviewPage() {
     setSelectedSourceId(sourceId);
   };
 
-  const isGenerating = previewContent.isPending;
+  const isGeneratingAll = previewContent.isPending;
+  const isGeneratingOverview = previewOverview.isPending || isGeneratingAll;
+  const isGeneratingGoals = previewLearningGoals.isPending || isGeneratingAll;
+  const isGenerating = isGeneratingOverview || isGeneratingGoals;
   const canConfirm = name.trim().length > 0 && !isGenerating && !isConfirming;
 
   // Don't render if no sources (will redirect)
@@ -331,14 +352,14 @@ export default function ModuleReviewPage() {
         <div className="flex gap-6 h-full">
           {/* Left column - Module info */}
           <ModuleInfoPanel
-            isGenerating={isGenerating}
-            onRegenerateOverview={handleRegenerateContent}
+            isGenerating={isGeneratingOverview}
+            onRegenerateOverview={handleRegenerateOverview}
           />
 
           {/* Center column - Learning goals */}
           <LearningGoalsPanel
-            isGenerating={isGenerating}
-            onRegenerateLearningGoals={handleRegenerateContent}
+            isGenerating={isGeneratingGoals}
+            onRegenerateLearningGoals={handleRegenerateLearningGoals}
           />
 
           {/* Right column - Files sidebar */}

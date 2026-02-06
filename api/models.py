@@ -467,6 +467,23 @@ class PreviewModuleContentResponse(BaseModel):
     )
 
 
+# Individual preview endpoints for regeneration
+class PreviewSourcesRequest(BaseModel):
+    """Base request for preview endpoints that operate on unlinked sources."""
+    source_ids: List[str] = Field(..., description="List of source IDs to generate from")
+    name: str = Field("", description="Module name for context")
+
+
+class PreviewOverviewResponse(BaseModel):
+    overview: str = Field(..., description="Generated module overview")
+
+
+class PreviewLearningGoalsResponse(BaseModel):
+    learning_goals: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Generated learning goals"
+    )
+
+
 # Error response
 class ErrorResponse(BaseModel):
     error: str
