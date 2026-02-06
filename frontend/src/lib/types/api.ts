@@ -8,6 +8,7 @@ export interface ModuleResponse {
   updated: string
   source_count: number
   note_count: number
+  course_id?: string | null
 }
 
 export interface NoteResponse {
@@ -64,6 +65,7 @@ export interface SettingsResponse {
 export interface CreateModuleRequest {
   name: string
   description?: string
+  course_id?: string
 }
 
 export interface UpdateModuleRequest {
@@ -71,6 +73,7 @@ export interface UpdateModuleRequest {
   description?: string
   archived?: boolean
   overview?: string
+  course_id?: string | null
 }
 
 // Learning Goals Types
@@ -326,6 +329,7 @@ export interface CourseMemberResponse {
 }
 
 export interface AddCourseMemberRequest {
+  name: string
   email: string
   role?: 'student' | 'instructor' | 'ta'
 }

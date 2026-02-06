@@ -35,9 +35,10 @@ interface CreateModuleDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated?: (module: ModuleResponse) => void
+  courseId?: string
 }
 
-export function CreateModuleDialog({ open, onOpenChange, onCreated }: CreateModuleDialogProps) {
+export function CreateModuleDialog({ open, onOpenChange, onCreated, courseId }: CreateModuleDialogProps) {
   const { t } = useTranslation()
   const createModule = useCreateModule()
   const createSource = useCreateSource()
@@ -89,7 +90,10 @@ export function CreateModuleDialog({ open, onOpenChange, onCreated }: CreateModu
     try {
       setIsUploading(true)
       // Create the module first
-      const module = await createModule.mutateAsync(data)
+      const module = await createModule.mutateAsync({
+        ...data,
+        course_id: courseId,
+      })
       
       // Upload files as sources if any were selected
       if (files.length > 0 && module) {

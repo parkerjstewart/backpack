@@ -391,7 +391,11 @@ async def add_course_member(course_id: str, request: AddCourseMemberRequest):
         # Find or create user by email
         user = await User.get_by_email(request.email)
         if not user:
-            user = User(email=request.email)
+            user = User(email=request.email, name=request.name)
+            await user.save()
+        elif not user.name and request.name:
+            # Update name if user exists but has no name
+            user.name = request.name
             await user.save()
 
         # Add to course
