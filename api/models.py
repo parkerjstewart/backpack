@@ -461,6 +461,7 @@ class PreviewModuleContentRequest(BaseModel):
 
 
 class PreviewModuleContentResponse(BaseModel):
+    name: Optional[str] = Field(None, description="AI-generated module name")
     overview: Optional[str] = Field(None, description="Generated module overview")
     learning_goals: List[Dict[str, Any]] = Field(
         default_factory=list, description="Generated learning goals"

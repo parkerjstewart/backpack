@@ -128,6 +128,27 @@ async def _generate_learning_goals_list(
     return goals
 
 
+async def _generate_module_name(
+    sources_context: list[dict],
+    model_id: str | None = None,
+) -> str:
+    """Generate a short module title from sources context. No DB writes."""
+    prompt_data = {"sources": sources_context}
+    system_prompt = Prompter(prompt_template="module/name").render(
+        data=prompt_data
+    )
+    model = await provision_langchain_model(
+        system_prompt, model_id, "transformation", max_tokens=100,
+    )
+    ai_message = await model.ainvoke(system_prompt)
+    content = (
+        ai_message.content
+        if isinstance(ai_message.content, str)
+        else str(ai_message.content)
+    )
+    return clean_thinking_content(content).strip().strip('"\'')
+
+
 @router.get("/modules", response_model=List[ModuleResponse])
 async def get_modules(
     archived: Optional[bool] = Query(None, description="Filter by archived status"),
@@ -816,14 +837,25 @@ async def preview_module_content(request: PreviewModuleContentRequest):
     auto-generation when all sources finish processing.
     """
     try:
-        sources_request = PreviewSourcesRequest(
-            source_ids=request.source_ids, name=request.name,
-        )
+        sources = await _fetch_sources(request.source_ids)
+        if not sources:
+            return PreviewModuleContentResponse(
+                name=None, overview=None, learning_goals=[],
+            )
 
+        sources_context = await _build_sources_context(sources)
+
+        # Generate name, overview, and goals from the shared context
+        generated_name = await _generate_module_name(sources_context)
+
+        sources_request = PreviewSourcesRequest(
+            source_ids=request.source_ids, name=generated_name,
+        )
         overview_resp = await preview_overview(sources_request)
         goals_resp = await preview_learning_goals(sources_request)
 
         return PreviewModuleContentResponse(
+            name=generated_name,
             overview=overview_resp.overview or None,
             learning_goals=goals_resp.learning_goals,
         )
