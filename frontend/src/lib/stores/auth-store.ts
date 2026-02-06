@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { getApiUrl } from '@/lib/config'
+import { queryClient } from '@/lib/api/query-client'
 import type { UserResponse } from '@/lib/types/api'
 
 interface AuthState {
@@ -18,6 +19,7 @@ interface AuthState {
   checkAuthRequired: () => Promise<boolean>
   login: (password: string) => Promise<boolean>
   loginWithEmail: (email: string) => Promise<UserResponse | null>
+  registerWithEmail: (email: string, name: string) => Promise<UserResponse | null>
   logout: () => void
   checkAuth: () => Promise<boolean>
 }
@@ -155,6 +157,8 @@ export const useAuthStore = create<AuthState>()(
           currentUser: null,
           error: null
         })
+        // Clear cached data from the previous user
+        queryClient.clear()
       },
 
       loginWithEmail: async (email: string) => {
@@ -174,7 +178,6 @@ export const useAuthStore = create<AuthState>()(
             const user = await response.json()
             set({
               isAuthenticated: true,
-              // Use user ID as token for API calls
               token: user.id,
               currentUser: user,
               isLoading: false,
@@ -183,7 +186,12 @@ export const useAuthStore = create<AuthState>()(
             })
             return user
           } else {
-            const errorMessage = `Login failed (${response.status})`
+            let errorMessage = 'Login failed'
+            if (response.status === 404) {
+              errorMessage = 'No account found with this email. Try signing up instead.'
+            } else {
+              errorMessage = `Login failed (${response.status})`
+            }
             set({
               error: errorMessage,
               isLoading: false,
@@ -198,6 +206,64 @@ export const useAuthStore = create<AuthState>()(
           const errorMessage = error instanceof TypeError && error.message.includes('Failed to fetch')
             ? 'Unable to connect to server. Please check if the API is running.'
             : 'An unexpected error occurred during login'
+
+          set({
+            error: errorMessage,
+            isLoading: false,
+            isAuthenticated: false,
+            token: null,
+            currentUser: null
+          })
+          return null
+        }
+      },
+
+      registerWithEmail: async (email: string, name: string) => {
+        set({ isLoading: true, error: null })
+        try {
+          const apiUrl = await getApiUrl()
+
+          const response = await fetch(`${apiUrl}/api/users/register`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email, name })
+          })
+
+          if (response.ok) {
+            const user = await response.json()
+            set({
+              isAuthenticated: true,
+              token: user.id,
+              currentUser: user,
+              isLoading: false,
+              lastAuthCheck: Date.now(),
+              error: null
+            })
+            return user
+          } else {
+            let errorMessage = 'Registration failed'
+            try {
+              const data = await response.json()
+              errorMessage = data.detail || errorMessage
+            } catch {
+              errorMessage = `Registration failed (${response.status})`
+            }
+            set({
+              error: errorMessage,
+              isLoading: false,
+              isAuthenticated: false,
+              token: null,
+              currentUser: null
+            })
+            return null
+          }
+        } catch (error) {
+          console.error('Network error during registration:', error)
+          const errorMessage = error instanceof TypeError && error.message.includes('Failed to fetch')
+            ? 'Unable to connect to server. Please check if the API is running.'
+            : 'An unexpected error occurred during registration'
 
           set({
             error: errorMessage,

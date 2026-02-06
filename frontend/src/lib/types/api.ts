@@ -294,6 +294,11 @@ export interface UserLoginRequest {
   email: string
 }
 
+export interface UserRegisterRequest {
+  email: string
+  name: string
+}
+
 // ============================================
 // Course Types
 // ============================================
@@ -307,6 +312,7 @@ export interface CourseResponse {
   updated: string
   module_count: number
   student_count: number
+  membership_role?: string | null
 }
 
 export interface CreateCourseRequest {
