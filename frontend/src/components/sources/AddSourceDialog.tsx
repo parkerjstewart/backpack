@@ -71,6 +71,14 @@ interface AddSourceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaultModuleId?: string
+  /** Skip module selection step, create sources with modules: [] */
+  draftMode?: boolean
+  /** Custom dialog title */
+  title?: string
+  /** Called for each successfully created source */
+  onSourceCreated?: (sourceId: string) => void
+  /** Called after all sources submitted, before dialog closes */
+  onComplete?: () => void
 }
 
 interface ProcessingState {
@@ -85,18 +93,29 @@ interface BatchProgress {
   currentItem?: string
 }
 
-export function AddSourceDialog({ 
-  open, 
-  onOpenChange, 
-  defaultModuleId 
+export function AddSourceDialog({
+  open,
+  onOpenChange,
+  defaultModuleId,
+  draftMode,
+  title: customTitle,
+  onSourceCreated,
+  onComplete,
 }: AddSourceDialogProps) {
   const { t } = useTranslation()
 
-  const WIZARD_STEPS: readonly WizardStep[] = [
-    { number: 1, title: t.sources.addSource, description: t.sources.processDescription },
-    { number: 2, title: t.navigation.modules, description: t.modules.searchPlaceholder },
-    { number: 3, title: t.navigation.process, description: t.sources.processDescription },
-  ]
+  const maxStep = draftMode ? 2 : 3
+
+  const WIZARD_STEPS: readonly WizardStep[] = draftMode
+    ? [
+        { number: 1, title: t.sources.addSource, description: t.sources.processDescription },
+        { number: 2, title: t.navigation.process, description: t.sources.processDescription },
+      ]
+    : [
+        { number: 1, title: t.sources.addSource, description: t.sources.processDescription },
+        { number: 2, title: t.navigation.modules, description: t.modules.searchPlaceholder },
+        { number: 3, title: t.navigation.process, description: t.sources.processDescription },
+      ]
 
   // Simplified state management
   const [currentStep, setCurrentStep] = useState(1)
@@ -256,7 +275,7 @@ export function AddSourceDialog({
       setUrlValidationErrors([])
     }
 
-    if (currentStep < 3 && isStepValid(currentStep)) {
+    if (currentStep < maxStep && isStepValid(currentStep)) {
       setCurrentStep(currentStep + 1)
     }
   }
@@ -299,7 +318,7 @@ export function AddSourceDialog({
   const submitSingleSource = async (data: CreateSourceFormData): Promise<void> => {
     const createRequest: CreateSourceRequest = {
       type: data.type,
-      modules: selectedModules,
+      modules: draftMode ? [] : selectedModules,
       url: data.type === 'link' ? data.url : undefined,
       content: data.type === 'text' ? data.content : undefined,
       title: data.title,
@@ -315,7 +334,8 @@ export function AddSourceDialog({
       requestWithFile.file = file
     }
 
-    await createSource.mutateAsync(createRequest)
+    const result = await createSource.mutateAsync(createRequest)
+    if (result?.id) onSourceCreated?.(result.id)
   }
 
   // Batch submission
@@ -351,7 +371,7 @@ export function AddSourceDialog({
       try {
         const createRequest: CreateSourceRequest = {
           type: item.type === 'url' ? 'link' : 'upload',
-          modules: selectedModules,
+          modules: draftMode ? [] : selectedModules,
           url: item.type === 'url' ? item.value as string : undefined,
           transformations: selectedTransformations,
           embed: data.embed,
@@ -364,7 +384,8 @@ export function AddSourceDialog({
           requestWithFile.file = item.value as File
         }
 
-        await createSource.mutateAsync(createRequest)
+        const result = await createSource.mutateAsync(createRequest)
+        if (result?.id) onSourceCreated?.(result.id)
         results.success++
       } catch (error) {
         console.error(`Error creating source for ${itemLabel}:`, error)
@@ -400,11 +421,13 @@ export function AddSourceDialog({
           toast.warning(t.sources.batchPartial.replace('{success}', results.success.toString()).replace('{failed}', results.failed.toString()))
         }
 
+        onComplete?.()
         handleClose()
       } else {
         // Single source submission
         setProcessingStatus({ message: t.sources.submittingSource })
         await submitSingleSource(data)
+        onComplete?.()
         handleClose()
       }
     } catch (error) {
@@ -535,7 +558,7 @@ export function AddSourceDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[700px] p-0">
         <DialogHeader className="px-6 pt-6 pb-0">
-          <DialogTitle>{t.sources.addNew}</DialogTitle>
+          <DialogTitle>{customTitle || t.sources.addNew}</DialogTitle>
           <DialogDescription>
             {t.sources.processDescription}
           </DialogDescription>
@@ -559,8 +582,8 @@ export function AddSourceDialog({
                 onClearUrlErrors={handleClearUrlErrors}
               />
             )}
-            
-            {currentStep === 2 && (
+
+            {!draftMode && currentStep === 2 && (
               <ModulesStep
                 modules={modules}
                 selectedModules={selectedModules}
@@ -568,8 +591,8 @@ export function AddSourceDialog({
                 loading={modulesLoading}
               />
             )}
-            
-            {currentStep === 3 && (
+
+            {currentStep === (draftMode ? 2 : 3) && (
               <ProcessingStep
                 // @ts-expect-error - Type inference issue with zod schema
                 control={control}
@@ -603,8 +626,8 @@ export function AddSourceDialog({
                 </Button>
               )}
 
-              {/* Show Next button on steps 1 and 2, styled as outline/secondary */}
-              {currentStep < 3 && (
+              {/* Show Next button on steps before the last, styled as outline/secondary */}
+              {currentStep < maxStep && (
                 <Button
                   type="button"
                   variant="outline"
