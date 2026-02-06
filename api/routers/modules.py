@@ -58,6 +58,7 @@ async def get_modules(
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                course_id=str(nb.get("course")) if nb.get("course") else None,
             )
             for nb in result
         ]
@@ -70,11 +71,12 @@ async def get_modules(
 
 @router.post("/modules", response_model=ModuleResponse)
 async def create_module(module: ModuleCreate):
-    """Create a new module."""
+    """Create a new module, optionally associated with a course."""
     try:
         new_module = Module(
             name=module.name,
             description=module.description,
+            course=module.course_id,
         )
         await new_module.save()
 
@@ -88,6 +90,7 @@ async def create_module(module: ModuleCreate):
             updated=str(new_module.updated),
             source_count=0,  # New module has no sources
             note_count=0,  # New module has no notes
+            course_id=str(new_module.course) if new_module.course else None,
         )
     except InvalidInputError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -125,6 +128,7 @@ async def get_module(module_id: str):
             updated=str(nb.get("updated", "")),
             source_count=nb.get("source_count", 0),
             note_count=nb.get("note_count", 0),
+            course_id=str(nb.get("course")) if nb.get("course") else None,
         )
     except HTTPException:
         raise
@@ -152,6 +156,8 @@ async def update_module(module_id: str, module_update: ModuleUpdate):
             module.archived = module_update.archived
         if module_update.overview is not None:
             module.overview = module_update.overview
+        if module_update.course_id is not None:
+            module.course = module_update.course_id
 
         await module.save()
 
@@ -176,6 +182,7 @@ async def update_module(module_id: str, module_update: ModuleUpdate):
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                course_id=str(nb.get("course")) if nb.get("course") else None,
             )
 
         # Fallback if query fails
@@ -189,6 +196,7 @@ async def update_module(module_id: str, module_update: ModuleUpdate):
             updated=str(module.updated),
             source_count=0,
             note_count=0,
+            course_id=str(module.course) if module.course else None,
         )
     except HTTPException:
         raise
@@ -394,6 +402,7 @@ async def generate_module_overview(
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                course_id=str(nb.get("course")) if nb.get("course") else None,
             )
 
         # Fallback
@@ -407,6 +416,7 @@ async def generate_module_overview(
             updated=str(module.updated),
             source_count=0,
             note_count=0,
+            course_id=str(module.course) if module.course else None,
         )
 
     except HTTPException:

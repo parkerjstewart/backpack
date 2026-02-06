@@ -98,12 +98,13 @@ export default function CourseStudentsPage() {
           {needsAttention && needsAttention.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="text-title text-teal-800">Needs Attention</h2>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-6">
                 {needsAttention.map((student) => (
                   <StudentProfileCard
                     key={student.id}
                     name={student.name}
                     email={student.email}
+                    color="amber"
                   />
                 ))}
               </div>
@@ -112,32 +113,28 @@ export default function CourseStudentsPage() {
 
           {/* Teaching Team section */}
           <section className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-title text-teal-800">Teaching Team</h2>
-              <Button
-                variant="ghost"
-                size="sm"
+            <h2 className="text-title text-teal-800">Teaching Team</h2>
+            <div className="flex flex-wrap gap-6">
+              {teachingTeam?.map((member) => (
+                <StudentProfileCard
+                  key={member.id}
+                  name={member.name}
+                  email={member.email}
+                  color="sky"
+                />
+              ))}
+              {/* Add Teacher button with dotted outline */}
+              <button
                 onClick={() => openInviteDialog("instructor")}
-                className="gap-1"
+                className="flex flex-col items-center gap-2 p-2 group"
               >
-                <Plus className="h-4 w-4" />
-                Add
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {teachingTeam && teachingTeam.length > 0 ? (
-                teachingTeam.map((member) => (
-                  <StudentProfileCard
-                    key={member.id}
-                    name={member.name}
-                    email={member.email}
-                  />
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No teaching team members yet
-                </p>
-              )}
+                <div className="w-[100px] h-[100px] rounded-full border-2 border-dashed border-teal-300 flex items-center justify-center transition-colors group-hover:border-teal-800 group-hover:bg-secondary">
+                  <Plus className="h-8 w-8 text-teal-300 group-hover:text-teal-800 transition-colors" />
+                </div>
+                <span className="text-base text-teal-300 group-hover:text-teal-800 transition-colors">
+                  Add Teacher
+                </span>
+              </button>
             </div>
           </section>
 
@@ -147,15 +144,13 @@ export default function CourseStudentsPage() {
               <h2 className="text-title text-teal-800">
                 All Students ({filteredStudents?.length ?? 0})
               </h2>
-              <Button
-                variant="outline"
-                size="sm"
+              <button
                 onClick={() => openInviteDialog("student")}
-                className="gap-1"
+                className="p-1 rounded-lg hover:bg-secondary transition-colors"
+                aria-label="Add student"
               >
-                <Plus className="h-4 w-4" />
-                Add Student
-              </Button>
+                <Plus className="h-6 w-6 text-teal-800" />
+              </button>
             </div>
 
             {filteredStudents && filteredStudents.length > 0 ? (

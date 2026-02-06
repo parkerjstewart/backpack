@@ -157,7 +157,7 @@ export function useAddCourseMember(courseId: string) {
       queryClient.invalidateQueries({ queryKey: COURSE_QUERY_KEYS.students(courseId) })
       queryClient.invalidateQueries({ queryKey: COURSE_QUERY_KEYS.teachingTeam(courseId) })
       queryClient.invalidateQueries({ queryKey: COURSE_QUERY_KEYS.detail(courseId) })
-      toast.success(`Added ${variables.email} to the course`)
+      toast.success(`Invited ${variables.name} to the course`)
     },
     onError: (error) => {
       toast.error(`Failed to add member: ${error.message}`)
