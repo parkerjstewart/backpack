@@ -75,7 +75,7 @@ async def _generate_overview_text(
         data=prompt_data
     )
     model = await provision_langchain_model(
-        system_prompt, model_id, "transformation", max_tokens=2000,
+        system_prompt, model_id, "transformation", max_tokens=500,
     )
     ai_message = await model.ainvoke(system_prompt)
     content = (
