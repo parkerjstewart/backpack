@@ -8,6 +8,9 @@ import {
   UpdateLearningGoalRequest,
   PreviewModuleContentRequest,
   PreviewModuleContentResponse,
+  PreviewSourcesRequest,
+  PreviewOverviewResponse,
+  PreviewLearningGoalsResponse,
 } from '@/lib/types/api'
 
 export const modulesApi = {
@@ -91,11 +94,29 @@ export const modulesApi = {
 
   /**
    * Preview module content (overview + learning goals) without creating a module.
-   * Used during draft module creation flow.
+   * Used during draft module creation flow for initial auto-generation.
    */
   previewContent: async (data: PreviewModuleContentRequest) => {
     const response = await apiClient.post<PreviewModuleContentResponse>(
       '/modules/preview-content',
+      data
+    )
+    return response.data
+  },
+
+  /** Regenerate only the overview from sources. */
+  previewOverview: async (data: PreviewSourcesRequest) => {
+    const response = await apiClient.post<PreviewOverviewResponse>(
+      '/modules/preview-overview',
+      data
+    )
+    return response.data
+  },
+
+  /** Regenerate only the learning goals from sources. */
+  previewLearningGoals: async (data: PreviewSourcesRequest) => {
+    const response = await apiClient.post<PreviewLearningGoalsResponse>(
+      '/modules/preview-learning-goals',
       data
     )
     return response.data

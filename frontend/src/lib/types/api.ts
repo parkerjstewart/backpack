@@ -274,3 +274,20 @@ export interface PreviewModuleContentResponse {
     order: number
   }>
 }
+
+// Individual preview endpoints for regeneration
+export interface PreviewSourcesRequest {
+  source_ids: string[]
+  name: string
+}
+
+export interface PreviewOverviewResponse {
+  overview: string
+}
+
+export interface PreviewLearningGoalsResponse {
+  learning_goals: Array<{
+    description: string
+    order: number
+  }>
+}
