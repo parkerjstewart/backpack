@@ -53,11 +53,12 @@ async def list_courses(
         user_id = _get_current_user_id(authorization)
 
         if user_id:
-            # Get courses for authenticated user
+            # Get courses for authenticated user, including membership role
             result = await repo_query(
                 """
                 SELECT
                     out.* as course,
+                    role as membership_role,
                     count((SELECT * FROM module WHERE course = out.id)) as module_count,
                     count((SELECT * FROM course_membership WHERE out = out.id AND role = 'student')) as student_count
                 FROM course_membership
@@ -67,7 +68,7 @@ async def list_courses(
                 {"user_id": ensure_record_id(user_id)},
             )
             courses_data = [
-                {**r.get("course", {}), "module_count": r.get("module_count", 0), "student_count": r.get("student_count", 0)}
+                {**r.get("course", {}), "module_count": r.get("module_count", 0), "student_count": r.get("student_count", 0), "membership_role": r.get("membership_role")}
                 for r in (result or [])
             ]
         else:
@@ -98,6 +99,7 @@ async def list_courses(
                 updated=str(c.get("updated", "")),
                 module_count=c.get("module_count", 0),
                 student_count=c.get("student_count", 0),
+                membership_role=c.get("membership_role"),
             )
             for c in courses_data
         ]
