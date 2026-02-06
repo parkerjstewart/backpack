@@ -268,6 +268,7 @@ export interface PreviewModuleContentRequest {
 }
 
 export interface PreviewModuleContentResponse {
+  name: string | null
   overview: string | null
   learning_goals: Array<{
     description: string
