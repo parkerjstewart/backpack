@@ -480,6 +480,11 @@ class UserLoginRequest(BaseModel):
     email: str = Field(..., description="User's email address")
 
 
+class UserRegisterRequest(BaseModel):
+    email: str = Field(..., description="User's email address")
+    name: str = Field(..., description="User's display name")
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -513,6 +518,7 @@ class CourseResponse(BaseModel):
     updated: str
     module_count: int = 0
     student_count: int = 0
+    membership_role: Optional[str] = None
 
 
 class CourseMemberResponse(BaseModel):

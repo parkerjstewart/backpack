@@ -7,7 +7,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Header
 from loguru import logger
 
-from api.models import CourseResponse, UserLoginRequest, UserResponse
+from api.models import CourseResponse, UserLoginRequest, UserRegisterRequest, UserResponse
 from backpack.database.repository import ensure_record_id, repo_query
 from backpack.domain.course import Course, User
 
@@ -30,19 +30,49 @@ def _get_current_user_id(authorization: Optional[str] = None) -> Optional[str]:
 
 
 @router.post("/users/login", response_model=UserResponse)
-async def login_or_register(request: UserLoginRequest):
+async def login(request: UserLoginRequest):
     """
-    Login or register a user by email.
-
-    If the email exists, returns the existing user.
-    If not, creates a new user with the email.
+    Login a user by email. Returns 404 if no account found.
     """
     try:
         email = request.email.lower().strip()
         if not email:
             raise HTTPException(status_code=400, detail="Email is required")
 
-        # Check if user exists
+        existing_user = await User.get_by_email(email)
+        if not existing_user:
+            raise HTTPException(status_code=404, detail="No account found with this email")
+
+        return UserResponse(
+            id=str(existing_user.id),
+            email=existing_user.email,
+            name=existing_user.name,
+            role=existing_user.role,
+            created=str(existing_user.created),
+            updated=str(existing_user.updated),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in login: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error during login: {str(e)}")
+
+
+@router.post("/users/register", response_model=UserResponse)
+async def register(request: UserRegisterRequest):
+    """
+    Register a new user with email and name.
+    If the account already exists, returns the existing user.
+    """
+    try:
+        email = request.email.lower().strip()
+        name = request.name.strip()
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+        if not name:
+            raise HTTPException(status_code=400, detail="Name is required")
+
+        # Check if user already exists — forgiving, return existing
         existing_user = await User.get_by_email(email)
         if existing_user:
             return UserResponse(
@@ -55,7 +85,7 @@ async def login_or_register(request: UserLoginRequest):
             )
 
         # Create new user
-        new_user = User(email=email, name=None, role="student")
+        new_user = User(email=email, name=name, role="student")
         await new_user.save()
 
         return UserResponse(
@@ -69,8 +99,8 @@ async def login_or_register(request: UserLoginRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in login/register: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error during login: {str(e)}")
+        logger.error(f"Error in register: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error during registration: {str(e)}")
 
 
 @router.get("/users/me", response_model=UserResponse)
@@ -105,11 +135,12 @@ async def get_current_user_courses(authorization: Optional[str] = Header(None)):
         if not user_id:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
-        # Get courses where user is a member
+        # Get courses where user is a member, including membership role
         result = await repo_query(
             """
             SELECT
                 out.* as course,
+                role as membership_role,
                 count((SELECT * FROM module WHERE course = out.id)) as module_count,
                 count((SELECT * FROM course_membership WHERE out = out.id AND role = 'student')) as student_count
             FROM course_membership
@@ -133,6 +164,7 @@ async def get_current_user_courses(authorization: Optional[str] = Header(None)):
                     updated=str(c.get("updated", "")),
                     module_count=r.get("module_count", 0),
                     student_count=r.get("student_count", 0),
+                    membership_role=r.get("membership_role"),
                 )
             )
         return courses

@@ -10,17 +10,23 @@ import { useCoursesStore, type Course } from "@/lib/stores/courses-store";
 import { useUserStore } from "@/lib/stores/user-store";
 import { useCourses } from "@/lib/hooks/use-courses";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { useViewModeStore } from "@/lib/stores/view-mode-store";
+
+function isTeachingRole(role?: string | null): boolean {
+  return role === "instructor" || role === "ta";
+}
 
 export default function CoursesPage() {
   const { setCourses, getCourseColor } = useCoursesStore();
   const { profile } = useUserStore();
   const { currentUser } = useAuthStore();
+  const { activeView } = useViewModeStore();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   // Fetch courses from backend
   const { data: coursesData, isLoading } = useCourses({ archived: false });
 
-  // Sync backend courses to local store (for color management)
+  // Sync backend courses to local store (for color management + membership role)
   useEffect(() => {
     if (coursesData) {
       const localCourses: Course[] = coursesData.map((c) => ({
@@ -31,6 +37,7 @@ export default function CoursesPage() {
         createdAt: c.created,
         updatedAt: c.updated,
         color: getCourseColor(c.id),
+        membershipRole: c.membership_role,
       }));
       setCourses(localCourses);
     }
@@ -48,7 +55,32 @@ export default function CoursesPage() {
     createdAt: c.created,
     updatedAt: c.updated,
     color: getCourseColor(c.id),
+    membershipRole: c.membership_role,
   }));
+
+  // Split courses by role
+  const teachingCourses = activeCourses.filter((c) =>
+    isTeachingRole(c.membershipRole)
+  );
+  const enrolledCourses = activeCourses.filter(
+    (c) => c.membershipRole === "student"
+  );
+
+  // Determine if we have role-based data
+  const hasMembershipData = activeCourses.some((c) => c.membershipRole);
+
+  // Determine section order based on active view
+  const sections = hasMembershipData
+    ? activeView === "instructor"
+      ? [
+          { label: "Teaching", courses: teachingCourses, showCreate: true },
+          { label: "Enrolled", courses: enrolledCourses, showCreate: false },
+        ]
+      : [
+          { label: "Enrolled", courses: enrolledCourses, showCreate: false },
+          { label: "Teaching", courses: teachingCourses, showCreate: true },
+        ]
+    : null;
 
   if (isLoading) {
     return (
@@ -79,24 +111,58 @@ export default function CoursesPage() {
             </Button>
           </div>
 
-          {/* Courses section */}
-          <div className="flex flex-col gap-4 mt-4">
-            <h2 className="text-title text-teal-800">Courses</h2>
+          {/* Courses sections */}
+          {sections ? (
+            // Role-based sectioned view
+            sections.map(
+              (section) =>
+                section.courses.length > 0 && (
+                  <div
+                    key={section.label}
+                    className="flex flex-col gap-4 mt-4"
+                  >
+                    <h2 className="text-title text-teal-800">
+                      {section.label}
+                    </h2>
+                    <div className="flex flex-wrap gap-6">
+                      {section.courses.map((course) => (
+                        <CourseCard key={course.id} course={course} />
+                      ))}
+                    </div>
+                  </div>
+                )
+            )
+          ) : (
+            // Unsectioned fallback (no membership data)
+            <div className="flex flex-col gap-4 mt-4">
+              <h2 className="text-title text-teal-800">Courses</h2>
 
-            {activeCourses.length > 0 ? (
-              // Responsive flex-wrap with 24px gap between cards
-              <div className="flex flex-wrap gap-6">
-                {activeCourses.map((course) => (
-                  <CourseCard key={course.id} course={course} />
-                ))}
+              {activeCourses.length > 0 ? (
+                <div className="flex flex-wrap gap-6">
+                  {activeCourses.map((course) => (
+                    <CourseCard key={course.id} course={course} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-body text-muted-foreground">
+                  No courses yet. Use &quot;Create New Course&quot; to get
+                  started.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Show empty state if both sections are empty */}
+          {sections &&
+            teachingCourses.length === 0 &&
+            enrolledCourses.length === 0 && (
+              <div className="flex flex-col gap-4 mt-4">
+                <p className="text-body text-muted-foreground">
+                  No courses yet. Use &quot;Create New Course&quot; to get
+                  started.
+                </p>
               </div>
-            ) : (
-              <p className="text-body text-muted-foreground">
-                No courses yet. Use &quot;Create New Course&quot; to get
-                started.
-              </p>
             )}
-          </div>
         </div>
       </div>
 

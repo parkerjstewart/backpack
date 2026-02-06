@@ -14,6 +14,8 @@ export interface Course {
   syllabusFileName?: string
   /** Card color variant for visual distinction */
   color?: CourseColor
+  /** User's role in this course from course_membership */
+  membershipRole?: string | null
 }
 
 export interface ModuleMetadata {
