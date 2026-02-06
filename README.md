@@ -96,52 +96,46 @@ Learn more about our project at [https://www.open-notebook.ai](https://www.open-
 
 ## 🚀 Quick Start
 
-Choose your installation method:
+### Prerequisites
 
-### 🐳 **Docker (Recommended)**
+- Python 3.11+
+- Node.js 18+
+- Docker (for SurrealDB)
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- An AI provider API key (OpenAI, Anthropic, Google, etc.) or a local setup like Ollama
 
-**Best for most users** - Fast setup with Docker Compose:
-
-→ **[Docker Compose Installation Guide](docs/1-INSTALLATION/docker-compose.md)**
-- Multi-container setup (recommended)
-- 5-10 minutes setup time
-- Requires Docker Desktop
-
-**Quick Start:**
-- Get an API key (OpenAI, Anthropic, Google, etc.) or setup Ollama
-- Create docker-compose.yml (example in guide)
-- Run: docker compose up -d
-- Access: http://localhost:8502
-
----
-
-### 💻 **From Source (Developers)**
-
-**For development and contributors:**
-
-→ **[From Source Installation Guide](docs/1-INSTALLATION/from-source.md)**
-- Clone and run locally
-- 10-15 minutes setup time
-- Requires: Python 3.11+, Node.js 18+, Docker, uv
-
-**Quick Start:**
+### Setup
 
 ```bash
-git clone https://github.com/lfnovo/open-notebook.git
+# 1. Clone and enter the repo
+git clone https://github.com/parkerjstewart/backpack.git
+cd backpack
+
+# 2. Copy environment files and add your API key(s)
+cp .env.example .env
+cp .env.example docker.env
+
+# 3. Install Python dependencies
 uv sync
+
+# 4. Install frontend dependencies
+cd frontend && npm install && cd ..
+
+# 5. Start all services (DB + API + Worker + Frontend)
 make start-all
 ```
 
-Access: http://localhost:3000 (dev) or http://localhost:8502 (production)
+Access the app at **http://localhost:3000**
+
+For more details on development workflows, see the [Developer Guide](README.dev.md).
 
 ---
 
 ### 📖 Need Help?
 
-- **🤖 AI Installation Assistant**: [CustomGPT to help you install](https://chatgpt.com/g/g-68776e2765b48191bd1bae3f30212631-open-notebook-installation-assistant)
 - **🆘 Troubleshooting**: [5-minute troubleshooting guide](docs/6-TROUBLESHOOTING/quick-fixes.md)
 - **💬 Community Support**: [Discord Server](https://discord.gg/37XJPXfz2w)
-- **🐛 Report Issues**: [GitHub Issues](https://github.com/lfnovo/open-notebook/issues)
+- **🐛 Report Issues**: [GitHub Issues](https://github.com/parkerjstewart/backpack/issues)
 
 ---
 
