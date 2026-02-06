@@ -53,6 +53,18 @@ class Module(ObjectModel):
     description: str
     archived: Optional[bool] = False
     overview: Optional[str] = None
+    course: Optional[str] = None  # record<course> reference
+    order: int = 0  # Order within the course
+
+    @field_validator("course", mode="before")
+    @classmethod
+    def parse_course(cls, value):
+        """Parse course field to ensure string format from RecordID."""
+        if value is None:
+            return value
+        if isinstance(value, RecordID):
+            return str(value)
+        return str(value) if value else None
 
     @field_validator("name")
     @classmethod
@@ -60,6 +72,14 @@ class Module(ObjectModel):
         if not v.strip():
             raise InvalidInputError("Module name cannot be empty")
         return v
+
+    def _prepare_save_data(self) -> dict:
+        """Override to ensure course field is always RecordID format for database."""
+        data = super()._prepare_save_data()
+        # Ensure course field is RecordID format for database
+        if data.get("course") is not None:
+            data["course"] = ensure_record_id(data["course"])
+        return data
 
     async def get_learning_goals(self) -> List["LearningGoal"]:
         """Get all learning goals for this module, ordered by order field."""

@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class ModuleCreate(BaseModel):
     name: str = Field(..., description="Name of the module")
     description: str = Field(default="", description="Description of the module")
+    course_id: Optional[str] = Field(None, description="ID of the course this module belongs to")
 
 
 class ModuleUpdate(BaseModel):
@@ -16,6 +17,7 @@ class ModuleUpdate(BaseModel):
         None, description="Whether the module is archived"
     )
     overview: Optional[str] = Field(None, description="AI-generated overview of the module")
+    course_id: Optional[str] = Field(None, description="ID of the course this module belongs to")
 
 
 class ModuleResponse(BaseModel):
@@ -28,6 +30,7 @@ class ModuleResponse(BaseModel):
     updated: str
     source_count: int
     note_count: int
+    course_id: Optional[str] = None
 
 
 class GenerateOverviewRequest(BaseModel):
@@ -521,6 +524,7 @@ class CourseMemberResponse(BaseModel):
 
 
 class AddCourseMemberRequest(BaseModel):
+    name: str = Field(..., description="Name of the user to add")
     email: str = Field(..., description="Email of the user to add")
     role: Literal["student", "instructor", "ta"] = Field(
         "student", description="Role in the course"

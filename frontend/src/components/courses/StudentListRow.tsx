@@ -1,8 +1,7 @@
 "use client";
 
-import { MoreHorizontal } from "lucide-react";
+import { MoreVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,6 +25,7 @@ interface StudentListRowProps {
  * StudentListRow - Row with avatar, name, mastery indicators, and menu.
  *
  * Shows student info with colored M1-M8 badges for each module's mastery status.
+ * Uses coral-colored circular avatar to match Figma design.
  */
 export function StudentListRow({
   name,
@@ -36,40 +36,25 @@ export function StudentListRow({
   className,
 }: StudentListRowProps) {
   const displayName = name || email.split("@")[0];
-  const initials = displayName
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
 
   return (
     <div
       className={cn(
-        "flex items-center gap-4 px-4 py-3 rounded-xl",
-        "hover:bg-secondary transition-colors",
+        "flex items-center gap-4 py-4 px-4",
         className
       )}
     >
-      {/* Avatar */}
-      <Avatar className="h-10 w-10 shrink-0">
-        <AvatarFallback className="bg-sage-100 text-teal-800">
-          {initials}
-        </AvatarFallback>
-      </Avatar>
-
-      {/* Name */}
-      <div className="flex-1 min-w-0">
-        <p className="text-body font-medium text-teal-800 truncate">
+      {/* Left: Avatar + Name */}
+      <div className="flex items-center gap-4 flex-1 min-w-0">
+        {/* Coral colored circle avatar (matches Figma) */}
+        <div className="w-8 h-8 rounded-full bg-coral-500 shrink-0" />
+        <span className="text-lg tracking-[-0.18px] text-primary truncate">
           {displayName}
-        </p>
-        {name && (
-          <p className="text-sm text-muted-foreground truncate">{email}</p>
-        )}
+        </span>
       </div>
 
-      {/* Mastery indicators */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      {/* Right: Mastery indicators + Actions menu */}
+      <div className="flex items-center gap-3">
         {moduleMastery.map((mastery, index) => (
           <MasteryIndicator
             key={mastery.module_id}
@@ -83,7 +68,7 @@ export function StudentListRow({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-            <MoreHorizontal className="h-4 w-4" />
+            <MoreVertical className="h-5 w-5" />
             <span className="sr-only">Open menu</span>
           </Button>
         </DropdownMenuTrigger>

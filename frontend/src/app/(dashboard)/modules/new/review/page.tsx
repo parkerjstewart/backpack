@@ -242,10 +242,11 @@ export default function ModuleReviewPage() {
 
     setIsConfirming(true);
     try {
-      // 1. Create the module
+      // 1. Create the module (include course_id if created from a course page)
       const module = await createModule.mutateAsync({
         name: name.trim(),
         description: overview || undefined,
+        course_id: targetCourseId || undefined,
       });
 
       // 2. Link sources to the module
