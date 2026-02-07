@@ -111,10 +111,28 @@ async def generate_embeddings(texts: List[str]) -> List[List[float]]:
     )
 
     try:
-        # Single API call for all texts
-        embeddings = await embedding_model.aembed(texts)
-        logger.debug(f"Generated {len(embeddings)} embeddings")
-        return embeddings
+        # Batch to stay under API token limits (~4 chars/token, 250k token budget per call)
+        MAX_BATCH_CHARS = 500_000  # ~250k tokens, well under OpenAI's 300k limit
+        all_embeddings: List[List[float]] = []
+        batch: List[str] = []
+        batch_chars = 0
+
+        for text in texts:
+            text_len = len(text)
+            if batch and batch_chars + text_len > MAX_BATCH_CHARS:
+                logger.debug(f"Embedding batch of {len(batch)} texts ({batch_chars} chars)")
+                all_embeddings.extend(await embedding_model.aembed(batch))
+                batch = []
+                batch_chars = 0
+            batch.append(text)
+            batch_chars += text_len
+
+        if batch:
+            logger.debug(f"Embedding batch of {len(batch)} texts ({batch_chars} chars)")
+            all_embeddings.extend(await embedding_model.aembed(batch))
+
+        logger.debug(f"Generated {len(all_embeddings)} embeddings")
+        return all_embeddings
     except Exception as e:
         logger.error(
             f"Failed to generate embeddings: {e} "
