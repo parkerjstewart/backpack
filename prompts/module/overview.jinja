@@ -18,15 +18,9 @@ The module contains the following materials:
 ## Sources
 {% for source in sources %}
 ### {{ source.title or 'Untitled Source' }}
-{% if source.full_text %}
+{% if source.content %}
 Content:
-{{ source.full_text }}
-{% endif %}
-{% if source.insights %}
-Insights:
-{% for insight in source.insights %}
-- {{ insight.insight_type }}: {{ insight.content }}
-{% endfor %}
+{{ source.content }}
 {% endif %}
 
 {% endfor %}
