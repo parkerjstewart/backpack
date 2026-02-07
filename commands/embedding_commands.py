@@ -361,7 +361,8 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
                 f"for {len(chunks)} chunks"
             )
 
-        # 6. Bulk INSERT source_embedding records
+        # 6. Bulk INSERT source_embedding records in batches to avoid overwhelming the DB
+        INSERT_BATCH_SIZE = 100
         records = [
             {
                 "source": ensure_record_id(input_data.source_id),
@@ -372,8 +373,14 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
             for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings))
         ]
 
-        logger.debug(f"Inserting {len(records)} source_embedding records")
-        await repo_insert("source_embedding", records)
+        for batch_start in range(0, len(records), INSERT_BATCH_SIZE):
+            batch = records[batch_start:batch_start + INSERT_BATCH_SIZE]
+            logger.debug(
+                f"Inserting embedding batch {batch_start // INSERT_BATCH_SIZE + 1}"
+                f"/{(len(records) + INSERT_BATCH_SIZE - 1) // INSERT_BATCH_SIZE}"
+                f" ({len(batch)} records)"
+            )
+            await repo_insert("source_embedding", batch)
 
         processing_time = time.time() - start_time
         logger.info(
