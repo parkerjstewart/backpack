@@ -10,6 +10,7 @@ import {
   CreateLearningGoalRequest,
   UpdateLearningGoalRequest,
   PreviewModuleContentRequest,
+  PreviewSourcesRequest,
 } from '@/lib/types/api'
 
 export function useModules(archived?: boolean) {
@@ -220,12 +221,27 @@ export function useGenerateLearningGoals() {
 
 /**
  * Hook to preview module content (overview + learning goals) without creating a module.
- * Used during the draft module creation flow.
+ * Used during the draft module creation flow for initial auto-generation.
  */
 export function usePreviewModuleContent() {
   return useMutation({
     mutationFn: (data: PreviewModuleContentRequest) =>
       modulesApi.previewContent(data),
-    // No cache invalidation needed - this is a preview operation
+  })
+}
+
+/** Regenerate only the overview from sources. */
+export function usePreviewOverview() {
+  return useMutation({
+    mutationFn: (data: PreviewSourcesRequest) =>
+      modulesApi.previewOverview(data),
+  })
+}
+
+/** Regenerate only the learning goals from sources. */
+export function usePreviewLearningGoals() {
+  return useMutation({
+    mutationFn: (data: PreviewSourcesRequest) =>
+      modulesApi.previewLearningGoals(data),
   })
 }
