@@ -36,25 +36,43 @@ router = APIRouter()
 # ============================================
 
 
+TOKEN_CHAR_RATIO = 4  # ~4 chars per token
+MAX_CONTEXT_TOKENS = 200_000
+MAX_CONTEXT_CHARS = MAX_CONTEXT_TOKENS * TOKEN_CHAR_RATIO  # 800,000
+
+
 async def _build_sources_context(sources) -> list[dict]:
-    """Build the sources context list used by AI prompts."""
+    """Build the sources context list used by AI prompts.
+
+    Uses full text when total is under ~200k tokens.
+    Falls back to dense summaries when over budget.
+    """
+    total_chars = sum(len(s.full_text or "") for s in sources)
+    use_full_text = total_chars <= MAX_CONTEXT_CHARS
+
     sources_context = []
     for source in sources:
-        source_data = {
+        if use_full_text:
+            content = source.full_text or ""
+        else:
+            content = None
+            try:
+                insights = await source.get_insights()
+                for insight in insights:
+                    if insight.insight_type.lower() == "dense summary":
+                        content = insight.content
+                        break
+            except Exception as e:
+                logger.warning(f"Error getting insights for source {source.id}: {e}")
+
+            if not content:
+                full = source.full_text or ""
+                content = full[:4000] + ("..." if len(full) > 4000 else "")
+
+        sources_context.append({
             "title": source.title,
-            "full_text": source.full_text,
-            "insights": [],
-        }
-        try:
-            insights = await source.get_insights()
-            for insight in insights:
-                source_data["insights"].append({
-                    "insight_type": insight.insight_type,
-                    "content": insight.content,
-                })
-        except Exception as e:
-            logger.warning(f"Error getting insights for source {source.id}: {e}")
-        sources_context.append(source_data)
+            "content": content,
+        })
     return sources_context
 
 

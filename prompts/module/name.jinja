@@ -7,8 +7,8 @@ You are a concise academic title generator.
 {% if sources %}
 {% for source in sources %}
 ### {{ source.title or 'Untitled Source' }}
-{% if source.full_text %}
-{{ source.full_text[:2000] }}
+{% if source.content %}
+{{ source.content}}
 {% endif %}
 {% endfor %}
 {% endif %}

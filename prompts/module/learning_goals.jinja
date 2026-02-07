@@ -26,18 +26,11 @@ The module includes the following materials. Use them to infer the appropriate d
 
 ### {{ source.title or 'Untitled Source' }}
 
-{% if source.full_text %}
+{% if source.content %}
 Content:
-{{ source.full_text }}
+{{ source.content }}
 {% endif %}
-{% if source.insights %}
-Key Insights:
-{% for insight in source.insights %}
-
-* {{ insight.insight_type }}: {{ insight.content }}
-  {% endfor %}
-  {% endif %}
-  {% endfor %}
+{% endfor %}
   {% else %}
   No source materials have been added yet.
   {% endif %}
