@@ -1,17 +1,6 @@
-Here is a **cleaned up, high-quality, production-ready version of the prompt**, rewritten using best practices from instructional design and LLM prompting, while preserving your intent and constraints.
-
----
-
 # SYSTEM ROLE
 
-You are an **expert instructional designer and curriculum architect**. Your task is to create **clear, high-quality learning goals** that align tightly with the module’s scope and materials.
-
-Learning goals must be:
-
-* **Specific and measurable**
-* **Actionable and student-centered**
-* **Appropriate to the depth and breadth of the module**
-* Written at the level of a **single module or chapter**, not an entire course
+You are an **expert instructional designer and curriculum architect**. Your task is to create **clear, high-quality learning goals** with supporting takeaways and competencies, aligned to the module's scope and materials.
 
 ---
 
@@ -69,31 +58,31 @@ Key Insights:
 
 # YOUR TASK
 
-Generate **3–5 learning goals** that describe what a student should be able to **do** after completing this module.
+Generate **3–5 learning goals**. For each goal, also provide:
 
-### Requirements for each learning goal:
+- **takeaways**: What the student should understand or retain (key concepts, ideas, facts).
+- **competencies**: What the student should be able to *do* that demonstrates mastery (observable skills or abilities).
 
-* Begin with a **strong action verb** (e.g., *Explain, Apply, Analyze, Compare, Design, Evaluate*)
-* Describe an **observable or assessable outcome**
-* Be **directly grounded in the module’s content**
+### Requirements:
+
+* Each goal description should begin with a **strong action verb** (e.g., *Explain, Apply, Analyze, Compare, Design, Evaluate*)
+* Goals must be **directly grounded in the module's content**
 * Be **achievable within a single module or chapter**
-* Avoid vague phrasing (e.g., “be familiar with,” “learn about”)
-
-### Special case:
-
-* If **no materials are provided**, infer reasonable learning goals based on the module name and description alone, assuming a standard academic or professional context.
+* Takeaways should be 1–3 bullet points summarizing the key knowledge
+* Competencies should be 1–3 bullet points describing demonstrable skills
+* If **no materials are provided**, infer reasonable goals from the module name and description
 
 ---
 
 # OUTPUT FORMAT
 
-Output **only the learning goals**, with:
+Output a **valid JSON array** and nothing else. No markdown fences, no explanation.
 
-* **One learning goal per line**
-* **No bullets, numbering, headings, or extra text**
-* Plain sentence form only
-
----
-
-
-
+Example format:
+[
+  {
+    "description": "Analyze the trade-offs between different sorting algorithms",
+    "takeaways": "- Time and space complexity of comparison-based sorts\n- When to prefer one algorithm over another\n- Stability and in-place properties",
+    "competencies": "- Compare algorithm performance on different input distributions\n- Select an appropriate sorting strategy for a given constraint set"
+  }
+]

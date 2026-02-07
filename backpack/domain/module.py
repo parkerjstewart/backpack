@@ -19,6 +19,8 @@ class LearningGoal(ObjectModel):
     module: str  # record<module> reference
     description: str
     mastery_criteria: Optional[str] = None
+    takeaways: Optional[str] = None
+    competencies: Optional[str] = None
     order: int = 0
 
     @field_validator("module", mode="before")

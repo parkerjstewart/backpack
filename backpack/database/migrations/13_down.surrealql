@@ -1,5 +1,5 @@
 -- ============================================
--- Migration 13 DOWN: Remove Invitation System
+-- Migration 13 DOWN: Remove Invitation System and Remove takeaways and competencies from learning_goal
 -- ============================================
 
 REMOVE EVENT IF EXISTS invitation_course_delete ON TABLE course;
@@ -7,3 +7,5 @@ REMOVE INDEX IF EXISTS idx_invitation_course_status ON TABLE invitation;
 REMOVE INDEX IF EXISTS idx_invitation_email_course ON TABLE invitation;
 REMOVE INDEX IF EXISTS idx_invitation_token ON TABLE invitation;
 REMOVE TABLE IF EXISTS invitation;
+REMOVE FIELD IF EXISTS takeaways ON TABLE learning_goal;
+REMOVE FIELD IF EXISTS competencies ON TABLE learning_goal;

@@ -46,6 +46,12 @@ class LearningGoalCreate(BaseModel):
     mastery_criteria: Optional[str] = Field(
         None, description="Criteria for mastering this goal"
     )
+    takeaways: Optional[str] = Field(
+        None, description="Key concepts or skills to be learned"
+    )
+    competencies: Optional[str] = Field(
+        None, description="Abilities that demonstrate mastery"
+    )
     order: Optional[int] = Field(None, description="Display order (auto-assigned if not provided)")
 
 
@@ -53,6 +59,12 @@ class LearningGoalUpdate(BaseModel):
     description: Optional[str] = Field(None, description="Learning goal description")
     mastery_criteria: Optional[str] = Field(
         None, description="Criteria for mastering this goal"
+    )
+    takeaways: Optional[str] = Field(
+        None, description="Key concepts or skills to be learned"
+    )
+    competencies: Optional[str] = Field(
+        None, description="Abilities that demonstrate mastery"
     )
     order: Optional[int] = Field(None, description="Display order")
 
@@ -62,6 +74,8 @@ class LearningGoalResponse(BaseModel):
     module: str
     description: str
     mastery_criteria: Optional[str] = None
+    takeaways: Optional[str] = None
+    competencies: Optional[str] = None
     order: int
     created: str
     updated: str

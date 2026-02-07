@@ -109,6 +109,8 @@ export default function ModuleReviewPage() {
               data.overview,
               data.learning_goals.map((g) => ({
                 description: g.description,
+                takeaways: g.takeaways || "",
+                competencies: g.competencies || "",
                 order: g.order,
               }))
             );
@@ -166,6 +168,8 @@ export default function ModuleReviewPage() {
               data.overview,
               data.learning_goals.map((g) => ({
                 description: g.description,
+                takeaways: g.takeaways || "",
+                competencies: g.competencies || "",
                 order: g.order,
               }))
             );
@@ -202,6 +206,8 @@ export default function ModuleReviewPage() {
             overview,
             data.learning_goals.map((g) => ({
               description: g.description,
+              takeaways: g.takeaways || "",
+              competencies: g.competencies || "",
               order: g.order,
             }))
           );
@@ -257,6 +263,8 @@ export default function ModuleReviewPage() {
       for (const goal of learningGoals) {
         await modulesApi.createLearningGoal(module.id, {
           description: goal.description,
+          takeaways: goal.takeaways || undefined,
+          competencies: goal.competencies || undefined,
           order: goal.order,
         });
       }
@@ -284,8 +292,12 @@ export default function ModuleReviewPage() {
       } else {
         router.push(`/modules/${encodeURIComponent(module.id)}`);
       }
-    } catch (error) {
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: unknown } };
       console.error("Error creating module:", error);
+      if (axiosErr?.response?.data) {
+        console.error("Server response:", JSON.stringify(axiosErr.response.data));
+      }
     } finally {
       setIsConfirming(false);
     }

@@ -82,6 +82,8 @@ export interface LearningGoalResponse {
   module: string
   description: string
   mastery_criteria: string | null
+  takeaways: string | null
+  competencies: string | null
   order: number
   created: string
   updated: string
@@ -90,12 +92,16 @@ export interface LearningGoalResponse {
 export interface CreateLearningGoalRequest {
   description: string
   mastery_criteria?: string
+  takeaways?: string
+  competencies?: string
   order?: number
 }
 
 export interface UpdateLearningGoalRequest {
   description?: string
   mastery_criteria?: string
+  takeaways?: string
+  competencies?: string
   order?: number
 }
 
@@ -275,6 +281,8 @@ export interface PreviewModuleContentResponse {
   overview: string | null
   learning_goals: Array<{
     description: string
+    takeaways?: string
+    competencies?: string
     order: number
   }>
 }
@@ -292,6 +300,8 @@ export interface PreviewOverviewResponse {
 export interface PreviewLearningGoalsResponse {
   learning_goals: Array<{
     description: string
+    takeaways?: string
+    competencies?: string
     order: number
   }>
 }
