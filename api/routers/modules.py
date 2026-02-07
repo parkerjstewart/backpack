@@ -1,3 +1,4 @@
+import json
 from typing import List, Optional
 
 from ai_prompter import Prompter
@@ -112,7 +113,39 @@ async def _generate_learning_goals_list(
     )
     content = clean_thinking_content(content)
 
-    # Parse: one goal per line, skip headings
+    # Strip markdown code fences if the model wrapped the JSON
+    content = content.strip()
+    if content.startswith("```"):
+        content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+
+    # Parse JSON array output
+    try:
+        parsed = json.loads(content)
+        if isinstance(parsed, list):
+            goals = []
+            for i, item in enumerate(parsed):
+                if isinstance(item, dict) and "description" in item:
+                    # Normalize arrays to bullet-point strings
+                    takeaways = item.get("takeaways", "")
+                    if isinstance(takeaways, list):
+                        takeaways = "\n".join(f"- {t}" for t in takeaways)
+                    competencies = item.get("competencies", "")
+                    if isinstance(competencies, list):
+                        competencies = "\n".join(f"- {c}" for c in competencies)
+                    goals.append({
+                        "description": item["description"],
+                        "takeaways": takeaways,
+                        "competencies": competencies,
+                        "order": i,
+                    })
+            return goals
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse learning goals as JSON, falling back to line parsing")
+
+    # Fallback: one goal per line (no takeaways/competencies)
     goal_lines = [
         line.strip()
         for line in content.strip().split("\n")
@@ -122,7 +155,7 @@ async def _generate_learning_goals_list(
     for i, line in enumerate(goal_lines):
         cleaned = line.lstrip("0123456789.-*) ").strip()
         if cleaned:
-            goals.append({"description": cleaned, "order": i})
+            goals.append({"description": cleaned, "takeaways": "", "competencies": "", "order": i})
     return goals
 
 
@@ -544,6 +577,8 @@ async def create_learning_goal(module_id: str, request: LearningGoalCreate):
             module=str(ensure_record_id(module_id)),
             description=request.description,
             mastery_criteria=request.mastery_criteria,
+            takeaways=request.takeaways,
+            competencies=request.competencies,
             order=order,
         )
         await goal.save()
@@ -553,6 +588,8 @@ async def create_learning_goal(module_id: str, request: LearningGoalCreate):
             module=str(goal.module),
             description=goal.description,
             mastery_criteria=goal.mastery_criteria,
+            takeaways=goal.takeaways,
+            competencies=goal.competencies,
             order=goal.order,
             created=str(goal.created),
             updated=str(goal.updated),
@@ -580,6 +617,10 @@ async def update_learning_goal(goal_id: str, request: LearningGoalUpdate):
             goal.description = request.description
         if request.mastery_criteria is not None:
             goal.mastery_criteria = request.mastery_criteria
+        if request.takeaways is not None:
+            goal.takeaways = request.takeaways
+        if request.competencies is not None:
+            goal.competencies = request.competencies
         if request.order is not None:
             goal.order = request.order
 
@@ -590,6 +631,8 @@ async def update_learning_goal(goal_id: str, request: LearningGoalUpdate):
             module=str(goal.module),
             description=goal.description,
             mastery_criteria=goal.mastery_criteria,
+            takeaways=goal.takeaways,
+            competencies=goal.competencies,
             order=goal.order,
             created=str(goal.created),
             updated=str(goal.updated),
@@ -658,6 +701,8 @@ async def generate_module_learning_goals(
             goal = LearningGoal(
                 module=str(ensure_record_id(module_id)),
                 description=goal_data["description"],
+                takeaways=goal_data.get("takeaways") or None,
+                competencies=goal_data.get("competencies") or None,
                 order=goal_data["order"],
             )
             await goal.save()
@@ -667,6 +712,8 @@ async def generate_module_learning_goals(
                     module=str(goal.module),
                     description=goal.description,
                     mastery_criteria=goal.mastery_criteria,
+                    takeaways=goal.takeaways,
+                    competencies=goal.competencies,
                     order=goal.order,
                     created=str(goal.created),
                     updated=str(goal.updated),
