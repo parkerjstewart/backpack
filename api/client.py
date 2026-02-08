@@ -39,11 +39,7 @@ class APIClient:
             )
             self.timeout = 300.0
 
-        # Add authentication header if password is set
         self.headers = {}
-        password = os.getenv("BACKPACK_PASSWORD")
-        if password:
-            self.headers["Authorization"] = f"Bearer {password}"
 
     def _make_request(
         self, method: str, endpoint: str, timeout: Optional[float] = None, **kwargs

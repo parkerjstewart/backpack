@@ -340,6 +340,30 @@ export interface AddCourseMemberRequest {
   role?: 'student' | 'instructor' | 'ta'
 }
 
+// ============================================
+// Invitation Types
+// ============================================
+export interface InvitationResponse {
+  id: string
+  token: string
+  course_id: string
+  course_title?: string
+  email: string
+  name: string
+  role: string
+  status: string
+  invited_by?: string
+  invite_url?: string
+  expires_at?: string
+  created?: string
+}
+
+export interface CreateInvitationRequest {
+  name: string
+  email: string
+  role?: 'student' | 'instructor' | 'ta'
+}
+
 export type MasteryStatus = 'mastered' | 'progressing' | 'struggling' | 'incomplete'
 
 export interface ModuleMasteryResponse {

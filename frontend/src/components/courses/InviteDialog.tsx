@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormLabel } from "@/components/ui/form-label";
-import { useAddCourseMember } from "@/lib/hooks/use-courses";
+import { useCreateInvitation } from "@/lib/hooks/use-invitations";
 
 const inviteSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -44,7 +44,7 @@ export function InviteDialog({
   courseId,
   defaultRole = "student",
 }: InviteDialogProps) {
-  const addMember = useAddCourseMember(courseId);
+  const createInvitation = useCreateInvitation(courseId);
 
   const {
     register,
@@ -79,7 +79,7 @@ export function InviteDialog({
 
   const onSubmit = async (data: InviteFormData) => {
     try {
-      await addMember.mutateAsync({
+      await createInvitation.mutateAsync({
         name: data.name,
         email: data.email,
         role: data.role,
@@ -87,7 +87,7 @@ export function InviteDialog({
       closeDialog();
     } catch (error) {
       // Error handling is done in the mutation
-      console.error("Error inviting member:", error);
+      console.error("Error creating invitation:", error);
     }
   };
 
@@ -159,9 +159,9 @@ export function InviteDialog({
             type="submit"
             variant={isValid ? "accent" : "light"}
             className="w-full h-12"
-            disabled={!isValid || addMember.isPending}
+            disabled={!isValid || createInvitation.isPending}
           >
-            {addMember.isPending ? "Sending..." : "Send Invite"}
+            {createInvitation.isPending ? "Sending..." : "Send Invite"}
           </Button>
         </form>
       </DialogContent>
