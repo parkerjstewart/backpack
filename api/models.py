@@ -548,3 +548,29 @@ class StudentWithMasteryResponse(BaseModel):
     email: str
     name: Optional[str] = None
     module_mastery: List[ModuleMasteryResponse] = Field(default_factory=list)
+
+
+# ============================================
+# Invitation API models
+# ============================================
+class CreateInvitationRequest(BaseModel):
+    name: str = Field(..., description="Name of the invitee")
+    email: str = Field(..., description="Email of the invitee")
+    role: Literal["student", "instructor", "ta"] = Field(
+        "student", description="Role in the course"
+    )
+
+
+class InvitationResponse(BaseModel):
+    id: str
+    token: str
+    course_id: str
+    course_title: Optional[str] = None
+    email: str
+    name: str
+    role: str
+    status: str
+    invited_by: Optional[str] = None
+    invite_url: Optional[str] = None
+    expires_at: Optional[str] = None
+    created: Optional[str] = None

@@ -1,0 +1,27 @@
+-- ============================================
+-- Migration 13: Invitation System
+-- Adds invitation table for email-based course invitations
+-- ============================================
+
+-- INVITATION TABLE
+DEFINE TABLE IF NOT EXISTS invitation SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS token ON TABLE invitation TYPE string;
+DEFINE FIELD IF NOT EXISTS course_id ON TABLE invitation TYPE record<course>;
+DEFINE FIELD IF NOT EXISTS email ON TABLE invitation TYPE string;
+DEFINE FIELD IF NOT EXISTS name ON TABLE invitation TYPE string;
+DEFINE FIELD IF NOT EXISTS role ON TABLE invitation TYPE string DEFAULT 'student';
+DEFINE FIELD IF NOT EXISTS status ON TABLE invitation TYPE string DEFAULT 'pending';
+DEFINE FIELD IF NOT EXISTS invited_by ON TABLE invitation TYPE option<record<user>>;
+DEFINE FIELD IF NOT EXISTS expires_at ON TABLE invitation TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS created ON TABLE invitation TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated ON TABLE invitation TYPE datetime DEFAULT time::now();
+
+-- Indexes
+DEFINE INDEX IF NOT EXISTS idx_invitation_token ON TABLE invitation COLUMNS token UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_invitation_email_course ON TABLE invitation COLUMNS email, course_id;
+DEFINE INDEX IF NOT EXISTS idx_invitation_course_status ON TABLE invitation COLUMNS course_id, status;
+
+-- Cascade delete: remove invitations when course is deleted
+DEFINE EVENT IF NOT EXISTS invitation_course_delete ON TABLE course WHEN ($after == NONE) THEN {
+    DELETE invitation WHERE course_id == $before.id;
+};
