@@ -2,6 +2,32 @@
 
 Radix UI-based accessible component library with CVA styling, composed building blocks, and theming support.
 
+## Design System Tokens
+
+Design tokens are defined in `globals.css` and `tailwind.config.ts`. Based on Figma design system.
+
+### Color Palette
+- **Background**: Warm cream `#fefcf6` (not pure white)
+- **Primary**: Teal `#14302e` (text, dark buttons)
+- **Secondary**: Light neutral `#f0f1eb` (hover states, light buttons)
+- **Accent**: Sage green `#d4e297` (active states, accent buttons)
+- **Muted**: `#e7e8e4` (disabled, placeholder)
+- **Border**: `rgba(20, 48, 46, 0.2)` (opacity-based for consistency)
+
+### Typography
+- **Heading font**: EB Garamond (serif) — use `font-heading` class
+- **Body font**: Figtree (sans-serif) — default, use `font-sans` class
+- **Key classes**: `.text-hero` (48px), `.text-section` (32px), `.text-title` (24px), `.text-card-title` (28px)
+
+### Spacing & Radius
+- **Border radius**: `--radius-sm` (8px), `--radius-md` (16px), `--radius-lg` (24px), `--radius-xl` (32px)
+- **Layout spacing**: `--page-padding` (32px), `--section-gap` (32px), `--card-gap` (24px)
+
+### Theme State
+- **Currently light-mode only** — dark mode temporarily disabled
+- Theme toggle hidden; `ThemeProvider` forces light mode
+- `dark:` Tailwind classes exist but don't apply (can be cleaned up later)
+
 ## Key Components
 
 - **Primitives** (`button.tsx`, `dialog.tsx`, `select.tsx`, `dropdown-menu.tsx`): Radix UI wrappers with Tailwind styling
@@ -20,7 +46,29 @@ Radix UI-based accessible component library with CVA styling, composed building 
 - **Controlled styling**: Classes hardcoded in components; use `className` prop to override/extend
 - **Animations**: Radix `data-[state]` selectors for open/close animations (fade-in, zoom-in)
 - **Accessibility first**: ARIA attributes from Radix (aria-invalid, sr-only labels, focus rings)
-- **Dark mode support**: Uses Tailwind dark: prefix for color scheme (e.g., `dark:border-input`)
+
+## Component Styling Conventions
+
+### Hover States
+- **Use `secondary` for hover, NOT `accent`** — hover states should use neutral colors (`hover:bg-secondary`)
+- Accent (sage green) is reserved for **active/selected states** only
+- Example: sidebar items hover → `bg-secondary`, active → `bg-sidebar-accent`
+
+### Button Variants
+- **`default`/`dark`**: Teal background, cream text (primary actions)
+- **`accent`**: Sage green background (highlighted actions)
+- **`light`/`secondary`**: Neutral background (secondary actions)
+- **`outline`**: 2px dashed border, transparent bg (empty states, add buttons)
+- **`ghost`**: No background, hover shows secondary bg
+- **Default size**: 48px height (`h-12`), 32px horizontal padding (`px-8`), 16px radius
+
+### Input Focus States
+- Focus ring uses sage color (`focus-visible:border-sage-500`)
+- 2px border on focus, 3px ring spread
+
+### Cards
+- Use `CardInteractive` for clickable cards (has hover state)
+- Hover: `bg-secondary` (neutral), no accent color
 
 ## Key Dependencies
 
@@ -46,7 +94,8 @@ Radix UI-based accessible component library with CVA styling, composed building 
 - **Click outside closes dropdown**: Radix dropdowns auto-close on outside click; may conflict with hover-triggered actions
 - **SVG size inference**: Button uses `[&_svg:not([class*='size-'])]:size-4` to default unlabeled icons to 4x4; be explicit if different size needed
 - **CSS-in-JS conflicts**: Hardcoded Tailwind classes may conflict with global CSS; specificity matters
-- **Dark mode class**: Requires `dark` class on document root; not automatic with prefers-color-scheme alone
+- **Dark mode disabled**: Currently light-mode only; `dark:` classes exist but don't apply. Don't add new dark mode styles until re-enabled.
+- **Hover vs Active colors**: Hover uses `secondary` (neutral), active uses `accent` (sage). Don't mix them up.
 
 ## Testing Patterns
 

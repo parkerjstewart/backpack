@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useMemo, useId } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import { useModules } from '@/lib/hooks/use-modules'
-import { useTheme } from '@/lib/stores/theme-store'
 import {
   CommandDialog,
   CommandInput,
@@ -24,9 +23,6 @@ import {
   Wrench,
   MessageCircleQuestion,
   Plus,
-  Sun,
-  Moon,
-  Monitor,
   Loader2,
 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -49,25 +45,24 @@ const getCreateItems = (t: TranslationKeys) => [
   { name: t.common.newPodcast, action: 'podcast', icon: Mic },
 ]
 
-const getThemeItems = (t: TranslationKeys) => [
-  { name: t.common.light, value: 'light' as const, icon: Sun, keywords: ['bright', 'day'] },
-  { name: t.common.dark, value: 'dark' as const, icon: Moon, keywords: ['night'] },
-  { name: t.common.system, value: 'system' as const, icon: Monitor, keywords: ['auto', 'default'] },
-]
+// Theme items temporarily disabled - light mode only
+// const getThemeItems = (t: TranslationKeys) => [
+//   { name: t.common.light, value: 'light' as const, icon: Sun, keywords: ['bright', 'day'] },
+//   { name: t.common.dark, value: 'dark' as const, icon: Moon, keywords: ['night'] },
+//   { name: t.common.system, value: 'system' as const, icon: Monitor, keywords: ['auto', 'default'] },
+// ]
 
 export function CommandPalette() {
   const { t } = useTranslation()
   const commandInputId = useId()
   const navigationItems = useMemo(() => getNavigationItems(t), [t])
   const createItems = useMemo(() => getCreateItems(t), [t])
-  const themeItems = useMemo(() => getThemeItems(t), [t])
 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const router = useRouter()
 
   const { openSourceDialog, openModuleDialog, openPodcastDialog } = useCreateDialogs()
-  const { setTheme } = useTheme()
   const { data: modules, isLoading: modulesLoading } = useModules(false)
 
   // Global keyboard listener for ⌘K / Ctrl+K
@@ -131,11 +126,7 @@ export function CommandPalette() {
     })
   }, [handleSelect, openSourceDialog, openModuleDialog, openPodcastDialog])
 
-  const handleTheme = useCallback((theme: 'light' | 'dark' | 'system') => {
-    handleSelect(() => setTheme(theme))
-  }, [handleSelect, setTheme])
-
-  // Check if query matches any command (navigation, create, theme, or module)
+  // Check if query matches any command (navigation, create, or module)
   const queryLower = query.toLowerCase().trim()
   const hasCommandMatch = useMemo(() => {
     if (!queryLower) return false
@@ -147,16 +138,12 @@ export function CommandPalette() {
       createItems.some(item =>
         item.name.toLowerCase().includes(queryLower)
       ) ||
-      themeItems.some(item =>
-        item.name.toLowerCase().includes(queryLower) ||
-        item.keywords.some(k => k.includes(queryLower))
-      ) ||
       (modules?.some(m =>
         m.name.toLowerCase().includes(queryLower) ||
         (m.description && m.description.toLowerCase().includes(queryLower))
       ) ?? false)
     )
-  }, [queryLower, modules, navigationItems, createItems, themeItems])
+  }, [queryLower, modules, navigationItems, createItems])
 
   // Determine if we should show the Search/Ask section at the top
   const showSearchFirst = query.trim() && !hasCommandMatch
@@ -250,19 +237,7 @@ export function CommandPalette() {
           ))}
         </CommandGroup>
 
-        {/* Theme */}
-        <CommandGroup heading={t.navigation.theme}>
-          {themeItems.map((item) => (
-            <CommandItem
-              key={item.value}
-              value={`theme ${item.name} ${item.keywords.join(' ')}`}
-              onSelect={() => handleTheme(item.value)}
-            >
-              <item.icon className="h-4 w-4" />
-              <span>{item.name}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {/* Theme section temporarily hidden - light mode only */}
 
         {/* Search/Ask - show at bottom when there IS a command match */}
         {query.trim() && hasCommandMatch && (

@@ -26,7 +26,8 @@ function TabsList({
     <TabsPrimitive.List
       data-slot="tabs-list"
       className={cn(
-        "inline-flex w-fit items-center justify-center gap-1 rounded-xl border border-border bg-muted/80 p-1 text-muted-foreground shadow-sm",
+        // Pill-style tabs container
+        "inline-flex w-fit items-center justify-center gap-1 rounded-lg bg-secondary p-1 text-muted-foreground",
         className
       )}
       {...props}
@@ -42,7 +43,18 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-transparent px-4 text-sm font-medium text-muted-foreground transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-border data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        // Pill-style tab trigger
+        "inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium text-muted-foreground transition-all duration-150",
+        // Focus styles
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-500/40 focus-visible:ring-offset-2",
+        // Disabled
+        "disabled:pointer-events-none disabled:opacity-50",
+        // Active state - sage accent background
+        "data-[state=active]:bg-sidebar-accent data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+        // Hover state for inactive tabs
+        "data-[state=inactive]:hover:bg-muted data-[state=inactive]:hover:text-foreground",
+        // SVG handling
+        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

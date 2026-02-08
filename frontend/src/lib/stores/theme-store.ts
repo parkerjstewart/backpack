@@ -1,45 +1,34 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type Theme = 'light' | 'dark' | 'system'
+// Light mode only for now - dark mode temporarily disabled
+export type Theme = 'light'
 
 interface ThemeState {
   theme: Theme
   setTheme: (theme: Theme) => void
-  getSystemTheme: () => 'light' | 'dark'
-  getEffectiveTheme: () => 'light' | 'dark'
+  getEffectiveTheme: () => 'light'
 }
 
 export const useThemeStore = create<ThemeState>()(
   persist(
-    (set, get) => ({
-      theme: 'system',
+    (set) => ({
+      theme: 'light',
       
-      setTheme: (theme: Theme) => {
-        set({ theme })
+      setTheme: (_theme: Theme) => {
+        // Force light mode only
+        set({ theme: 'light' })
         
         // Apply theme to document immediately
         if (typeof window !== 'undefined') {
           const root = window.document.documentElement
-          const effectiveTheme = theme === 'system' ? get().getSystemTheme() : theme
-          
           root.classList.remove('light', 'dark')
-          root.classList.add(effectiveTheme)
-          root.setAttribute('data-theme', effectiveTheme)
+          root.classList.add('light')
+          root.setAttribute('data-theme', 'light')
         }
       },
       
-      getSystemTheme: () => {
-        if (typeof window !== 'undefined') {
-          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-        }
-        return 'light'
-      },
-      
-      getEffectiveTheme: () => {
-        const { theme } = get()
-        return theme === 'system' ? get().getSystemTheme() : theme
-      }
+      getEffectiveTheme: () => 'light'
     }),
     {
       name: 'theme-storage',
@@ -56,6 +45,6 @@ export function useTheme() {
     theme,
     setTheme,
     effectiveTheme: getEffectiveTheme(),
-    isDark: getEffectiveTheme() === 'dark'
+    isDark: false
   }
 }

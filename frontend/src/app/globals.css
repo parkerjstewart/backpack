@@ -4,8 +4,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans);
+  --font-heading: var(--font-heading);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -35,79 +35,115 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  
+  /* Semantic colors */
+  --color-sage-300: var(--sage-300);
+  --color-sage-500: var(--sage-500);
+  --color-sage-700: var(--sage-700);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-teal-800: var(--teal-800);
+  --color-teal-300: var(--teal-300);
+  --color-teal-200: var(--teal-200);
+  --color-neutral-400: var(--neutral-400);
 }
 
 :root {
-  --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.623 0.214 259.815);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.623 0.214 259.815);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.92 0.01 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.623 0.214 259.815);
-}
-
-.dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.546 0.245 262.881);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.488 0.243 264.376);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.35 0.01 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.488 0.243 264.376);
+  /* Border radius tokens */
+  --radius: 0.5rem;      /* 8px - base */
+  --radius-sm: 0.5rem;   /* 8px */
+  --radius-md: 1rem;     /* 16px */
+  --radius-lg: 1.5rem;   /* 24px */
+  --radius-xl: 2rem;     /* 32px */
+  
+  /* Surface colors */
+  --background: #fefcf6;
+  --foreground: #14302e;
+  --card: #ffffff;
+  --card-foreground: #14302e;
+  --popover: #ffffff;
+  --popover-foreground: #14302e;
+  
+  /* Brand colors */
+  --primary: #14302e;
+  --primary-foreground: #fefcf6;
+  --secondary: #f0f1eb;
+  --secondary-foreground: #14302e;
+  --accent: #d4e297;
+  --accent-foreground: #14302e;
+  
+  /* UI colors */
+  --muted: #e7e8e4;
+  --muted-foreground: rgba(20, 48, 46, 0.6);
+  --destructive: #dc2626;
+  
+  /* Borders */
+  --border: rgba(20, 48, 46, 0.2);
+  --input: rgba(20, 48, 46, 0.2);
+  --ring: #d4e297;
+  
+  /* Sidebar */
+  --sidebar: #fefcf6;
+  --sidebar-foreground: #14302e;
+  --sidebar-primary: #14302e;
+  --sidebar-primary-foreground: #fefcf6;
+  --sidebar-accent: #ecf1d5;
+  --sidebar-accent-foreground: #14302e;
+  --sidebar-border: rgba(20, 48, 46, 0.4);
+  --sidebar-ring: #d4e297;
+  
+  /* Semantic colors */
+  --success: #97e2a1;
+  --warning: #f7c99d;
+  --sage-300: #ade297;
+  --sage-500: #d4e297;
+  --sage-700: #588f58;
+  
+  /* Additional teal shades */
+  --teal-800: rgba(20, 48, 46, 0.8);
+  --teal-300: rgba(20, 48, 46, 0.4);
+  --teal-200: rgba(20, 48, 46, 0.2);
+  
+  /* Neutral */
+  --neutral-400: #c4c6bd;
+  
+  /* Chart colors (updated for new palette) */
+  --chart-1: #14302e;
+  --chart-2: #588f58;
+  --chart-3: #d4e297;
+  --chart-4: #97e2a1;
+  --chart-5: #f7c99d;
+  
+  /* Typography tokens */
+  --font-heading: var(--font-heading), Georgia, serif;
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  
+  /* Font sizes */
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.875rem;   /* 14px */
+  --text-base: 1rem;     /* 16px */
+  --text-lg: 1.125rem;   /* 18px */
+  --text-xl: 1.5rem;     /* 24px */
+  --text-2xl: 1.75rem;   /* 28px */
+  --text-3xl: 2rem;      /* 32px */
+  --text-4xl: 3rem;      /* 48px - Hero titles */
+  
+  /* Layout spacing tokens */
+  --page-padding: 32px;
+  --section-gap: 32px;
+  --card-gap: 24px;
+  --item-gap: 12px;
+  
+  /* Hero spacing */
+  --hero-padding-top: 48px;
+  --hero-padding-bottom: 32px;
+  
+  /* Light mode color scheme */
+  color-scheme: light;
 }
 
 @layer base {
@@ -120,27 +156,12 @@
   }
 
   body {
-    @apply bg-background text-foreground transition-colors;
-  }
-
-  /* Ensure proper theme inheritance for popovers and dropdowns */
-  .dark {
-    color-scheme: dark;
-  }
-
-  :root {
-    color-scheme: light;
+    @apply bg-background text-foreground;
   }
 
   /* Ensure Radix UI components inherit theme properly */
   [data-radix-popper-content-wrapper] {
     @apply z-50;
-  }
-
-  /* Force theme inheritance for portaled content */
-  .dark [data-radix-popper-content-wrapper],
-  .dark [data-overlay-container] {
-    color-scheme: dark;
   }
 
   /* Ensure sidebar gets proper theme */
@@ -150,35 +171,25 @@
     border-color: var(--sidebar-border);
   }
 
-  /* Enhanced sidebar menu item hover effects */
+  /* Sidebar menu item styles */
+  /* Note: Main nav items now use inline Tailwind classes for simpler Figma-matching styles */
   .sidebar-menu-item {
     @apply transition-all duration-200 ease-out;
   }
 
   .sidebar-menu-item:hover {
-    @apply scale-[1.02];
-    background-color: var(--sidebar-accent) !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  }
-
-  .dark .sidebar-menu-item:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    /* Hover uses neutral secondary */
+    background-color: var(--secondary) !important;
   }
 
   /* Enhanced hover effects for cards */
+  /* Figma: hover changes to surface/secondary (#f0f1eb) - neutral */
   .card-hover {
     @apply transition-all duration-200 cursor-pointer;
   }
 
   .card-hover:hover {
-    background-color: var(--muted) !important;
-    border-color: var(--border);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  }
-
-  .dark .card-hover:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    background-color: var(--secondary) !important;
   }
 
   /* Ensure clickable cards show pointer cursor */
@@ -188,5 +199,79 @@
 
   .clickable-card * {
     cursor: pointer !important;
+  }
+
+  /* Typography utility classes */
+  .heading {
+    font-family: var(--font-heading);
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.02em;
+  }
+
+  /* Typography scale from Figma */
+  .text-hero {
+    font-family: var(--font-heading);
+    font-size: var(--text-4xl);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+
+  .text-section {
+    font-family: var(--font-heading);
+    font-size: var(--text-3xl);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+
+  .text-title {
+    font-family: var(--font-heading);
+    font-size: var(--text-xl);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+
+  .text-card-title {
+    font-family: var(--font-heading);
+    font-size: var(--text-2xl);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  .text-subtitle {
+    font-family: var(--font-heading);
+    font-size: var(--text-lg);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  .text-title-sm {
+    font-family: var(--font-sans);
+    font-size: var(--text-lg);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  .text-body-lg {
+    font-family: var(--font-sans);
+    font-size: var(--text-lg);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  .text-body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  .text-body-sm {
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    font-weight: 400;
+    letter-spacing: 0;
   }
 }

@@ -1,16 +1,12 @@
 "use client"
 
-import { useThemeStore } from "@/lib/stores/theme-store"
 import { Toaster as Sonner, ToasterProps } from "sonner"
 
+// Light mode only for now - dark mode temporarily disabled
 const Toaster = ({ ...props }: ToasterProps) => {
-  const theme = useThemeStore((state) => state.theme)
-  const systemTheme = useThemeStore((state) => state.getSystemTheme())
-  const effectiveTheme = theme === 'system' ? systemTheme : theme
-
   return (
     <Sonner
-      theme={effectiveTheme as ToasterProps["theme"]}
+      theme="light"
       className="toaster group"
       style={
         {
