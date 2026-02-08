@@ -1,0 +1,5 @@
+-- ============================================
+-- Migration 15 rollback: Remove avatar_url field from user table
+-- ============================================
+
+REMOVE FIELD IF EXISTS avatar_url ON TABLE user;

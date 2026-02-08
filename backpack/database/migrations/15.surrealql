@@ -1,0 +1,6 @@
+-- ============================================
+-- Migration 15: Add avatar_url field to user table
+-- Supports user profile picture uploads
+-- ============================================
+
+DEFINE FIELD IF NOT EXISTS avatar_url ON TABLE user TYPE option<string>;

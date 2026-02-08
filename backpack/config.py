@@ -12,6 +12,10 @@ LANGGRAPH_CHECKPOINT_FILE = f"{sqlite_folder}/checkpoints.sqlite"
 UPLOADS_FOLDER = f"{DATA_FOLDER}/uploads"
 os.makedirs(UPLOADS_FOLDER, exist_ok=True)
 
+# AVATARS FOLDER
+AVATARS_FOLDER = f"{DATA_FOLDER}/avatars"
+os.makedirs(AVATARS_FOLDER, exist_ok=True)
+
 # TIKTOKEN CACHE FOLDER
 TIKTOKEN_CACHE_DIR = f"{DATA_FOLDER}/tiktoken-cache"
 os.makedirs(TIKTOKEN_CACHE_DIR, exist_ok=True)

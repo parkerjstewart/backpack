@@ -37,6 +37,18 @@ export const usersApi = {
     const response = await apiClient.get<UserResponse>(`/users/${userId}`)
     return response.data
   },
+
+  /**
+   * Update current user's profile (name and/or avatar).
+   * Uses FormData to support file uploads.
+   */
+  updateProfile: async (data: { name?: string; avatar?: File }): Promise<UserResponse> => {
+    const formData = new FormData()
+    if (data.name !== undefined) formData.append('name', data.name)
+    if (data.avatar) formData.append('avatar', data.avatar)
+    const response = await apiClient.patch<UserResponse>('/users/me', formData)
+    return response.data
+  },
 }
 
 export default usersApi

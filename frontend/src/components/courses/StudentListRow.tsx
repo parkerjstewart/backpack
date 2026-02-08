@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreVertical, X, RefreshCw } from "lucide-react";
+import { MoreVertical, X, RefreshCw, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { MasteryIndicator } from "./MasteryIndicator";
 import type { ModuleMasteryResponse } from "@/lib/types/api";
 
@@ -16,6 +17,7 @@ interface StudentListRowProps {
   variant?: "default" | "pending";
   name: string | null;
   email: string;
+  avatarUrl?: string | null;
   moduleMastery?: ModuleMasteryResponse[];
   onRemove?: () => void;
   onViewDetails?: () => void;
@@ -37,6 +39,7 @@ export function StudentListRow({
   variant = "default",
   name,
   email,
+  avatarUrl,
   moduleMastery = [],
   onRemove,
   onViewDetails,
@@ -95,8 +98,15 @@ export function StudentListRow({
     >
       {/* Left: Avatar + Name */}
       <div className="flex items-center gap-4 flex-1 min-w-0">
-        {/* Coral colored circle avatar (matches Figma) */}
-        <div className="w-8 h-8 rounded-full bg-coral-500 shrink-0" />
+        <Avatar className="w-8 h-8 shrink-0">
+          {avatarUrl ? (
+            <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />
+          ) : (
+            <AvatarFallback className="bg-muted text-sm font-medium text-muted-foreground">
+              {displayName.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          )}
+        </Avatar>
         <span className="text-lg tracking-[-0.18px] text-primary truncate">
           {displayName}
         </span>
@@ -122,6 +132,12 @@ export function StudentListRow({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem asChild>
+            <a href={`mailto:${email}`}>
+              <Mail className="h-4 w-4 mr-2" />
+              Send email
+            </a>
+          </DropdownMenuItem>
           {onViewDetails && (
             <DropdownMenuItem onClick={onViewDetails}>
               View details
