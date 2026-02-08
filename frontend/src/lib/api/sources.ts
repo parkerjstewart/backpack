@@ -7,7 +7,9 @@ import {
   SourceResponse,
   SourceStatusResponse,
   CreateSourceRequest, 
-  UpdateSourceRequest 
+  UpdateSourceRequest,
+  BatchDeleteSourcesRequest,
+  BatchDeleteSourcesResponse,
 } from '@/lib/types/api'
 
 export const sourcesApi = {
@@ -104,5 +106,16 @@ export const sourcesApi = {
     return apiClient.get(`/sources/${id}/download`, {
       responseType: 'blob',
     })
+  },
+
+  /**
+   * Delete multiple sources at once (for draft cleanup).
+   */
+  batchDelete: async (data: BatchDeleteSourcesRequest) => {
+    const response = await apiClient.post<BatchDeleteSourcesResponse>(
+      '/sources/batch-delete',
+      data
+    )
+    return response.data
   },
 }

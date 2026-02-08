@@ -16,16 +16,18 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from api.auth import PasswordAuthMiddleware
+from api.auth import UserAuthMiddleware
 from api.routers import (
     auth,
     chat,
     config,
     context,
+    courses,
     embedding,
     embedding_rebuild,
     episode_profiles,
     insights,
+    invitations,
     models,
     modules,
     notes,
@@ -36,6 +38,7 @@ from api.routers import (
     sources,
     speaker_profiles,
     transformations,
+    users,
 )
 from api.routers import commands as commands_router
 from backpack.database.async_migrate import AsyncMigrationManager
@@ -94,10 +97,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add password authentication middleware first
-# Exclude /api/auth/status and /api/config from authentication
+# Add user authentication middleware
+# Exclude public paths and auth endpoints from authentication
 app.add_middleware(
-    PasswordAuthMiddleware,
+    UserAuthMiddleware,
     excluded_paths=[
         "/",
         "/health",
@@ -106,6 +109,8 @@ app.add_middleware(
         "/redoc",
         "/api/auth/status",
         "/api/config",
+        "/api/users/login",
+        "/api/users/register",
     ],
 )
 
@@ -168,6 +173,9 @@ app.include_router(episode_profiles.router, prefix="/api", tags=["episode-profil
 app.include_router(speaker_profiles.router, prefix="/api", tags=["speaker-profiles"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
+app.include_router(users.router, prefix="/api", tags=["users"])
+app.include_router(courses.router, prefix="/api", tags=["courses"])
+app.include_router(invitations.router, prefix="/api", tags=["invitations"])
 
 
 @app.get("/")

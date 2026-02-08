@@ -14,6 +14,8 @@ export interface Course {
   syllabusFileName?: string
   /** Card color variant for visual distinction */
   color?: CourseColor
+  /** User's role in this course from course_membership */
+  membershipRole?: string | null
 }
 
 export interface ModuleMetadata {
@@ -29,6 +31,9 @@ interface CoursesState {
   moduleCourseMap: Record<string, string>
   /** Maps module ID -> module metadata */
   moduleMetadata: Record<string, ModuleMetadata>
+  /** Maps course ID -> color (persisted locally for consistent colors) */
+  courseColors: Record<string, CourseColor>
+  setCourses: (courses: Course[]) => void
   createCourse: (name: string, description?: string) => Course
   updateCourse: (id: string, data: Partial<Omit<Course, 'id'>>) => void
   archiveCourse: (id: string, archived?: boolean) => void
@@ -36,46 +41,11 @@ interface CoursesState {
   removeModuleFromCourse: (moduleId: string) => void
   getModuleMetadata: (moduleId: string) => ModuleMetadata
   updateModuleMetadata: (moduleId: string, data: Partial<ModuleMetadata>) => void
+  getCourseColor: (courseId: string) => CourseColor
 }
 
-const createInitialCourses = (): Course[] => {
-  const now = new Date().toISOString()
-
-  return [
-    {
-      id: 'cs-224n',
-      name: 'CS 224N',
-      description: 'Natural Language Processing with Deep Learning',
-      createdAt: now,
-      updatedAt: now,
-      color: 'sage',
-    },
-    {
-      id: 'cee-33b',
-      name: 'CEE 33B',
-      description: 'Japanese Modern Architecture',
-      createdAt: now,
-      updatedAt: now,
-      color: 'amber',
-    },
-    {
-      id: 'arthist-129',
-      name: 'ARTHIST 129',
-      description: 'Fashion',
-      createdAt: now,
-      updatedAt: now,
-      color: 'sky',
-    },
-    {
-      id: 'cs-111',
-      name: 'CS 111',
-      description: 'Operating Systems Principles',
-      createdAt: now,
-      updatedAt: now,
-      color: 'coral',
-    },
-  ]
-}
+// Colors cycle through these options for new courses
+const COURSE_COLORS: CourseColor[] = ['sage', 'amber', 'sky', 'coral']
 
 const generateId = () => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -87,23 +57,48 @@ const generateId = () => {
 export const useCoursesStore = create<CoursesState>()(
   persist(
     (set, get) => ({
-      courses: createInitialCourses(),
+      courses: [],  // Courses now loaded from backend via useCourses hook
       moduleCourseMap: {},
       moduleMetadata: {},
+      courseColors: {},
+
+      setCourses: (courses) => {
+        // Assign colors to new courses that don't have one
+        const { courseColors } = get()
+        const updatedColors = { ...courseColors }
+        let colorIndex = Object.keys(courseColors).length
+
+        courses.forEach((course) => {
+          if (!updatedColors[course.id]) {
+            updatedColors[course.id] = COURSE_COLORS[colorIndex % COURSE_COLORS.length]
+            colorIndex++
+          }
+        })
+
+        set({ courses, courseColors: updatedColors })
+      },
 
       createCourse: (name, description) => {
         const id = generateId()
         const now = new Date().toISOString()
+        const { courses } = get()
+
+        // Assign a color to the new course
+        const colorIndex = courses.length % COURSE_COLORS.length
+        const color = COURSE_COLORS[colorIndex]
+
         const course: Course = {
           id,
           name,
           description,
           createdAt: now,
           updatedAt: now,
+          color,
         }
 
         set((state) => ({
           courses: [...state.courses, course],
+          courseColors: { ...state.courseColors, [id]: color },
         }))
 
         return course
@@ -160,6 +155,16 @@ export const useCoursesStore = create<CoursesState>()(
             },
           },
         }))
+      },
+
+      getCourseColor: (courseId) => {
+        const { courseColors, courses } = get()
+        if (courseColors[courseId]) {
+          return courseColors[courseId]
+        }
+        // Fallback: assign color based on index
+        const index = courses.findIndex((c) => c.id === courseId)
+        return COURSE_COLORS[Math.max(0, index) % COURSE_COLORS.length]
       },
     }),
     {

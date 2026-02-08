@@ -1,0 +1,7 @@
+-- ============================================
+-- Migration 14: Ensure invitation invited_by is optional
+-- Supports both email-auth (user ID available) and password-auth (no user ID)
+-- ============================================
+
+REMOVE FIELD IF EXISTS invited_by ON TABLE invitation;
+DEFINE FIELD invited_by ON TABLE invitation TYPE option<record<user>>;

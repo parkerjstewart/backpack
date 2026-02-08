@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class ModuleCreate(BaseModel):
     name: str = Field(..., description="Name of the module")
     description: str = Field(default="", description="Description of the module")
+    course_id: Optional[str] = Field(None, description="ID of the course this module belongs to")
 
 
 class ModuleUpdate(BaseModel):
@@ -16,6 +17,7 @@ class ModuleUpdate(BaseModel):
         None, description="Whether the module is archived"
     )
     overview: Optional[str] = Field(None, description="AI-generated overview of the module")
+    course_id: Optional[str] = Field(None, description="ID of the course this module belongs to")
 
 
 class ModuleResponse(BaseModel):
@@ -28,6 +30,7 @@ class ModuleResponse(BaseModel):
     updated: str
     source_count: int
     note_count: int
+    course_id: Optional[str] = None
 
 
 class GenerateOverviewRequest(BaseModel):
@@ -440,7 +443,134 @@ class SourceStatusResponse(BaseModel):
     command_id: Optional[str] = Field(None, description="Command ID if available")
 
 
+# Batch delete request/response
+class BatchDeleteSourcesRequest(BaseModel):
+    source_ids: List[str] = Field(..., description="List of source IDs to delete")
+
+
+class BatchDeleteSourcesResponse(BaseModel):
+    deleted: int = Field(..., description="Number of sources deleted")
+    failed: int = Field(0, description="Number of sources that failed to delete")
+    errors: Optional[List[str]] = Field(None, description="Error messages for failed deletions")
+
+
+# Preview module content request/response
+class PreviewModuleContentRequest(BaseModel):
+    source_ids: List[str] = Field(..., description="List of source IDs to generate content from")
+    name: str = Field(..., description="Module name for context")
+
+
+class PreviewModuleContentResponse(BaseModel):
+    overview: Optional[str] = Field(None, description="Generated module overview")
+    learning_goals: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Generated learning goals"
+    )
+
+
 # Error response
 class ErrorResponse(BaseModel):
     error: str
     message: str
+
+
+# ============================================
+# User API models
+# ============================================
+class UserLoginRequest(BaseModel):
+    email: str = Field(..., description="User's email address")
+
+
+class UserRegisterRequest(BaseModel):
+    email: str = Field(..., description="User's email address")
+    name: str = Field(..., description="User's display name")
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    name: Optional[str] = None
+    role: str
+    created: str
+    updated: str
+
+
+# ============================================
+# Course API models
+# ============================================
+class CourseCreate(BaseModel):
+    title: str = Field(..., description="Course title/code (e.g., 'CS 224N')")
+    description: Optional[str] = Field(None, description="Course description/name")
+
+
+class CourseUpdate(BaseModel):
+    title: Optional[str] = Field(None, description="Course title/code")
+    description: Optional[str] = Field(None, description="Course description/name")
+    archived: Optional[bool] = Field(None, description="Whether the course is archived")
+
+
+class CourseResponse(BaseModel):
+    id: str
+    title: str
+    description: Optional[str] = None
+    instructor_id: Optional[str] = None
+    archived: bool
+    created: str
+    updated: str
+    module_count: int = 0
+    student_count: int = 0
+    membership_role: Optional[str] = None
+
+
+class CourseMemberResponse(BaseModel):
+    id: str
+    email: str
+    name: Optional[str] = None
+    role: str  # Course membership role: 'student', 'instructor', 'ta'
+    enrolled_at: str
+
+
+class AddCourseMemberRequest(BaseModel):
+    name: str = Field(..., description="Name of the user to add")
+    email: str = Field(..., description="Email of the user to add")
+    role: Literal["student", "instructor", "ta"] = Field(
+        "student", description="Role in the course"
+    )
+
+
+class ModuleMasteryResponse(BaseModel):
+    module_id: str
+    module_name: str
+    status: Literal["mastered", "progressing", "struggling", "incomplete"]
+
+
+class StudentWithMasteryResponse(BaseModel):
+    id: str
+    email: str
+    name: Optional[str] = None
+    module_mastery: List[ModuleMasteryResponse] = Field(default_factory=list)
+
+
+# ============================================
+# Invitation API models
+# ============================================
+class CreateInvitationRequest(BaseModel):
+    name: str = Field(..., description="Name of the invitee")
+    email: str = Field(..., description="Email of the invitee")
+    role: Literal["student", "instructor", "ta"] = Field(
+        "student", description="Role in the course"
+    )
+
+
+class InvitationResponse(BaseModel):
+    id: str
+    token: str
+    course_id: str
+    course_title: Optional[str] = None
+    email: str
+    name: str
+    role: str
+    status: str
+    invited_by: Optional[str] = None
+    invite_url: Optional[str] = None
+    expires_at: Optional[str] = None
+    created: Optional[str] = None

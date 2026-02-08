@@ -1,46 +1,109 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 
-import { AppShell } from '@/components/layout/AppShell'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { useModule } from '@/lib/hooks/use-modules'
-import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import Link from 'next/link'
+import { AppShell } from "@/components/layout/AppShell";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CourseHeader } from "@/components/courses";
+import { useModule } from "@/lib/hooks/use-modules";
+import { useCourse } from "@/lib/hooks/use-courses";
+import { useModuleSources } from "@/lib/hooks/use-sources";
+import { AddSourceDialog } from "@/components/sources/AddSourceDialog";
+import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { ModuleDetails } from "@/app/(dashboard)/modules/components/ModuleDetails";
+import { SourcesColumn } from "@/app/(dashboard)/modules/components/SourcesColumn";
+import { useModuleColumnsStore } from "@/lib/stores/module-columns-store";
+import { useIsDesktop } from "@/lib/hooks/use-media-query";
+import { useTranslation } from "@/lib/hooks/use-translation";
+import { cn } from "@/lib/utils";
+import { FileText } from "lucide-react";
 
-function buildPlaceholderOverview(moduleName: string) {
-  return {
-    summary: `This module introduces the core ideas of ${moduleName} and prepares students for deeper application and assessment.`,
-    takeaways: [
-      'Students can explain the high-level motivation for the topic in their own words.',
-      'Students can connect the new concepts to prior material from the course.',
-      'Students can identify common pitfalls or misconceptions related to this module.',
-    ],
-    competencies: [
-      'Conceptual understanding of the main ideas and vocabulary.',
-      'Ability to apply the concepts to small, concrete examples.',
-      'Readiness to move on to more open-ended or project-based work.',
-    ],
-  }
+type ContextMode = "off" | "insights" | "full";
+
+interface ContextSelections {
+  sources: Record<string, ContextMode>;
+  notes: Record<string, ContextMode>;
 }
 
 export default function CourseModuleOverviewPage() {
-  const params = useParams()
-  const courseId = params?.courseId ? decodeURIComponent(params.courseId as string) : ''
-  const moduleId = params?.moduleId ? decodeURIComponent(params.moduleId as string) : ''
+  const { t } = useTranslation();
+  const params = useParams();
+  const courseId = params?.courseId
+    ? decodeURIComponent(params.courseId as string)
+    : "";
+  const moduleId = params?.moduleId
+    ? decodeURIComponent(params.moduleId as string)
+    : "";
 
-  const { data: module, isLoading } = useModule(moduleId)
-  const [uploadOpen, setUploadOpen] = useState(false)
+  const { data: course, isLoading: courseLoading } = useCourse(courseId);
+  const { data: module, isLoading: moduleLoading } = useModule(moduleId);
+  const {
+    sources,
+    isLoading: sourcesLoading,
+    refetch: refetchSources,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useModuleSources(moduleId);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
-  if (isLoading) {
+  // Get collapse states for dynamic layout
+  const { sourcesCollapsed } = useModuleColumnsStore();
+
+  // Detect desktop
+  const isDesktop = useIsDesktop();
+
+  // Mobile tab state (Sources or Details)
+  const [mobileActiveTab, setMobileActiveTab] = useState<"sources" | "details">(
+    "sources"
+  );
+
+  // Context selection state
+  const [contextSelections, setContextSelections] = useState<ContextSelections>(
+    {
+      sources: {},
+      notes: {},
+    }
+  );
+
+  // Initialize default selections when sources load
+  useEffect(() => {
+    if (sources && sources.length > 0) {
+      setContextSelections((prev) => {
+        const newSourceSelections = { ...prev.sources };
+        sources.forEach((source) => {
+          // Only set default if not already set
+          if (!(source.id in newSourceSelections)) {
+            // Default to 'insights' if has insights, otherwise 'full'
+            newSourceSelections[source.id] =
+              source.insights_count > 0 ? "insights" : "full";
+          }
+        });
+        return { ...prev, sources: newSourceSelections };
+      });
+    }
+  }, [sources]);
+
+  // Handler to update context selection
+  const handleContextModeChange = (itemId: string, mode: ContextMode) => {
+    setContextSelections((prev) => ({
+      ...prev,
+      sources: {
+        ...prev.sources,
+        [itemId]: mode,
+      },
+    }));
+  };
+
+  if (moduleLoading || courseLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
-    )
+    );
   }
 
   if (!module) {
@@ -49,90 +112,127 @@ export default function CourseModuleOverviewPage() {
         <div className="p-6">
           <h1 className="text-2xl font-bold mb-2">Module not found</h1>
           <p className="text-muted-foreground mb-4">
-            This module could not be loaded. It may have been deleted or is unavailable.
+            This module could not be loaded. It may have been deleted or is
+            unavailable.
           </p>
           <Button asChild>
-            <Link href={`/courses/${encodeURIComponent(courseId)}`}>Back to course</Link>
+            <Link href={`/courses/${encodeURIComponent(courseId)}`}>
+              Back to course
+            </Link>
           </Button>
         </div>
       </AppShell>
-    )
+    );
   }
-
-  const overview = buildPlaceholderOverview(module.name)
 
   return (
     <AppShell>
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-6">
+      <div className="flex flex-col flex-1 min-h-0">
+        {/* Course Header with tabs */}
+        <div className="flex-shrink-0 px-8 pt-8">
+          {course && (
+            <CourseHeader courseId={courseId} courseName={course.title} />
+          )}
+        </div>
+
+        {/* Module header and upload button */}
+        <div className="flex-shrink-0 px-8 pt-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold">{module.name}</h1>
+              <h2 className="text-2xl font-bold">{module.name}</h2>
               {module.description && (
                 <p className="text-muted-foreground">{module.description}</p>
               )}
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" asChild>
-                <Link href={`/courses/${encodeURIComponent(courseId)}`}>Back to course</Link>
-              </Button>
-              <Button onClick={() => setUploadOpen(true)}>
-                Upload documents
-              </Button>
+            <Button onClick={() => setUploadOpen(true)}>
+              Upload documents
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex-1 px-8 pt-6 pb-8 overflow-x-auto flex flex-col">
+          {/* Mobile: Tabbed interface */}
+          {!isDesktop && (
+            <>
+              <div className="lg:hidden mb-4">
+                <Tabs
+                  value={mobileActiveTab}
+                  onValueChange={(value) =>
+                    setMobileActiveTab(value as "sources" | "details")
+                  }
+                >
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="sources" className="gap-2">
+                      <FileText className="h-4 w-4" />
+                      {t.navigation.sources}
+                    </TabsTrigger>
+                    <TabsTrigger value="details" className="gap-2">
+                      Details
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              {/* Mobile: Show only active tab */}
+              <div className="flex-1 overflow-hidden lg:hidden">
+                {mobileActiveTab === "sources" && (
+                  <SourcesColumn
+                    sources={sources}
+                    isLoading={sourcesLoading}
+                    moduleId={moduleId}
+                    moduleName={module?.name}
+                    onRefresh={refetchSources}
+                    contextSelections={contextSelections.sources}
+                    onContextModeChange={(sourceId, mode) =>
+                      handleContextModeChange(sourceId, mode)
+                    }
+                    hasNextPage={hasNextPage}
+                    isFetchingNextPage={isFetchingNextPage}
+                    fetchNextPage={fetchNextPage}
+                  />
+                )}
+                {mobileActiveTab === "details" && module && (
+                  <ModuleDetails module={module} />
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Desktop: Two-column layout */}
+          <div
+            className={cn(
+              "hidden lg:flex h-full min-h-0 gap-6 transition-all duration-150",
+              "flex-row"
+            )}
+          >
+            {/* Sources Column */}
+            <div
+              className={cn(
+                "transition-all duration-150",
+                sourcesCollapsed ? "w-12 flex-shrink-0" : "flex-none basis-1/3"
+              )}
+            >
+              <SourcesColumn
+                sources={sources}
+                isLoading={sourcesLoading}
+                moduleId={moduleId}
+                moduleName={module?.name}
+                onRefresh={refetchSources}
+                contextSelections={contextSelections.sources}
+                onContextModeChange={(sourceId, mode) =>
+                  handleContextModeChange(sourceId, mode)
+                }
+                hasNextPage={hasNextPage}
+                isFetchingNextPage={isFetchingNextPage}
+                fetchNextPage={fetchNextPage}
+              />
+            </div>
+
+            {/* Module Details Column - always expanded, takes remaining space */}
+            <div className="transition-all duration-150 flex-1 overflow-y-auto lg:pr-6 lg:-mr-6">
+              {module && <ModuleDetails module={module} />}
             </div>
           </div>
-
-          {/* Overview card */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Module Overview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">{overview.summary}</p>
-            </CardContent>
-          </Card>
-
-          {/* Learning goals */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Key Takeaways</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="list-disc pl-5 space-y-2 text-sm">
-                  {overview.takeaways.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Competencies</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="list-disc pl-5 space-y-2 text-sm">
-                  {overview.competencies.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Placeholder for future metrics/insights */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Student Understanding</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                AI-generated metrics and insights about student understanding will appear here once
-                the evaluation pipeline is wired up.
-              </p>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
@@ -142,6 +242,5 @@ export default function CourseModuleOverviewPage() {
         defaultModuleId={moduleId}
       />
     </AppShell>
-  )
+  );
 }
-

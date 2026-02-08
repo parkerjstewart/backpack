@@ -109,7 +109,7 @@
   --warning: #f7c99d;
   --sage-300: #ade297;
   --sage-500: #d4e297;
-  --sage-700: #588f58;
+  --sage-700: #445956;
   
   /* Course card color palette (from Figma variables) */
   --amber-400: #f6e587;
@@ -289,5 +289,23 @@
     font-size: var(--text-sm);
     font-weight: 400;
     letter-spacing: 0;
+  }
+
+  /* Generating/loading state animation for input borders */
+  @keyframes border-pulse {
+    0%, 100% {
+      border-color: var(--sage-700);
+      box-shadow: 0 0 0 0 rgba(212, 226, 151, 0), 0 0 8px 0 rgba(88, 143, 88, 0.3);
+    }
+    50% {
+      border-color: var(--sage-300);
+      box-shadow: 0 0 0 6px rgba(212, 226, 151, 0.5), 0 0 20px 4px rgba(173, 226, 151, 0.4);
+    }
+  }
+
+  .animate-border-pulse {
+    animation: border-pulse 1.5s ease-in-out infinite;
+    border-width: 2px !important;
+    border-color: var(--sage-500) !important;
   }
 }

@@ -8,6 +8,7 @@ export interface ModuleResponse {
   updated: string
   source_count: number
   note_count: number
+  course_id?: string | null
 }
 
 export interface NoteResponse {
@@ -64,6 +65,7 @@ export interface SettingsResponse {
 export interface CreateModuleRequest {
   name: string
   description?: string
+  course_id?: string
 }
 
 export interface UpdateModuleRequest {
@@ -71,6 +73,7 @@ export interface UpdateModuleRequest {
   description?: string
   archived?: boolean
   overview?: string
+  course_id?: string | null
 }
 
 // Learning Goals Types
@@ -248,4 +251,130 @@ export interface BuildContextResponse {
   }
   token_count: number
   char_count: number
+}
+
+// Batch Delete Sources Types
+export interface BatchDeleteSourcesRequest {
+  source_ids: string[]
+}
+
+export interface BatchDeleteSourcesResponse {
+  deleted: number
+  failed: number
+  errors?: string[]
+}
+
+// Preview Module Content Types (for draft module creation)
+export interface PreviewModuleContentRequest {
+  source_ids: string[]
+  name: string
+}
+
+export interface PreviewModuleContentResponse {
+  overview: string | null
+  learning_goals: Array<{
+    description: string
+    order: number
+  }>
+}
+
+// ============================================
+// User Types
+// ============================================
+export interface UserResponse {
+  id: string
+  email: string
+  name: string | null
+  role: string
+  created: string
+  updated: string
+}
+
+export interface UserLoginRequest {
+  email: string
+}
+
+export interface UserRegisterRequest {
+  email: string
+  name: string
+}
+
+// ============================================
+// Course Types
+// ============================================
+export interface CourseResponse {
+  id: string
+  title: string
+  description: string | null
+  instructor_id: string | null
+  archived: boolean
+  created: string
+  updated: string
+  module_count: number
+  student_count: number
+  membership_role?: string | null
+}
+
+export interface CreateCourseRequest {
+  title: string
+  description?: string
+}
+
+export interface UpdateCourseRequest {
+  title?: string
+  description?: string
+  archived?: boolean
+}
+
+export interface CourseMemberResponse {
+  id: string
+  email: string
+  name: string | null
+  role: string  // 'student', 'instructor', 'ta'
+  enrolled_at: string
+}
+
+export interface AddCourseMemberRequest {
+  name: string
+  email: string
+  role?: 'student' | 'instructor' | 'ta'
+}
+
+// ============================================
+// Invitation Types
+// ============================================
+export interface InvitationResponse {
+  id: string
+  token: string
+  course_id: string
+  course_title?: string
+  email: string
+  name: string
+  role: string
+  status: string
+  invited_by?: string
+  invite_url?: string
+  expires_at?: string
+  created?: string
+}
+
+export interface CreateInvitationRequest {
+  name: string
+  email: string
+  role?: 'student' | 'instructor' | 'ta'
+}
+
+export type MasteryStatus = 'mastered' | 'progressing' | 'struggling' | 'incomplete'
+
+export interface ModuleMasteryResponse {
+  module_id: string
+  module_name: string
+  status: MasteryStatus
+}
+
+export interface StudentWithMasteryResponse {
+  id: string
+  email: string
+  name: string | null
+  module_mastery: ModuleMasteryResponse[]
 }

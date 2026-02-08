@@ -15,11 +15,7 @@ class ChatService:
 
     def __init__(self):
         self.base_url = os.getenv("API_BASE_URL", "http://127.0.0.1:5055")
-        # Add authentication header if password is set
         self.headers = {}
-        password = os.getenv("BACKPACK_PASSWORD")
-        if password:
-            self.headers["Authorization"] = f"Bearer {password}"
 
     async def get_sessions(self, module_id: str) -> List[Dict[str, Any]]:
         """Get all chat sessions for a module"""

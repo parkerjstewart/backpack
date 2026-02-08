@@ -92,7 +92,7 @@ export function useCreateSource() {
   const { t } = useTranslation()
 
   return useMutation({
-    mutationFn: (data: CreateSourceRequest) => sourcesApi.create(data),
+    mutationFn: (data: CreateSourceRequest & { file?: File }) => sourcesApi.create(data),
     onSuccess: (result: SourceResponse, variables) => {
       // Invalidate queries for all relevant modules with immediate refetch
       if (variables.modules) {
@@ -370,5 +370,27 @@ export function useRemoveSourceFromModule() {
         variant: 'destructive',
       })
     },
+  })
+}
+
+/**
+ * Hook to delete multiple sources at once (for draft cleanup).
+ * Used when canceling module draft creation to clean up orphaned sources.
+ */
+export function useBatchDeleteSources() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (sourceIds: string[]) =>
+      sourcesApi.batchDelete({ source_ids: sourceIds }),
+    onSuccess: (_, sourceIds) => {
+      // Invalidate all sources queries
+      queryClient.invalidateQueries({ queryKey: ['sources'] })
+      // Invalidate each deleted source
+      sourceIds.forEach((sourceId) => {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.source(sourceId) })
+      })
+    },
+    // No toast notifications - this is a cleanup operation
   })
 }
