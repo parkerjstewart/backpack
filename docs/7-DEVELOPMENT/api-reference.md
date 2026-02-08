@@ -70,10 +70,8 @@ Instead of memorizing endpoints, use the interactive API docs:
 - `GET/POST /transformations` - Create custom extraction rules
 - `POST /sources/{id}/insights` - Apply transformation to source
 
-**Models** - Configure AI providers
-- `GET /models` - Available models
-- `GET /models/defaults` - Current defaults
-- `POST /models/config` - Set defaults
+**Models** - AI provider detection
+- `GET /models/providers` - Check available providers based on configured API keys
 
 **Health & Status**
 - `GET /health` - Health check

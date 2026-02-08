@@ -91,9 +91,16 @@ class SearchResponse(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(..., description="Question to ask the knowledge base")
-    strategy_model: str = Field(..., description="Model ID for query strategy")
-    answer_model: str = Field(..., description="Model ID for individual answers")
-    final_answer_model: str = Field(..., description="Model ID for final answer")
+    # Model fields are optional - defaults from environment will be used if not specified
+    strategy_model: Optional[str] = Field(
+        None, description="Model spec (provider/model) for query strategy (uses default if not set)"
+    )
+    answer_model: Optional[str] = Field(
+        None, description="Model spec (provider/model) for individual answers (uses default if not set)"
+    )
+    final_answer_model: Optional[str] = Field(
+        None, description="Model spec (provider/model) for final answer (uses default if not set)"
+    )
 
 
 class AskResponse(BaseModel):
@@ -101,37 +108,7 @@ class AskResponse(BaseModel):
     question: str = Field(..., description="Original question")
 
 
-# Models API models
-class ModelCreate(BaseModel):
-    name: str = Field(..., description="Model name (e.g., gpt-5-mini, claude, gemini)")
-    provider: str = Field(
-        ..., description="Provider name (e.g., openai, anthropic, gemini)"
-    )
-    type: str = Field(
-        ...,
-        description="Model type (language, embedding, text_to_speech, speech_to_text)",
-    )
-
-
-class ModelResponse(BaseModel):
-    id: str
-    name: str
-    provider: str
-    type: str
-    created: str
-    updated: str
-
-
-class DefaultModelsResponse(BaseModel):
-    default_chat_model: Optional[str] = None
-    default_transformation_model: Optional[str] = None
-    large_context_model: Optional[str] = None
-    default_text_to_speech_model: Optional[str] = None
-    default_speech_to_text_model: Optional[str] = None
-    default_embedding_model: Optional[str] = None
-    default_tools_model: Optional[str] = None
-
-
+# Provider availability response (models are now configured via environment variables)
 class ProviderAvailabilityResponse(BaseModel):
     available: List[str] = Field(..., description="List of available providers")
     unavailable: List[str] = Field(..., description="List of unavailable providers")
@@ -185,7 +162,9 @@ class TransformationExecuteRequest(BaseModel):
         ..., description="ID of the transformation to execute"
     )
     input_text: str = Field(..., description="Text to transform")
-    model_id: str = Field(..., description="Model ID to use for the transformation")
+    model_id: Optional[str] = Field(
+        None, description="Model spec (provider/model) to use for the transformation (uses default if not set)"
+    )
 
 
 class TransformationExecuteResponse(BaseModel):

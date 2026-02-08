@@ -43,10 +43,7 @@ export function useAsk() {
       return
     }
 
-    if (!models.strategy || !models.answer || !models.finalAnswer) {
-      toast.error(t('apiErrors.pleaseConfigureModels'))
-      return
-    }
+    // Note: Empty model strings are allowed - backend will use defaults from environment
 
     // Reset state
     setState({
@@ -60,9 +57,10 @@ export function useAsk() {
     try {
       const response = await searchApi.askKnowledgeBase({
         question,
-        strategy_model: models.strategy,
-        answer_model: models.answer,
-        final_answer_model: models.finalAnswer
+        // Only include model params if they're non-empty (otherwise backend uses defaults)
+        ...(models.strategy && { strategy_model: models.strategy }),
+        ...(models.answer && { answer_model: models.answer }),
+        ...(models.finalAnswer && { final_answer_model: models.finalAnswer }),
       })
 
       if (!response) {

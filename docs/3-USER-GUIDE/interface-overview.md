@@ -370,7 +370,6 @@ On smaller screens, the three-panel layout stacks vertically:
 2. **Context first** - Set source context before chatting
 3. **Sessions** - Create new sessions for different topics
 4. **Search globally** - Use Search page to find across all notebooks
-5. **Models page** - Bookmark your preferred models
 
 ---
 
