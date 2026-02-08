@@ -12,7 +12,7 @@ class UserAuthMiddleware(BaseHTTPMiddleware):
     Validates that requests include a valid 'Bearer user:xxx' token.
     """
 
-    def __init__(self, app, excluded_paths: Optional[list] = None):
+    def __init__(self, app, excluded_paths: Optional[list] = None, excluded_prefixes: Optional[list] = None):
         super().__init__(app)
         self.excluded_paths = excluded_paths or [
             "/",
@@ -21,10 +21,15 @@ class UserAuthMiddleware(BaseHTTPMiddleware):
             "/openapi.json",
             "/redoc",
         ]
+        self.excluded_prefixes = excluded_prefixes or []
 
     async def dispatch(self, request: Request, call_next):
         # Skip authentication for excluded paths
         if request.url.path in self.excluded_paths:
+            return await call_next(request)
+
+        # Skip authentication for excluded path prefixes
+        if any(request.url.path.startswith(prefix) for prefix in self.excluded_prefixes):
             return await call_next(request)
 
         # Skip authentication for CORS preflight requests (OPTIONS)

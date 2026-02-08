@@ -485,11 +485,16 @@ class UserRegisterRequest(BaseModel):
     name: str = Field(..., description="User's display name")
 
 
+class UpdateUserProfileRequest(BaseModel):
+    name: Optional[str] = Field(None, description="User's display name")
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
     name: Optional[str] = None
     role: str
+    avatar_url: Optional[str] = None
     created: str
     updated: str
 
@@ -525,6 +530,7 @@ class CourseMemberResponse(BaseModel):
     id: str
     email: str
     name: Optional[str] = None
+    avatar_url: Optional[str] = None
     role: str  # Course membership role: 'student', 'instructor', 'ta'
     enrolled_at: str
 
@@ -547,6 +553,7 @@ class StudentWithMasteryResponse(BaseModel):
     id: str
     email: str
     name: Optional[str] = None
+    avatar_url: Optional[str] = None
     module_mastery: List[ModuleMasteryResponse] = Field(default_factory=list)
 
 

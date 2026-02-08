@@ -28,8 +28,7 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20",
         // Coral (soft destructive) - Figma: #FF8181
-        coral:
-          "bg-[#FF8181] text-foreground shadow-xs hover:bg-[#FF8181]/80",
+        coral: "bg-[#FF8181] text-foreground shadow-xs hover:bg-[#FF8181]/80",
         // Secondary (same as light)
         secondary:
           "bg-secondary text-secondary-foreground shadow-xs hover:bg-muted",
@@ -49,6 +48,8 @@ const buttonVariants = cva(
         icon: "size-9 rounded-[16px]",
         // Circular icon button (36px total, 20px icon + padding)
         "icon-circle": "size-9 rounded-full p-2",
+        // Full-width bar (48px height, for icon-only or icon+text in a wide strip)
+        wide: "h-12 w-full rounded-[16px]",
       },
     },
     defaultVariants: {

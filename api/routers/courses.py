@@ -316,6 +316,7 @@ async def get_course_students(course_id: str):
                     id=user_id,
                     email=user.get("email", ""),
                     name=user.get("name"),
+                    avatar_url=user.get("avatar_url"),
                     module_mastery=mastery_list,
                 )
             )
@@ -343,6 +344,7 @@ async def get_course_teaching_team(course_id: str):
                 id=str(m.get("user", {}).get("id", "")),
                 email=m.get("user", {}).get("email", ""),
                 name=m.get("user", {}).get("name"),
+                avatar_url=m.get("user", {}).get("avatar_url"),
                 role=m.get("role", "instructor"),
                 enrolled_at=str(m.get("enrolled_at", "")),
             )
@@ -370,6 +372,7 @@ async def get_course_needs_attention(course_id: str):
                 id=str(s.get("user", {}).get("id", "")),
                 email=s.get("user", {}).get("email", ""),
                 name=s.get("user", {}).get("name"),
+                avatar_url=s.get("user", {}).get("avatar_url"),
                 role="student",
                 enrolled_at="",  # Not available from this query
             )
@@ -420,6 +423,7 @@ async def add_course_member(course_id: str, request: AddCourseMemberRequest):
             id=str(user.id),
             email=user.email,
             name=user.name,
+            avatar_url=user.avatar_url,
             role=request.role,
             enrolled_at=str(enrolled_at),
         )

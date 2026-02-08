@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { Button } from "@/components/ui/button";
+import { Button, IconButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   CourseHeader,
@@ -34,9 +34,12 @@ export default function CourseStudentsPage() {
     : "";
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
-  const { data: students, isLoading: studentsLoading } = useCourseStudents(courseId);
-  const { data: teachingTeam, isLoading: teamLoading } = useCourseTeachingTeam(courseId);
-  const { data: needsAttention, isLoading: attentionLoading } = useCourseNeedsAttention(courseId);
+  const { data: students, isLoading: studentsLoading } =
+    useCourseStudents(courseId);
+  const { data: teachingTeam, isLoading: teamLoading } =
+    useCourseTeachingTeam(courseId);
+  const { data: needsAttention, isLoading: attentionLoading } =
+    useCourseNeedsAttention(courseId);
 
   const removeMember = useRemoveCourseMember(courseId);
   const { data: pendingInvitations } = useCourseInvitations(courseId);
@@ -45,9 +48,12 @@ export default function CourseStudentsPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
-  const [inviteRole, setInviteRole] = useState<"student" | "instructor" | "ta">("student");
+  const [inviteRole, setInviteRole] = useState<"student" | "instructor" | "ta">(
+    "student",
+  );
 
-  const isLoading = courseLoading || studentsLoading || teamLoading || attentionLoading;
+  const isLoading =
+    courseLoading || studentsLoading || teamLoading || attentionLoading;
 
   // Filter students by search query
   const filteredStudents = students?.filter((student) => {
@@ -112,7 +118,7 @@ export default function CourseStudentsPage() {
                     key={student.id}
                     name={student.name}
                     email={student.email}
-                    color="amber"
+                    avatarUrl={student.avatar_url}
                   />
                 ))}
               </div>
@@ -128,7 +134,7 @@ export default function CourseStudentsPage() {
                   key={member.id}
                   name={member.name}
                   email={member.email}
-                  color="sky"
+                  avatarUrl={member.avatar_url}
                 />
               ))}
               {/* Add Teacher button with dotted outline */}
@@ -136,10 +142,10 @@ export default function CourseStudentsPage() {
                 onClick={() => openInviteDialog("instructor")}
                 className="flex flex-col items-center gap-2 p-2 group"
               >
-                <div className="w-[100px] h-[100px] rounded-full border-2 border-dashed border-teal-300 flex items-center justify-center transition-colors group-hover:border-teal-800 group-hover:bg-secondary">
-                  <Plus className="h-8 w-8 text-teal-300 group-hover:text-teal-800 transition-colors" />
+                <div className="w-[100px] h-[100px] rounded-full border-2 border-dashed border-primary flex items-center justify-center transition-colors group-hover:bg-secondary">
+                  <Plus className="h-8 w-8 text-primary group-hover:text-primary transition-colors" />
                 </div>
-                <span className="text-base text-teal-300 group-hover:text-teal-800 transition-colors">
+                <span className="text-base text-primary transition-colors">
                   Add Teacher
                 </span>
               </button>
@@ -152,13 +158,12 @@ export default function CourseStudentsPage() {
               <h2 className="text-title text-teal-800">
                 All Students ({filteredStudents?.length ?? 0})
               </h2>
-              <button
+              <IconButton
                 onClick={() => openInviteDialog("student")}
-                className="p-1 rounded-lg hover:bg-secondary transition-colors"
                 aria-label="Add student"
               >
                 <Plus className="h-6 w-6 text-teal-800" />
-              </button>
+              </IconButton>
             </div>
 
             {(filteredStudents && filteredStudents.length > 0) ||
@@ -169,6 +174,7 @@ export default function CourseStudentsPage() {
                     key={student.id}
                     name={student.name}
                     email={student.email}
+                    avatarUrl={student.avatar_url}
                     moduleMastery={student.module_mastery}
                     onRemove={() => removeMember.mutate(student.id)}
                   />

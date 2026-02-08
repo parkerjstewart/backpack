@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { Plus } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CourseHeader, AddExistingModuleDialog } from "@/components/courses";
+import { CourseHeader } from "@/components/courses";
 import { useModules, useUpdateModule } from "@/lib/hooks/use-modules";
 import { useCoursesStore } from "@/lib/stores/courses-store";
 import { useCourse } from "@/lib/hooks/use-courses";
@@ -27,15 +27,15 @@ export default function CoursePage() {
   const { data: modules, isLoading: modulesLoading } = useModules(false);
   const updateModule = useUpdateModule();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [addExistingDialogOpen, setAddExistingDialogOpen] = useState(false);
 
   // Filter modules that belong to this course
   // Check both the backend course_id field and the legacy store-based mapping
   const courseModules = useMemo(
-    () => (modules ?? []).filter((m) =>
-      m.course_id === courseId || moduleCourseMap[m.id] === courseId
-    ),
-    [modules, moduleCourseMap, courseId]
+    () =>
+      (modules ?? []).filter(
+        (m) => m.course_id === courseId || moduleCourseMap[m.id] === courseId,
+      ),
+    [modules, moduleCourseMap, courseId],
   );
 
   // Sync modules that are in the store but not in the backend
@@ -62,7 +62,7 @@ export default function CoursePage() {
   const currentModule = useMemo(() => {
     if (!courseModules.length) return undefined;
     return [...courseModules].sort(
-      (a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime()
+      (a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime(),
     )[0];
   }, [courseModules]);
 
@@ -101,104 +101,80 @@ export default function CoursePage() {
           {/* Course Header with tabs */}
           <CourseHeader courseId={courseId} courseName={course.title} />
 
-          {/* Current module summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Current Module</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {currentModule ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="font-semibold">{currentModule.name}</h2>
+          {/* Content area */}
+          <div className="flex flex-col gap-8 items-center justify-center px-4">
+            {/* Full-width New Module button */}
+            <Button size="wide" onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="size-6" />
+            </Button>
+
+            {courseModules.length === 0 ? (
+              /* Empty state */
+              <p className="font-heading text-2xl font-medium tracking-[-0.48px] text-primary/80 text-center">
+                No modules yet
+              </p>
+            ) : (
+              /* Populated state */
+              <div className="flex flex-col gap-4 w-full">
+                {/* Current Module section */}
+                <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary/80">
+                  Current Module
+                </h2>
+
+                <div className="flex flex-col gap-8 w-full">
+                  {/* Current (most recent) module - expanded */}
+                  {currentModule && (
+                    <Link
+                      href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(currentModule.id)}`}
+                      className="block border border-border rounded-lg px-6 py-4 bg-white hover:bg-secondary transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-[18px] font-medium tracking-[-0.18px]">
+                          {currentModule.name}
+                        </h3>
+                      </div>
                       {currentModule.description && (
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
                           {currentModule.description}
                         </p>
                       )}
-                    </div>
-                    <Button variant="outline" asChild>
-                      <Link
-                        href={`/courses/${encodeURIComponent(
-                          course.id
-                        )}/modules/${encodeURIComponent(currentModule.id)}`}
-                      >
-                        View details
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  This course does not have any modules yet. Create a module to
-                  get started.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+                      <div className="flex gap-4 mt-3 text-sm text-muted-foreground">
+                        <span>{currentModule.source_count} sources</span>
+                        <span>{currentModule.note_count} notes</span>
+                      </div>
+                    </Link>
+                  )}
 
-          {/* All modules in this course */}
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">
-                All Modules ({courseModules.length})
-              </h2>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setAddExistingDialogOpen(true)}
-                >
-                  Add Existing
-                </Button>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => setCreateDialogOpen(true)}
-                >
-                  New Module
-                </Button>
-              </div>
-            </div>
+                  {/* Separator */}
+                  {courseModules.length > 1 && (
+                    <hr className="border-t border-dashed border-border" />
+                  )}
 
-            {courseModules.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed rounded-lg">
-                <p className="text-muted-foreground mb-4">
-                  No modules in this course yet
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setAddExistingDialogOpen(true)}
-                  >
-                    Add Existing Module
-                  </Button>
-                  <Button onClick={() => setCreateDialogOpen(true)}>
-                    Create New Module
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {courseModules.map((module) => (
-                  <Link
-                    key={module.id}
-                    href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(module.id)}`}
-                    className="block p-4 border rounded-lg hover:bg-secondary transition-colors"
-                  >
-                    <h3 className="font-semibold">{module.name}</h3>
-                    {module.description && (
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                        {module.description}
-                      </p>
-                    )}
-                    <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-                      <span>{module.source_count} sources</span>
-                      <span>{module.note_count} notes</span>
+                  {/* Remaining modules - condensed */}
+                  {courseModules.length > 1 && (
+                    <div className="flex flex-col gap-6">
+                      {courseModules
+                        .filter((m) => m.id !== currentModule?.id)
+                        .map((module) => (
+                          <Link
+                            key={module.id}
+                            href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(module.id)}`}
+                            className="block border border-border rounded-lg px-6 py-4 hover:bg-secondary transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-[18px] font-medium tracking-[-0.18px]">
+                                {module.name}
+                              </h3>
+                            </div>
+                            <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
+                              <span>{module.source_count} sources</span>
+                              <span>{module.note_count} notes</span>
+                            </div>
+                          </Link>
+                        ))}
                     </div>
-                  </Link>
-                ))}
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -209,12 +185,6 @@ export default function CoursePage() {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         courseId={course.id}
-      />
-
-      <AddExistingModuleDialog
-        open={addExistingDialogOpen}
-        onOpenChange={setAddExistingDialogOpen}
-        courseId={courseId}
       />
     </AppShell>
   );

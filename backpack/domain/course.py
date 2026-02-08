@@ -21,6 +21,7 @@ class User(ObjectModel):
     name: Optional[str] = None
     role: str = "student"  # 'student', 'instructor', or 'admin'
     external_id: Optional[str] = None
+    avatar_url: Optional[str] = None
 
     @field_validator("email")
     @classmethod

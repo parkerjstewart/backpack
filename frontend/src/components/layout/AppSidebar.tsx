@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { IconButton } from "@/components/ui/button";
@@ -12,20 +11,13 @@ import { useCoursesStore } from "@/lib/stores/courses-store";
 import { useUserStore } from "@/lib/stores/user-store";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { useViewModeStore, type ViewMode } from "@/lib/stores/view-mode-store";
-import { PanelLeft, Settings, LogOut } from "lucide-react";
+import { PanelLeft, Settings } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
 
 // Brand name for the sidebar - using serif font (EB Garamond)
 const BRAND_NAME = "Backpack";
@@ -36,11 +28,10 @@ function isTeachingRole(role?: string | null): boolean {
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { isCollapsed, toggleCollapse } = useSidebarStore();
-  const { courses, setCourses } = useCoursesStore();
+  const { courses } = useCoursesStore();
   const { profile } = useUserStore();
-  const { currentUser, logout } = useAuthStore();
+  const { currentUser } = useAuthStore();
   const { activeView, setActiveView } = useViewModeStore();
 
   // Filter out archived courses for the main Classes list
@@ -63,11 +54,7 @@ export function AppSidebar() {
   const displayName = currentUser?.name || profile.name;
   const displayEmail = currentUser?.email || "";
 
-  const handleLogout = () => {
-    logout();
-    setCourses([]);
-    router.push("/login");
-  };
+  const avatarUrl = currentUser?.avatar_url || profile.avatarUrl;
 
   // User avatar component (reused in both collapsed/expanded states)
   const UserAvatar = ({ size = 40 }: { size?: number }) => (
@@ -77,13 +64,13 @@ export function AppSidebar() {
       )}
       style={{ width: size, height: size }}
     >
-      {profile.avatarUrl ? (
-        <Image
-          src={profile.avatarUrl}
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
           alt={displayName}
           width={size}
           height={size}
-          className="object-cover"
+          className="object-cover w-full h-full"
         />
       ) : (
         <span
@@ -95,30 +82,6 @@ export function AppSidebar() {
           {displayName.charAt(0).toUpperCase()}
         </span>
       )}
-    </div>
-  );
-
-  // Account popover content
-  const AccountPopoverContent = () => (
-    <div className="flex flex-col gap-1.5">
-      <div>
-        <p className="font-heading text-base font-medium text-foreground leading-tight">
-          {displayName}
-        </p>
-        {displayEmail && (
-          <p className="text-xs text-muted-foreground">{displayEmail}</p>
-        )}
-      </div>
-      <Separator />
-      <Button
-        variant="ghost"
-        size="sm"
-        className="w-full justify-start gap-2 text-xs h-8"
-        onClick={handleLogout}
-      >
-        <LogOut className="h-3.5 w-3.5" />
-        Log Out
-      </Button>
     </div>
   );
 
@@ -309,17 +272,18 @@ export function AppSidebar() {
               <TooltipContent side="right">Settings</TooltipContent>
             </Tooltip>
 
-            {/* User Avatar with Popover */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <button className="cursor-pointer">
+            {/* User Avatar - navigates to settings */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  href="/settings"
+                  className="cursor-pointer rounded-full"
+                >
                   <UserAvatar size={32} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent side="right" align="end" className="w-56 p-3">
-                <AccountPopoverContent />
-              </PopoverContent>
-            </Popover>
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right">Profile &amp; Settings</TooltipContent>
+            </Tooltip>
           </div>
         ) : (
           <div className="border-t border-sidebar-border py-4 px-4">
@@ -333,27 +297,23 @@ export function AppSidebar() {
               </SidebarNavLink>
             </div>
 
-            {/* User Profile Section with Popover */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <button className="flex items-center justify-between w-full cursor-pointer rounded-lg p-1 transition-colors hover:bg-secondary">
-                  <UserAvatar size={40} />
-                  <div className="flex flex-col items-end text-right">
-                    <span className="font-medium text-lg text-foreground tracking-tight">
-                      {displayName}
-                    </span>
-                    {displayEmail && (
-                      <span className="text-xs text-muted-foreground truncate max-w-[140px]">
-                        {displayEmail}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent side="top" align="start" className="w-56 p-3">
-                <AccountPopoverContent />
-              </PopoverContent>
-            </Popover>
+            {/* User Profile Section - navigates to settings */}
+            <Link
+              href="/settings"
+              className="flex items-center justify-between w-full cursor-pointer rounded-lg p-1 transition-colors hover:bg-secondary"
+            >
+              <UserAvatar size={40} />
+              <div className="flex flex-col items-end text-right">
+                <span className="font-medium text-lg text-foreground tracking-tight">
+                  {displayName}
+                </span>
+                {displayEmail && (
+                  <span className="text-xs text-muted-foreground truncate max-w-[140px]">
+                    {displayEmail}
+                  </span>
+                )}
+              </div>
+            </Link>
           </div>
         )}
       </div>

@@ -112,6 +112,9 @@ app.add_middleware(
         "/api/users/login",
         "/api/users/register",
     ],
+    excluded_prefixes=[
+        "/api/users/avatars/",
+    ],
 )
 
 # Add CORS middleware last (so it processes first)

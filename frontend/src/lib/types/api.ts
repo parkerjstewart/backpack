@@ -286,6 +286,7 @@ export interface UserResponse {
   email: string
   name: string | null
   role: string
+  avatar_url: string | null
   created: string
   updated: string
 }
@@ -330,6 +331,7 @@ export interface CourseMemberResponse {
   id: string
   email: string
   name: string | null
+  avatar_url: string | null
   role: string  // 'student', 'instructor', 'ta'
   enrolled_at: string
 }
@@ -376,5 +378,6 @@ export interface StudentWithMasteryResponse {
   id: string
   email: string
   name: string | null
+  avatar_url: string | null
   module_mastery: ModuleMasteryResponse[]
 }
