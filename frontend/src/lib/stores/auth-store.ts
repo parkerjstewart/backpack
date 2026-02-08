@@ -13,11 +13,8 @@ interface AuthState {
   lastAuthCheck: number | null
   isCheckingAuth: boolean
   hasHydrated: boolean
-  authRequired: boolean | null
   setHasHydrated: (state: boolean) => void
   setCurrentUser: (user: UserResponse | null) => void
-  checkAuthRequired: () => Promise<boolean>
-  login: (password: string) => Promise<boolean>
   loginWithEmail: (email: string) => Promise<UserResponse | null>
   registerWithEmail: (email: string, name: string) => Promise<UserResponse | null>
   logout: () => void
@@ -35,7 +32,6 @@ export const useAuthStore = create<AuthState>()(
       lastAuthCheck: null,
       isCheckingAuth: false,
       hasHydrated: false,
-      authRequired: null,
 
       setHasHydrated: (state: boolean) => {
         set({ hasHydrated: state })
@@ -45,111 +41,6 @@ export const useAuthStore = create<AuthState>()(
         set({ currentUser: user })
       },
 
-      checkAuthRequired: async () => {
-        try {
-          const apiUrl = await getApiUrl()
-          const response = await fetch(`${apiUrl}/api/auth/status`, {
-            cache: 'no-store',
-          })
-
-          if (!response.ok) {
-            throw new Error(`Auth status check failed: ${response.status}`)
-          }
-
-          const data = await response.json()
-          const required = data.auth_enabled || false
-          set({ authRequired: required })
-
-          // If auth is not required, mark as authenticated
-          if (!required) {
-            set({ isAuthenticated: true, token: 'not-required' })
-          }
-
-          return required
-        } catch (error) {
-          console.error('Failed to check auth status:', error)
-
-          // If it's a network error, set a more helpful error message
-          if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-            set({
-              error: 'Unable to connect to server. Please check if the API is running.',
-              authRequired: null  // Don't assume auth is required if we can't connect
-            })
-          } else {
-            // For other errors, default to requiring auth to be safe
-            set({ authRequired: true })
-          }
-
-          // Re-throw the error so the UI can handle it
-          throw error
-        }
-      },
-
-      login: async (password: string) => {
-        set({ isLoading: true, error: null })
-        try {
-          const apiUrl = await getApiUrl()
-
-          // Test auth with modules endpoint
-          const response = await fetch(`${apiUrl}/api/modules`, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${password}`,
-              'Content-Type': 'application/json'
-            }
-          })
-          
-          if (response.ok) {
-            set({ 
-              isAuthenticated: true, 
-              token: password, 
-              isLoading: false,
-              lastAuthCheck: Date.now(),
-              error: null
-            })
-            return true
-          } else {
-            let errorMessage = 'Authentication failed'
-            if (response.status === 401) {
-              errorMessage = 'Invalid password. Please try again.'
-            } else if (response.status === 403) {
-              errorMessage = 'Access denied. Please check your credentials.'
-            } else if (response.status >= 500) {
-              errorMessage = 'Server error. Please try again later.'
-            } else {
-              errorMessage = `Authentication failed (${response.status})`
-            }
-            
-            set({ 
-              error: errorMessage,
-              isLoading: false,
-              isAuthenticated: false,
-              token: null
-            })
-            return false
-          }
-        } catch (error) {
-          console.error('Network error during auth:', error)
-          let errorMessage = 'Authentication failed'
-          
-          if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-            errorMessage = 'Unable to connect to server. Please check if the API is running.'
-          } else if (error instanceof Error) {
-            errorMessage = `Network error: ${error.message}`
-          } else {
-            errorMessage = 'An unexpected error occurred during authentication'
-          }
-          
-          set({ 
-            error: errorMessage,
-            isLoading: false,
-            isAuthenticated: false,
-            token: null
-          })
-          return false
-        }
-      },
-      
       logout: () => {
         set({
           isAuthenticated: false,
@@ -285,8 +176,9 @@ export const useAuthStore = create<AuthState>()(
           return isAuthenticated
         }
 
-        // If no token, not authenticated
-        if (!token) {
+        // If no token or invalid token format, not authenticated
+        if (!token || !token.startsWith('user:')) {
+          set({ isAuthenticated: false, token: null, currentUser: null })
           return false
         }
 
@@ -301,7 +193,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const apiUrl = await getApiUrl()
 
-          const response = await fetch(`${apiUrl}/api/modules`, {
+          const response = await fetch(`${apiUrl}/api/users/me`, {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -310,8 +202,10 @@ export const useAuthStore = create<AuthState>()(
           })
           
           if (response.ok) {
+            const user = await response.json()
             set({ 
               isAuthenticated: true, 
+              currentUser: user,
               lastAuthCheck: now,
               isCheckingAuth: false 
             })
@@ -320,6 +214,7 @@ export const useAuthStore = create<AuthState>()(
             set({
               isAuthenticated: false,
               token: null,
+              currentUser: null,
               lastAuthCheck: null,
               isCheckingAuth: false
             })
@@ -330,6 +225,7 @@ export const useAuthStore = create<AuthState>()(
           set({ 
             isAuthenticated: false, 
             token: null,
+            currentUser: null,
             lastAuthCheck: null,
             isCheckingAuth: false 
           })

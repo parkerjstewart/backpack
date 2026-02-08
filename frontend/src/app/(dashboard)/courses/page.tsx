@@ -4,13 +4,18 @@ import { useState, useEffect } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { CourseCard, CreateCourseDialog } from "@/components/courses";
+import { CourseCard, CreateCourseDialog, PendingInvitationCard } from "@/components/courses";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useCoursesStore, type Course } from "@/lib/stores/courses-store";
 import { useUserStore } from "@/lib/stores/user-store";
 import { useCourses } from "@/lib/hooks/use-courses";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { useViewModeStore } from "@/lib/stores/view-mode-store";
+import {
+  useMyPendingInvitations,
+  useAcceptInvitation,
+  useDeclineInvitation,
+} from "@/lib/hooks/use-invitations";
 
 function isTeachingRole(role?: string | null): boolean {
   return role === "instructor" || role === "ta";
@@ -25,6 +30,11 @@ export default function CoursesPage() {
 
   // Fetch courses from backend
   const { data: coursesData, isLoading } = useCourses({ archived: false });
+
+  // Fetch pending invitations for the current user
+  const { data: pendingInvitations } = useMyPendingInvitations();
+  const acceptInvitation = useAcceptInvitation();
+  const declineInvitation = useDeclineInvitation();
 
   // Sync backend courses to local store (for color management + membership role)
   useEffect(() => {
@@ -110,6 +120,27 @@ export default function CoursesPage() {
               + Create New Course
             </Button>
           </div>
+
+          {/* Pending invitations */}
+          {pendingInvitations && pendingInvitations.length > 0 && (
+            <div className="flex flex-col gap-4 mt-4">
+              <h2 className="text-title text-teal-800">
+                Pending Invitations
+              </h2>
+              <div className="flex flex-col gap-3">
+                {pendingInvitations.map((invitation) => (
+                  <PendingInvitationCard
+                    key={invitation.id}
+                    invitation={invitation}
+                    onAccept={(id) => acceptInvitation.mutate(id)}
+                    onDecline={(id) => declineInvitation.mutate(id)}
+                    isAccepting={acceptInvitation.isPending}
+                    isDeclining={declineInvitation.isPending}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Courses sections */}
           {sections ? (

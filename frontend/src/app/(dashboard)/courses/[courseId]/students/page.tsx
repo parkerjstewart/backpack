@@ -20,6 +20,11 @@ import {
   useCourseNeedsAttention,
   useRemoveCourseMember,
 } from "@/lib/hooks/use-courses";
+import {
+  useCourseInvitations,
+  useCancelInvitation,
+  useCreateInvitation,
+} from "@/lib/hooks/use-invitations";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
 export default function CourseStudentsPage() {
@@ -34,6 +39,9 @@ export default function CourseStudentsPage() {
   const { data: needsAttention, isLoading: attentionLoading } = useCourseNeedsAttention(courseId);
 
   const removeMember = useRemoveCourseMember(courseId);
+  const { data: pendingInvitations } = useCourseInvitations(courseId);
+  const cancelInvitation = useCancelInvitation(courseId);
+  const resendInvitation = useCreateInvitation(courseId);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -153,15 +161,33 @@ export default function CourseStudentsPage() {
               </button>
             </div>
 
-            {filteredStudents && filteredStudents.length > 0 ? (
+            {(filteredStudents && filteredStudents.length > 0) ||
+            (pendingInvitations && pendingInvitations.length > 0) ? (
               <div className="flex flex-col divide-y divide-border rounded-xl border border-border overflow-hidden">
-                {filteredStudents.map((student) => (
+                {filteredStudents?.map((student) => (
                   <StudentListRow
                     key={student.id}
                     name={student.name}
                     email={student.email}
                     moduleMastery={student.module_mastery}
                     onRemove={() => removeMember.mutate(student.id)}
+                  />
+                ))}
+                {/* Pending invitation rows (Figma: faded italic style) */}
+                {pendingInvitations?.map((inv) => (
+                  <StudentListRow
+                    key={inv.id}
+                    variant="pending"
+                    name={inv.name}
+                    email={inv.email}
+                    onCancel={() => cancelInvitation.mutate(inv.id)}
+                    onResend={() =>
+                      resendInvitation.mutate({
+                        name: inv.name,
+                        email: inv.email,
+                        role: inv.role as "student" | "instructor" | "ta",
+                      })
+                    }
                   />
                 ))}
               </div>

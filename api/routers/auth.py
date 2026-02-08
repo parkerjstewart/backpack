@@ -3,8 +3,6 @@ Authentication router for Backpack API.
 Provides endpoints to check authentication status.
 """
 
-import os
-
 from fastapi import APIRouter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -14,13 +12,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def get_auth_status():
     """
     Check if authentication is enabled.
-    Returns whether a password is required to access the API.
+    Email-based authentication is always required.
     """
-    auth_enabled = bool(os.environ.get("BACKPACK_PASSWORD"))
-
     return {
-        "auth_enabled": auth_enabled,
-        "message": "Authentication is required"
-        if auth_enabled
-        else "Authentication is disabled",
+        "auth_enabled": True,
+        "message": "Authentication is required",
     }

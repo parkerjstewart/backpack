@@ -30,13 +30,10 @@ export function LoginForm() {
     error,
     loginWithEmail,
     registerWithEmail,
-    authRequired,
-    checkAuthRequired,
     hasHydrated,
     isAuthenticated,
   } = useAuthStore();
 
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [configInfo, setConfigInfo] = useState<{
     apiUrl: string;
     version: string;
@@ -59,40 +56,21 @@ export function LoginForm() {
       });
   }, []);
 
-  // Check if authentication is required on mount
+  // If already authenticated (cached session), redirect to dashboard
   useEffect(() => {
-    if (!hasHydrated) {
-      return;
-    }
-
-    const checkAuth = async () => {
-      try {
-        const required = await checkAuthRequired();
-
-        // If auth is not required, redirect to courses
-        if (!required) {
-          router.push("/courses");
-        }
-      } catch (error) {
-        console.error("Error checking auth requirement:", error);
-      } finally {
-        setIsCheckingAuth(false);
-      }
-    };
-
-    if (authRequired !== null) {
-      if (!authRequired && isAuthenticated) {
-        router.push("/courses");
+    if (hasHydrated && isAuthenticated) {
+      const redirectPath = sessionStorage.getItem("redirectAfterLogin");
+      if (redirectPath) {
+        sessionStorage.removeItem("redirectAfterLogin");
+        router.push(redirectPath);
       } else {
-        setIsCheckingAuth(false);
+        router.push("/courses");
       }
-    } else {
-      void checkAuth();
     }
-  }, [hasHydrated, authRequired, checkAuthRequired, router, isAuthenticated]);
+  }, [hasHydrated, isAuthenticated, router]);
 
-  // Show loading while checking if auth is required
-  if (!hasHydrated || isCheckingAuth) {
+  // Show loading while hydrating from localStorage
+  if (!hasHydrated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <LoadingSpinner />
@@ -100,51 +78,11 @@ export function LoginForm() {
     );
   }
 
-  // If we still don't know if auth is required (connection error), show error
-  if (authRequired === null) {
+  // If authenticated, show loading while redirecting
+  if (isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle>Connection Error</CardTitle>
-            <CardDescription>
-              Unable to connect to the server
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-start gap-2 text-red-600 text-sm">
-                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  {error || "Please check if the API server is running."}
-                </div>
-              </div>
-
-              {configInfo && (
-                <div className="space-y-2 text-xs text-muted-foreground border-t pt-3">
-                  <div className="font-medium">Diagnostic Info:</div>
-                  <div className="space-y-1 font-mono">
-                    <div>Version: {configInfo.version}</div>
-                    <div>
-                      Built:{" "}
-                      {new Date(configInfo.buildTime).toLocaleString("en-US")}
-                    </div>
-                    <div className="break-all">
-                      API URL: {configInfo.apiUrl}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <Button
-                onClick={() => window.location.reload()}
-                className="w-full"
-              >
-                Retry Connection
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <LoadingSpinner />
       </div>
     );
   }
