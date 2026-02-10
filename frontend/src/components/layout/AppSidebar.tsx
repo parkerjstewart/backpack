@@ -10,7 +10,6 @@ import { useSidebarStore } from "@/lib/stores/sidebar-store";
 import { useCoursesStore } from "@/lib/stores/courses-store";
 import { useUserStore } from "@/lib/stores/user-store";
 import { useAuthStore } from "@/lib/stores/auth-store";
-import { useViewModeStore, type ViewMode } from "@/lib/stores/view-mode-store";
 import { PanelLeft, Settings } from "lucide-react";
 import {
   Tooltip,
@@ -32,7 +31,6 @@ export function AppSidebar() {
   const { courses } = useCoursesStore();
   const { profile } = useUserStore();
   const { currentUser } = useAuthStore();
-  const { activeView, setActiveView } = useViewModeStore();
 
   // Filter out archived courses for the main Classes list
   const activeCourses = courses.filter((course) => !course.archived);
@@ -44,11 +42,6 @@ export function AppSidebar() {
   const enrolledCourses = activeCourses.filter(
     (c) => c.membershipRole === "student"
   );
-
-  // Determine if toggle should be visible
-  const hasTeachingCourses = teachingCourses.length > 0;
-  const hasStudentCourses = enrolledCourses.length > 0;
-  const showToggle = hasTeachingCourses && hasStudentCourses;
 
   // Get display info
   const displayName = currentUser?.name || profile.name;
@@ -85,43 +78,12 @@ export function AppSidebar() {
     </div>
   );
 
-  // Role toggle component
-  const RoleToggle = () => {
-    if (!showToggle) return null;
-
-    return (
-      <div className="flex rounded-lg bg-secondary p-1 gap-1">
-        {(["instructor", "student"] as ViewMode[]).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setActiveView(mode)}
-            className={cn(
-              "flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-              activeView === mode
-                ? "bg-accent text-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-            )}
-          >
-            {mode === "instructor" ? "Instructor" : "Student"}
-          </button>
-        ))}
-      </div>
-    );
-  };
-
   // Sectioned course list
   const SectionedCourseList = () => {
-    // Determine section order based on active view
-    const sections =
-      activeView === "instructor"
-        ? [
-            { label: "Teaching", courses: teachingCourses },
-            { label: "Enrolled", courses: enrolledCourses },
-          ]
-        : [
-            { label: "Enrolled", courses: enrolledCourses },
-            { label: "Teaching", courses: teachingCourses },
-          ];
+    const sections = [
+      { label: "Teaching", courses: teachingCourses },
+      { label: "Enrolled", courses: enrolledCourses },
+    ];
 
     // If no courses have membership roles, show all courses unsectioned
     const hasMembershipData = activeCourses.some((c) => c.membershipRole);
@@ -234,13 +196,6 @@ export function AppSidebar() {
             </>
           )}
         </div>
-
-        {/* Role Toggle (below brand, above course list) */}
-        {!isCollapsed && showToggle && (
-          <div className="px-4 pt-3">
-            <RoleToggle />
-          </div>
-        )}
 
         {/* Main Navigation - Classes Section (hidden when collapsed) */}
         {isCollapsed ? (

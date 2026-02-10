@@ -10,7 +10,6 @@ import { useCoursesStore, type Course } from "@/lib/stores/courses-store";
 import { useUserStore } from "@/lib/stores/user-store";
 import { useCourses } from "@/lib/hooks/use-courses";
 import { useAuthStore } from "@/lib/stores/auth-store";
-import { useViewModeStore } from "@/lib/stores/view-mode-store";
 import {
   useMyPendingInvitations,
   useAcceptInvitation,
@@ -25,7 +24,6 @@ export default function CoursesPage() {
   const { setCourses, getCourseColor } = useCoursesStore();
   const { profile } = useUserStore();
   const { currentUser } = useAuthStore();
-  const { activeView } = useViewModeStore();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   // Fetch courses from backend
@@ -79,17 +77,11 @@ export default function CoursesPage() {
   // Determine if we have role-based data
   const hasMembershipData = activeCourses.some((c) => c.membershipRole);
 
-  // Determine section order based on active view
   const sections = hasMembershipData
-    ? activeView === "instructor"
-      ? [
-          { label: "Teaching", courses: teachingCourses, showCreate: true },
-          { label: "Enrolled", courses: enrolledCourses, showCreate: false },
-        ]
-      : [
-          { label: "Enrolled", courses: enrolledCourses, showCreate: false },
-          { label: "Teaching", courses: teachingCourses, showCreate: true },
-        ]
+    ? [
+        { label: "Teaching", courses: teachingCourses },
+        { label: "Enrolled", courses: enrolledCourses },
+      ]
     : null;
 
   if (isLoading) {
