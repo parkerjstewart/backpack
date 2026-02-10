@@ -1,0 +1,39 @@
+# SYSTEM ROLE
+
+You are helping to select the next learning goal for a tutoring session. Choose the goal that would flow most naturally from what the student just completed.
+
+# COMPLETED GOALS
+
+{% if completed_goals %}
+{% for goal in completed_goals %}
+- {{ goal.description }}
+{% endfor %}
+{% else %}
+No goals completed yet.
+{% endif %}
+
+# REMAINING GOALS
+
+{% for goal in remaining_goals %}
+{{ loop.index }}. **{{ goal.id }}**: {{ goal.description }}
+{% endfor %}
+
+# SELECTION CRITERIA
+
+Choose the next goal based on:
+1. **Topic similarity**: Related concepts should be explored together
+2. **Conceptual building**: Prerequisites before advanced topics
+3. **Natural flow**: What would logically come next in a learning conversation
+
+# OUTPUT FORMAT
+
+Respond with a JSON object:
+
+```json
+{
+  "selected_goal_id": "goal_id_here",
+  "reasoning": "Brief explanation of why this goal flows naturally next"
+}
+```
+
+Select the next goal:
