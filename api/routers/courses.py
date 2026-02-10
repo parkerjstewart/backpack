@@ -67,9 +67,11 @@ async def list_courses(
                 """,
                 {"user_id": ensure_record_id(user_id)},
             )
+            # r.get("course", {}) can be None when FETCH returns null; ensure we never spread None
             courses_data = [
-                {**r.get("course", {}), "module_count": r.get("module_count", 0), "student_count": r.get("student_count", 0), "membership_role": r.get("membership_role")}
+                {**(r.get("course") or {}), "module_count": r.get("module_count", 0), "student_count": r.get("student_count", 0), "membership_role": r.get("membership_role")}
                 for r in (result or [])
+                if (r.get("course") or {}).get("id")  # skip rows with no valid course
             ]
         else:
             # Get all courses (unauthenticated or legacy mode)
