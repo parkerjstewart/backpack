@@ -39,11 +39,14 @@ export function useMyPendingInvitations() {
 /**
  * Hook to fetch pending invitations for a course (instructor view).
  */
-export function useCourseInvitations(courseId: string | undefined) {
+export function useCourseInvitations(
+  courseId: string | undefined,
+  options?: { enabled?: boolean }
+) {
   return useQuery<InvitationResponse[]>({
     queryKey: INVITATION_QUERY_KEYS.forCourse(courseId ?? ''),
     queryFn: () => invitationsApi.getCourseInvitations(courseId!),
-    enabled: !!courseId,
+    enabled: !!courseId && (options?.enabled ?? true),
   })
 }
 

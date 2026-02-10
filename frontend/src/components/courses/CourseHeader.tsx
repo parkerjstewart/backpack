@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { getCoursePermissions, type CourseMembershipRole } from "@/lib/permissions/course";
 
 interface CourseHeaderProps {
   courseId: string;
   courseName: string;
+  membershipRole?: CourseMembershipRole;
 }
 
 interface Tab {
@@ -20,15 +22,18 @@ interface Tab {
  * Displays course name on the left and tabs (Modules | Students | Insights | Settings)
  * on the right. Should be used on all course subpages for consistent navigation.
  */
-export function CourseHeader({ courseId, courseName }: CourseHeaderProps) {
+export function CourseHeader({ courseId, courseName, membershipRole }: CourseHeaderProps) {
   const pathname = usePathname();
+  const permissions = getCoursePermissions(membershipRole);
 
   // Note: Don't manually encode courseId - Next.js Link handles URL encoding automatically
   const tabs: Tab[] = [
     { label: "Modules", href: `/courses/${courseId}` },
     { label: "Students", href: `/courses/${courseId}/students` },
-    { label: "Settings", href: `/courses/${courseId}/settings` },
   ];
+  if (permissions.canManageCourseSettings) {
+    tabs.push({ label: "Settings", href: `/courses/${courseId}/settings` });
+  }
 
   const isActiveTab = (href: string) => {
     // Decode pathname to handle URL-encoded characters (e.g. %3A for : in SurrealDB IDs)

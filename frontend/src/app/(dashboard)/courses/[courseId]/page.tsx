@@ -12,6 +12,7 @@ import { useCoursesStore } from "@/lib/stores/courses-store";
 import { useCourse } from "@/lib/hooks/use-courses";
 import { CreateModuleWizard } from "@/components/modules/CreateModuleWizard";
 import { useState, useMemo, useEffect } from "react";
+import { getCoursePermissions } from "@/lib/permissions/course";
 
 export default function CoursePage() {
   const params = useParams();
@@ -94,19 +95,27 @@ export default function CoursePage() {
     );
   }
 
+  const permissions = getCoursePermissions(course.membership_role);
+
   return (
     <AppShell>
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-8 p-8">
           {/* Course Header with tabs */}
-          <CourseHeader courseId={courseId} courseName={course.title} />
+          <CourseHeader
+            courseId={courseId}
+            courseName={course.title}
+            membershipRole={course.membership_role}
+          />
 
           {/* Content area */}
           <div className="flex flex-col gap-8 items-center justify-center px-4">
-            {/* Full-width New Module button */}
-            <Button size="wide" onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="size-6" />
-            </Button>
+            {/* Full-width New Module button (instructor/ta only) */}
+            {permissions.canCreateModules && (
+              <Button size="wide" onClick={() => setCreateDialogOpen(true)}>
+                <Plus className="size-6" />
+              </Button>
+            )}
 
             {courseModules.length === 0 ? (
               /* Empty state */
@@ -181,11 +190,13 @@ export default function CoursePage() {
         </div>
       </div>
 
-      <CreateModuleWizard
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-        courseId={course.id}
-      />
+      {permissions.canCreateModules && (
+        <CreateModuleWizard
+          open={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+          courseId={course.id}
+        />
+      )}
     </AppShell>
   );
 }

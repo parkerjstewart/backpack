@@ -10,6 +10,7 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useCoursesStore, type Course } from "@/lib/stores/courses-store";
 import { useCourses, useUpdateCourse } from "@/lib/hooks/use-courses";
 import { ArchiveRestore } from "lucide-react";
+import { getCoursePermissions } from "@/lib/permissions/course";
 
 /**
  * Wrapper around CourseCard that adds a "Restore" overlay button.
@@ -115,11 +116,16 @@ export default function ArchivedPage() {
  * Wrapper that provides the restore mutation scoped to a specific course.
  */
 function RestorableCourseCard({ course }: { course: Course }) {
+  const permissions = getCoursePermissions(course.membershipRole);
   const updateCourse = useUpdateCourse(course.id);
 
   const handleRestore = (courseId: string) => {
     updateCourse.mutate({ archived: false });
   };
+
+  if (!permissions.canManageCourseSettings) {
+    return <CourseCard course={course} />;
+  }
 
   return (
     <ArchivedCourseCard

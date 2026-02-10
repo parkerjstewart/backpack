@@ -8,6 +8,10 @@ from fastapi import APIRouter, HTTPException, Header
 from loguru import logger
 
 from api.models import CreateInvitationRequest, InvitationResponse
+from api.routers.authz import (
+    require_authenticated_user_id,
+    require_teaching_role,
+)
 from api.email_service import get_invite_url, send_invite_email
 from backpack.database.repository import ensure_record_id, repo_query
 from backpack.domain.course import Course, User
@@ -15,16 +19,6 @@ from backpack.domain.invitation import Invitation
 from backpack.exceptions import DatabaseOperationError, InvalidInputError
 
 router = APIRouter()
-
-
-def _get_current_user_id(authorization: Optional[str] = None) -> Optional[str]:
-    """Extract current user ID from authorization header."""
-    if not authorization:
-        return None
-    token = authorization.replace("Bearer ", "").strip()
-    if token.startswith("user:"):
-        return token
-    return None
 
 
 def _invitation_to_response(
@@ -60,6 +54,9 @@ async def create_invitation(
     Optionally sends an email if RESEND_API_KEY is configured.
     """
     try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_teaching_role(course_id, user_id)
+
         course = await Course.get(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
@@ -74,14 +71,12 @@ async def create_invitation(
             return _invitation_to_response(existing, course_title=course.title)
 
         # Get inviter info (available in email-auth mode, None in password-auth mode)
-        user_id = _get_current_user_id(authorization)
         inviter_name = None
-        if user_id:
-            try:
-                inviter = await User.get(user_id)
-                inviter_name = inviter.name if inviter else None
-            except Exception:
-                pass
+        try:
+            inviter = await User.get(user_id)
+            inviter_name = inviter.name if inviter else None
+        except Exception:
+            pass
 
         # Create the invitation
         invitation = Invitation(
@@ -125,9 +120,7 @@ async def get_my_pending_invitations(
     Used by the courses page to show invitations after login.
     """
     try:
-        user_id = _get_current_user_id(authorization)
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+        user_id = require_authenticated_user_id(authorization)
 
         user = await User.get(user_id)
         if not user:
@@ -173,9 +166,7 @@ async def accept_invitation(
 ):
     """Accept a pending invitation, creating the course membership."""
     try:
-        user_id = _get_current_user_id(authorization)
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+        user_id = require_authenticated_user_id(authorization)
 
         invitation = await Invitation.get(invitation_id)
         if not invitation:
@@ -208,9 +199,7 @@ async def decline_invitation(
 ):
     """Decline a pending invitation."""
     try:
-        user_id = _get_current_user_id(authorization)
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+        user_id = require_authenticated_user_id(authorization)
 
         invitation = await Invitation.get(invitation_id)
         if not invitation:
@@ -236,14 +225,17 @@ async def decline_invitation(
         )
 
 
-@router.get(
-    "/courses/{course_id}/invitations", response_model=List[InvitationResponse]
-)
-async def get_course_invitations(course_id: str):
+@router.get("/courses/{course_id}/invitations", response_model=List[InvitationResponse])
+async def get_course_invitations(
+    course_id: str, authorization: Optional[str] = Header(None)
+):
     """
     Get all pending invitations for a course (instructor view).
     """
     try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_teaching_role(course_id, user_id)
+
         course = await Course.get(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
@@ -264,13 +256,18 @@ async def get_course_invitations(course_id: str):
 
 
 @router.post("/invitations/{invitation_id}/cancel")
-async def cancel_invitation(invitation_id: str):
+async def cancel_invitation(
+    invitation_id: str, authorization: Optional[str] = Header(None)
+):
     """Cancel a pending invitation (instructor action)."""
     try:
+        user_id = require_authenticated_user_id(authorization)
+
         invitation = await Invitation.get(invitation_id)
         if not invitation:
             raise HTTPException(status_code=404, detail="Invitation not found")
 
+        await require_teaching_role(str(invitation.course_id), user_id)
         await invitation.cancel()
         return {"status": "cancelled", "message": "Invitation cancelled"}
     except HTTPException:

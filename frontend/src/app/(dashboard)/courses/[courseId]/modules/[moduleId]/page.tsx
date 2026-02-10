@@ -20,6 +20,7 @@ import { useIsDesktop } from "@/lib/hooks/use-media-query";
 import { useTranslation } from "@/lib/hooks/use-translation";
 import { cn } from "@/lib/utils";
 import { FileText } from "lucide-react";
+import { getCoursePermissions } from "@/lib/permissions/course";
 
 type ContextMode = "off" | "insights" | "full";
 
@@ -125,13 +126,19 @@ export default function CourseModuleOverviewPage() {
     );
   }
 
+  const permissions = getCoursePermissions(course?.membership_role);
+
   return (
     <AppShell>
       <div className="flex flex-col flex-1 min-h-0">
         {/* Course Header with tabs */}
         <div className="flex-shrink-0 px-8 pt-8">
           {course && (
-            <CourseHeader courseId={courseId} courseName={course.title} />
+            <CourseHeader
+              courseId={courseId}
+              courseName={course.title}
+              membershipRole={course.membership_role}
+            />
           )}
         </div>
 
@@ -144,9 +151,11 @@ export default function CourseModuleOverviewPage() {
                 <p className="text-muted-foreground">{module.description}</p>
               )}
             </div>
-            <Button onClick={() => setUploadOpen(true)}>
-              Upload documents
-            </Button>
+            {permissions.canEditModuleContent && (
+              <Button onClick={() => setUploadOpen(true)}>
+                Upload documents
+              </Button>
+            )}
           </div>
         </div>
 
@@ -236,11 +245,13 @@ export default function CourseModuleOverviewPage() {
         </div>
       </div>
 
-      <AddSourceDialog
-        open={uploadOpen}
-        onOpenChange={setUploadOpen}
-        defaultModuleId={moduleId}
-      />
+      {permissions.canEditModuleContent && (
+        <AddSourceDialog
+          open={uploadOpen}
+          onOpenChange={setUploadOpen}
+          defaultModuleId={moduleId}
+        />
+      )}
     </AppShell>
   );
 }
