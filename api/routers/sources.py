@@ -33,7 +33,7 @@ from backpack.config import UPLOADS_FOLDER
 from backpack.database.repository import ensure_record_id, repo_query
 from backpack.domain.module import Module, Source
 from backpack.domain.transformation import Transformation
-from backpack.exceptions import InvalidInputError
+from backpack.exceptions import InvalidInputError, NotFoundError
 
 router = APIRouter()
 
@@ -737,6 +737,8 @@ async def get_source_status(source_id: str):
 
     except HTTPException:
         raise
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Source not found")
     except Exception as e:
         logger.error(f"Error fetching status for source {source_id}: {str(e)}")
         raise HTTPException(
