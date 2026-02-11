@@ -8,6 +8,7 @@ conversation flow and Command for dynamic routing based on evaluation results.
 
 import asyncio
 import json
+import re
 import sqlite3
 from datetime import datetime
 from typing import Annotated, Any, Dict, List, Literal, Optional
@@ -28,6 +29,25 @@ from backpack.domain.module import LearningGoal, Module, vector_search
 from backpack.graphs.tutor_models import EvaluationResult, GeneratedQuestions
 from backpack.utils import clean_thinking_content
 from backpack.utils.context_builder import ContextBuilder
+
+
+def extract_json_from_response(content: str) -> str:
+    """Extract JSON from LLM response, stripping markdown code fences if present."""
+    # Try to find JSON within markdown code blocks
+    code_block_pattern = r"```(?:json)?\s*\n?([\s\S]*?)\n?```"
+    matches = re.findall(code_block_pattern, content)
+    if matches:
+        # Return the first code block content
+        return matches[0].strip()
+    
+    # Try to find raw JSON object or array
+    json_pattern = r"(\{[\s\S]*\}|\[[\s\S]*\])"
+    matches = re.findall(json_pattern, content)
+    if matches:
+        return matches[0].strip()
+    
+    # Return original content if no patterns match
+    return content.strip()
 
 
 class TutorState(TypedDict):
@@ -225,17 +245,20 @@ def generate_starter_questions(state: TutorState, config: RunnableConfig) -> dic
         model = run_in_new_loop()
 
     ai_message = model.invoke(system_prompt)
-    content = clean_thinking_content(
-        ai_message.content if isinstance(ai_message.content, str) else str(ai_message.content)
-    )
+    raw_content = ai_message.content if isinstance(ai_message.content, str) else str(ai_message.content)
+    content = clean_thinking_content(raw_content)
 
-    # Parse response
+    # Parse response - extract JSON from potential markdown code blocks
+    json_content = extract_json_from_response(content)
     try:
-        parsed = json.loads(content)
+        parsed = json.loads(json_content)
         questions_data = parsed.get("questions", [])
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse questions JSON, using defaults")
-        questions_data = [{"question_text": f"What do you understand about: {current_goal['description']}?"}]
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse questions JSON: {e}")
+        logger.error(f"Raw LLM response:\n{raw_content}")
+        logger.error(f"Cleaned content:\n{content}")
+        logger.error(f"Extracted JSON attempt:\n{json_content}")
+        questions_data = [{"question_text": f"Can you explain your understanding of this learning goal: {current_goal['description']}"}]
 
     # Build starter questions
     starter_questions = []
@@ -252,7 +275,7 @@ def generate_starter_questions(state: TutorState, config: RunnableConfig) -> dic
     if not starter_questions:
         starter_questions.append({
             "index": 0,
-            "question_text": f"What do you understand about: {current_goal['description']}?",
+            "question_text": f"Can you explain your understanding of this learning goal: {current_goal['description']}",
             "target_concepts": [],
             "expected_depth": "understand",
             "resolved": False,
@@ -383,13 +406,13 @@ def evaluate_and_route(
         model = run_in_new_loop()
 
     ai_message = model.invoke(system_prompt)
-    content = clean_thinking_content(
-        ai_message.content if isinstance(ai_message.content, str) else str(ai_message.content)
-    )
+    raw_content = ai_message.content if isinstance(ai_message.content, str) else str(ai_message.content)
+    content = clean_thinking_content(raw_content)
 
-    # Parse evaluation
+    # Parse evaluation - extract JSON from potential markdown code blocks
+    json_content = extract_json_from_response(content)
     try:
-        parsed = json.loads(content)
+        parsed = json.loads(json_content)
         score = float(parsed.get("score", 0.5))
         evaluation = {
             "score": score,
@@ -399,7 +422,9 @@ def evaluate_and_route(
             "is_resolved": score >= 0.7,
         }
     except (json.JSONDecodeError, ValueError) as e:
-        logger.warning(f"Failed to parse evaluation: {e}")
+        logger.error(f"Failed to parse evaluation: {e}")
+        logger.error(f"Raw LLM response:\n{raw_content}")
+        logger.error(f"Extracted JSON attempt:\n{json_content}")
         evaluation = {"score": 0.5, "notes": "Parsing failed", "misconceptions": [], "breakthroughs": [], "is_resolved": False}
 
     # Record trajectory point
