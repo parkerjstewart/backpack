@@ -20,17 +20,17 @@ from backpack.graphs.transformation import (
 )
 from backpack.graphs.tutor_models import (
     EvaluationResult,
+    GeneratedQuestions,
     GoalProgress,
+    GoalSelection,
     SessionSummary,
     StarterQuestion,
     UnderstandingPoint,
 )
 from backpack.graphs.tutor import (
     TutorState,
-    build_tutor_graph,
     check_more_goals,
-    check_more_questions,
-    serialize_goal_progress,
+    tutor_state,
 )
 
 # ============================================================================
@@ -173,6 +173,106 @@ class TestTransformationGraph:
 class TestTutorModels:
     """Test suite for tutor Pydantic models."""
 
+    def test_starter_question_creation(self):
+        """Test StarterQuestion creation."""
+        question = StarterQuestion(
+            index=0,
+            question_text="What do you understand about X?",
+            target_concepts=["concept1", "concept2"],
+            expected_depth="understand",
+        )
+
+        assert question.index == 0
+        assert "understand about X" in question.question_text
+        assert len(question.target_concepts) == 2
+        assert question.expected_depth == "understand"
+        assert question.resolved is False
+        assert question.exchanges == 0
+
+    def test_starter_question_defaults(self):
+        """Test StarterQuestion default values."""
+        question = StarterQuestion(question_text="Test question")
+
+        assert question.index == 0
+        assert question.target_concepts == []
+        assert question.expected_depth == "understand"
+        assert question.resolved is False
+        assert question.exchanges == 0
+
+    def test_generated_questions_creation(self):
+        """Test GeneratedQuestions creation."""
+        questions = GeneratedQuestions(
+            reasoning="Testing different concepts",
+            questions=[
+                StarterQuestion(question_text="Q1"),
+                StarterQuestion(question_text="Q2", expected_depth="apply"),
+            ],
+        )
+
+        assert questions.reasoning == "Testing different concepts"
+        assert len(questions.questions) == 2
+        assert questions.questions[1].expected_depth == "apply"
+
+    def test_generated_questions_defaults(self):
+        """Test GeneratedQuestions default values."""
+        questions = GeneratedQuestions()
+
+        assert questions.reasoning == ""
+        assert questions.questions == []
+
+    def test_evaluation_result_creation(self):
+        """Test EvaluationResult creation."""
+        result = EvaluationResult(
+            score=0.75,
+            notes="Good understanding",
+            misconceptions=["Minor confusion"],
+            breakthroughs=["Key insight"],
+        )
+
+        assert result.score == 0.75
+        assert result.notes == "Good understanding"
+        assert len(result.misconceptions) == 1
+        assert len(result.breakthroughs) == 1
+
+    def test_evaluation_result_score_bounds(self):
+        """Test EvaluationResult score validation bounds."""
+        # Valid scores
+        result_low = EvaluationResult(score=0.0)
+        result_high = EvaluationResult(score=1.0)
+
+        assert result_low.score == 0.0
+        assert result_high.score == 1.0
+
+        # Invalid scores should raise
+        with pytest.raises(ValueError):
+            EvaluationResult(score=-0.1)
+        with pytest.raises(ValueError):
+            EvaluationResult(score=1.1)
+
+    def test_evaluation_result_defaults(self):
+        """Test EvaluationResult default values."""
+        result = EvaluationResult(score=0.5)
+
+        assert result.notes == ""
+        assert result.misconceptions == []
+        assert result.breakthroughs == []
+
+    def test_goal_selection_creation(self):
+        """Test GoalSelection creation."""
+        selection = GoalSelection(
+            selected_goal_id="goal:123",
+            reasoning="Related to previous topic",
+        )
+
+        assert selection.selected_goal_id == "goal:123"
+        assert selection.reasoning == "Related to previous topic"
+
+    def test_goal_selection_defaults(self):
+        """Test GoalSelection default values."""
+        selection = GoalSelection(selected_goal_id="goal:456")
+
+        assert selection.reasoning == ""
+
     def test_understanding_point_creation(self):
         """Test UnderstandingPoint creation with all fields."""
         point = UnderstandingPoint(
@@ -223,7 +323,7 @@ class TestTutorModels:
             student_message="msg",
             understanding_score=1.0,
         )
-        
+
         assert point_low.understanding_score == 0.0
         assert point_high.understanding_score == 1.0
 
@@ -243,34 +343,8 @@ class TestTutorModels:
                 understanding_score=1.1,
             )
 
-    def test_starter_question_creation(self):
-        """Test StarterQuestion creation."""
-        question = StarterQuestion(
-            index=0,
-            question_text="What do you understand about X?",
-            target_concepts=["concept1", "concept2"],
-            expected_depth="understand",
-        )
-
-        assert question.index == 0
-        assert "understand about X" in question.question_text
-        assert len(question.target_concepts) == 2
-        assert question.expected_depth == "understand"
-        assert question.resolved is False
-        assert question.exchanges == 0
-
-    def test_starter_question_depth_values(self):
-        """Test StarterQuestion expected_depth literal values."""
-        for depth in ["recall", "understand", "apply", "analyze"]:
-            question = StarterQuestion(
-                index=0,
-                question_text="Test",
-                expected_depth=depth,
-            )
-            assert question.expected_depth == depth
-
     def test_goal_progress_creation(self):
-        """Test GoalProgress creation and methods."""
+        """Test GoalProgress creation."""
         progress = GoalProgress(
             goal_id="goal_123",
             goal_description="Understand concept X",
@@ -284,8 +358,8 @@ class TestTutorModels:
         assert progress.starter_questions == []
         assert progress.current_question_index == 0
 
-    def test_goal_progress_get_current_question(self):
-        """Test GoalProgress.get_current_question method."""
+    def test_goal_progress_with_questions(self):
+        """Test GoalProgress with starter questions."""
         progress = GoalProgress(
             goal_id="goal_123",
             goal_description="Test",
@@ -293,93 +367,12 @@ class TestTutorModels:
                 StarterQuestion(index=0, question_text="Q1"),
                 StarterQuestion(index=1, question_text="Q2"),
             ],
-            current_question_index=0,
+            current_question_index=1,
         )
 
-        current = progress.get_current_question()
-        assert current is not None
-        assert current.question_text == "Q1"
-
-        progress.current_question_index = 1
-        current = progress.get_current_question()
-        assert current.question_text == "Q2"
-
-    def test_goal_progress_has_more_questions(self):
-        """Test GoalProgress.has_more_questions method."""
-        progress = GoalProgress(
-            goal_id="goal_123",
-            goal_description="Test",
-            starter_questions=[
-                StarterQuestion(index=0, question_text="Q1"),
-                StarterQuestion(index=1, question_text="Q2"),
-            ],
-            current_question_index=0,
-        )
-
-        assert progress.has_more_questions() is True
-
-        progress.current_question_index = 1
-        assert progress.has_more_questions() is False
-
-    def test_goal_progress_advance_to_next_question(self):
-        """Test GoalProgress.advance_to_next_question method."""
-        progress = GoalProgress(
-            goal_id="goal_123",
-            goal_description="Test",
-            starter_questions=[
-                StarterQuestion(index=0, question_text="Q1"),
-                StarterQuestion(index=1, question_text="Q2"),
-            ],
-            current_question_index=0,
-        )
-
-        next_q = progress.advance_to_next_question()
-        assert next_q is not None
-        assert next_q.question_text == "Q2"
+        assert len(progress.starter_questions) == 2
         assert progress.current_question_index == 1
-
-        # No more questions
-        next_q = progress.advance_to_next_question()
-        assert next_q is None
-
-    def test_goal_progress_duration(self):
-        """Test GoalProgress.get_duration_seconds method."""
-        from datetime import timedelta
-
-        now = datetime.now()
-        earlier = now - timedelta(seconds=120)
-
-        progress = GoalProgress(
-            goal_id="goal_123",
-            goal_description="Test",
-            started_at=earlier,
-            completed_at=now,
-        )
-
-        duration = progress.get_duration_seconds()
-        assert duration is not None
-        assert 119 <= duration <= 121  # Allow small timing variance
-
-    def test_evaluation_result_from_score(self):
-        """Test EvaluationResult.from_score class method."""
-        # Below threshold
-        result = EvaluationResult.from_score(
-            0.5,
-            notes="Partial understanding",
-            misconceptions=["X is wrong"],
-        )
-        assert result.score == 0.5
-        assert result.is_resolved is False
-        assert len(result.misconceptions) == 1
-
-        # At threshold
-        result = EvaluationResult.from_score(0.7)
-        assert result.is_resolved is True
-
-        # Above threshold
-        result = EvaluationResult.from_score(0.9, breakthroughs=["Got it!"])
-        assert result.is_resolved is True
-        assert len(result.breakthroughs) == 1
+        assert progress.starter_questions[0].question_text == "Q1"
 
     def test_session_summary_creation(self):
         """Test SessionSummary creation."""
@@ -405,6 +398,7 @@ class TestTutorModels:
         assert summary.session_id == "session_123"
         assert summary.total_goals == 5
         assert summary.understanding_improvement == 0.45
+        assert summary.narrative == ""
 
 
 # ============================================================================
@@ -417,33 +411,14 @@ class TestTutorGraph:
 
     def test_tutor_graph_compilation(self):
         """Test that tutor graph compiles correctly."""
-        state_graph = build_tutor_graph()
+        assert tutor_state is not None
+        # tutor_state is a StateGraph, check it has compile
+        assert hasattr(tutor_state, "compile")
 
-        assert state_graph is not None
-        # StateGraph needs to be compiled to have invoke/ainvoke
-        assert hasattr(state_graph, "compile")
-        
         # Compile without checkpointer for testing
-        compiled = state_graph.compile()
+        compiled = tutor_state.compile()
         assert hasattr(compiled, "invoke")
         assert hasattr(compiled, "ainvoke")
-
-    def test_serialize_goal_progress(self):
-        """Test GoalProgress serialization."""
-        progress = GoalProgress(
-            goal_id="goal_123",
-            goal_description="Test goal",
-            starter_questions=[
-                StarterQuestion(index=0, question_text="Q1"),
-            ],
-        )
-
-        serialized = serialize_goal_progress(progress)
-
-        assert isinstance(serialized, dict)
-        assert serialized["goal_id"] == "goal_123"
-        assert serialized["goal_description"] == "Test goal"
-        assert len(serialized["starter_questions"]) == 1
 
     def test_check_more_goals_with_remaining(self):
         """Test check_more_goals when goals remain."""
@@ -471,49 +446,20 @@ class TestTutorGraph:
         result = check_more_goals(state)
         assert result == "all_complete"
 
-    def test_check_more_questions_with_remaining(self):
-        """Test check_more_questions when questions remain."""
-        progress = GoalProgress(
-            goal_id="goal_123",
-            goal_description="Test",
-            starter_questions=[
-                StarterQuestion(index=0, question_text="Q1"),
-                StarterQuestion(index=1, question_text="Q2"),
-            ],
-            current_question_index=0,
-        )
-
+    def test_check_more_goals_none_complete(self):
+        """Test check_more_goals when none complete."""
         state = {
-            "current_goal_id": "goal_123",
-            "goal_progress": {"goal_123": serialize_goal_progress(progress)},
+            "learning_goals": [
+                {"id": "g1", "description": "Goal 1"},
+            ],
+            "completed_goal_ids": [],
         }
 
-        result = check_more_questions(state)
-        assert result == "more_questions"
-
-    def test_check_more_questions_goal_complete(self):
-        """Test check_more_questions when goal is complete."""
-        progress = GoalProgress(
-            goal_id="goal_123",
-            goal_description="Test",
-            starter_questions=[
-                StarterQuestion(index=0, question_text="Q1"),
-                StarterQuestion(index=1, question_text="Q2"),
-            ],
-            current_question_index=1,  # At last question
-        )
-
-        state = {
-            "current_goal_id": "goal_123",
-            "goal_progress": {"goal_123": serialize_goal_progress(progress)},
-        }
-
-        result = check_more_questions(state)
-        assert result == "goal_complete"
+        result = check_more_goals(state)
+        assert result == "more_goals"
 
     def test_tutor_state_structure(self):
         """Test TutorState TypedDict structure."""
-        # TutorState is a TypedDict, verify its annotations
         from typing import get_type_hints
 
         hints = get_type_hints(TutorState)

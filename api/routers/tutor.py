@@ -19,12 +19,6 @@ from pydantic import BaseModel, Field
 
 from backpack.domain.module import Module
 from backpack.graphs.tutor import tutor_graph
-from backpack.graphs.tutor_models import (
-    GoalProgress,
-    SessionSummary,
-    StarterQuestion,
-    UnderstandingPoint,
-)
 
 router = APIRouter()
 
