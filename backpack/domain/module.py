@@ -217,6 +217,18 @@ class Source(ObjectModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     table_name: ClassVar[str] = "source"
+
+    @classmethod
+    async def get_sources(cls, source_ids: list[str]) -> list["Source"]:
+        """Fetch multiple Source objects by ID, skipping any that are missing."""
+        sources = []
+        for source_id in source_ids:
+            source = await cls.get(source_id)
+            if source:
+                sources.append(source)
+            else:
+                logger.warning(f"Source {source_id} not found")
+        return sources
     asset: Optional[Asset] = None
     title: Optional[str] = None
     topics: Optional[List[str]] = Field(default_factory=list)
