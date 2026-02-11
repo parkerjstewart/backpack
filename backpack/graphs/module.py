@@ -17,6 +17,8 @@ from typing_extensions import TypedDict
 
 from backpack.ai.provision import provision_langchain_model
 from backpack.domain.module import LearningGoal, Module, Source
+from backpack.domain.transformation import Transformation
+from backpack.graphs.transformation import graph as transform_graph
 from backpack.utils import clean_thinking_content
 from backpack.utils.token_utils import token_count
 
@@ -83,39 +85,59 @@ async def build_sources_context(sources: list[Source]) -> list[dict]:
     """Build the sources context list used by AI prompts.
 
     Uses full text when total is under ~200k tokens.
-    Falls back to dense summaries when over budget.
+    Falls back to dense summaries when over budget, generating them
+    on the fly if they don't exist yet.
     """
     all_text = "".join(s.full_text or "" for s in sources)
     total_tokens = token_count(all_text)
     use_full_text = total_tokens <= MAX_CONTEXT_TOKENS
 
+    if use_full_text:
+        return [
+            {"title": s.title, "content": s.full_text or ""}
+            for s in sources
+        ]
+
+    # Over budget — use dense summaries
+    # Look up the Dense Summary transformation once for potential on-the-fly generation
+    dense_transform = None
+    try:
+        for t in await Transformation.get_all():
+            if t.title.lower() == "dense summary":
+                dense_transform = t
+                break
+    except Exception as e:
+        logger.warning(f"Failed to look up Dense Summary transformation: {e}")
+
     sources_context = []
     for source in sources:
-        if use_full_text:
-            content = source.full_text or ""
-        else:
-            content = None
-            try:
-                insights = await source.get_insights()
-                for insight in insights:
-                    if insight.insight_type.lower() == "dense summary":
-                        content = insight.content
-                        break
-            except Exception as e:
-                logger.warning(
-                    f"Error getting insights for source {source.id}: {e}"
+        content = None
+        try:
+            for insight in await source.get_insights():
+                if insight.insight_type.lower() == "dense summary":
+                    content = insight.content
+                    break
+        except Exception as e:
+            logger.warning(
+                f"Error getting insights for source {source.id}: {e}"
+            )
+
+        if not content and dense_transform and source.full_text:
+            logger.info(f"Generating dense summary for source {source.id} on the fly")
+            result = await transform_graph.ainvoke(
+                dict(
+                    input_text=source.full_text,
+                    source=source,
+                    transformation=dense_transform,
                 )
+            )
+            content = result["output"]
 
-            if not content:
-                full = source.full_text or ""
-                content = full[:4000] + ("..." if len(full) > 4000 else "")
+        if not content:
+            full = source.full_text or ""
+            content = full[:4000] + ("..." if len(full) > 4000 else "")
 
-        sources_context.append(
-            {
-                "title": source.title,
-                "content": content,
-            }
-        )
+        sources_context.append({"title": source.title, "content": content})
     return sources_context
 
 
