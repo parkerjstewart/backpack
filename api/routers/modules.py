@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from ai_prompter import Prompter
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Header
 from loguru import logger
 
 from api.models import (
@@ -15,6 +15,10 @@ from api.models import (
     ModuleUpdate,
     PreviewModuleContentRequest,
     PreviewModuleContentResponse,
+)
+from api.routers.authz import (
+    require_authenticated_user_id,
+    require_teaching_role,
 )
 from backpack.ai.provision import provision_langchain_model
 from backpack.database.repository import ensure_record_id, repo_query
@@ -70,9 +74,13 @@ async def get_modules(
 
 
 @router.post("/modules", response_model=ModuleResponse)
-async def create_module(module: ModuleCreate):
+async def create_module(module: ModuleCreate, authorization: Optional[str] = Header(None)):
     """Create a new module, optionally associated with a course."""
     try:
+        if module.course_id:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(module.course_id, user_id)
+
         new_module = Module(
             name=module.name,
             description=module.description,
@@ -140,12 +148,24 @@ async def get_module(module_id: str):
 
 
 @router.put("/modules/{module_id}", response_model=ModuleResponse)
-async def update_module(module_id: str, module_update: ModuleUpdate):
+async def update_module(
+    module_id: str,
+    module_update: ModuleUpdate,
+    authorization: Optional[str] = Header(None),
+):
     """Update a module."""
     try:
         module = await Module.get(module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
+
+        user_id = None
+        if module.course or module_update.course_id:
+            user_id = require_authenticated_user_id(authorization)
+        if module.course and user_id:
+            await require_teaching_role(str(module.course), user_id)
+        if module_update.course_id and user_id:
+            await require_teaching_role(module_update.course_id, user_id)
 
         # Update only provided fields
         if module_update.name is not None:
@@ -210,13 +230,21 @@ async def update_module(module_id: str, module_update: ModuleUpdate):
 
 
 @router.post("/modules/{module_id}/sources/{source_id}")
-async def add_source_to_module(module_id: str, source_id: str):
+async def add_source_to_module(
+    module_id: str,
+    source_id: str,
+    authorization: Optional[str] = Header(None),
+):
     """Add an existing source to a module (create the reference)."""
     try:
         # Check if module exists
         module = await Module.get(module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
+
+        if module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
 
         # Check if source exists
         source = await Source.get(source_id)
@@ -255,13 +283,21 @@ async def add_source_to_module(module_id: str, source_id: str):
 
 
 @router.delete("/modules/{module_id}/sources/{source_id}")
-async def remove_source_from_module(module_id: str, source_id: str):
+async def remove_source_from_module(
+    module_id: str,
+    source_id: str,
+    authorization: Optional[str] = Header(None),
+):
     """Remove a source from a module (delete the reference)."""
     try:
         # Check if module exists
         module = await Module.get(module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
+
+        if module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
 
         # Delete the reference record linking source to module
         # Note: RELATE source->reference->module means out=source, in=module
@@ -286,12 +322,16 @@ async def remove_source_from_module(module_id: str, source_id: str):
 
 
 @router.delete("/modules/{module_id}")
-async def delete_module(module_id: str):
+async def delete_module(module_id: str, authorization: Optional[str] = Header(None)):
     """Delete a module."""
     try:
         module = await Module.get(module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
+
+        if module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
 
         await module.delete()
 
@@ -307,7 +347,9 @@ async def delete_module(module_id: str):
 
 @router.post("/modules/{module_id}/generate-overview", response_model=ModuleResponse)
 async def generate_module_overview(
-    module_id: str, request: Optional[GenerateOverviewRequest] = None
+    module_id: str,
+    request: Optional[GenerateOverviewRequest] = None,
+    authorization: Optional[str] = Header(None),
 ):
     """Generate an AI overview for a module based on its sources and notes."""
     try:
@@ -315,6 +357,10 @@ async def generate_module_overview(
         module = await Module.get(module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
+
+        if module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
 
         # Get sources and notes for context
         sources = await module.get_sources()
@@ -468,12 +514,20 @@ async def get_module_learning_goals(module_id: str):
 @router.post(
     "/modules/{module_id}/learning-goals", response_model=LearningGoalResponse
 )
-async def create_learning_goal(module_id: str, request: LearningGoalCreate):
+async def create_learning_goal(
+    module_id: str,
+    request: LearningGoalCreate,
+    authorization: Optional[str] = Header(None),
+):
     """Create a new learning goal for a module."""
     try:
         module = await Module.get(module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
+
+        if module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
 
         # Get current max order for this module if order not provided
         order = request.order
@@ -510,12 +564,21 @@ async def create_learning_goal(module_id: str, request: LearningGoalCreate):
 
 
 @router.put("/learning-goals/{goal_id}", response_model=LearningGoalResponse)
-async def update_learning_goal(goal_id: str, request: LearningGoalUpdate):
+async def update_learning_goal(
+    goal_id: str,
+    request: LearningGoalUpdate,
+    authorization: Optional[str] = Header(None),
+):
     """Update a learning goal."""
     try:
         goal = await LearningGoal.get(goal_id)
         if not goal:
             raise HTTPException(status_code=404, detail="Learning goal not found")
+
+        module = await Module.get(str(goal.module))
+        if module and module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
 
         if request.description is not None:
             goal.description = request.description
@@ -547,12 +610,17 @@ async def update_learning_goal(goal_id: str, request: LearningGoalUpdate):
 
 
 @router.delete("/learning-goals/{goal_id}")
-async def delete_learning_goal(goal_id: str):
+async def delete_learning_goal(goal_id: str, authorization: Optional[str] = Header(None)):
     """Delete a learning goal."""
     try:
         goal = await LearningGoal.get(goal_id)
         if not goal:
             raise HTTPException(status_code=404, detail="Learning goal not found")
+
+        module = await Module.get(str(goal.module))
+        if module and module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
 
         await goal.delete()
         return {"message": "Learning goal deleted successfully"}
@@ -570,7 +638,9 @@ async def delete_learning_goal(goal_id: str):
     response_model=List[LearningGoalResponse],
 )
 async def generate_module_learning_goals(
-    module_id: str, request: Optional[GenerateLearningGoalsRequest] = None
+    module_id: str,
+    request: Optional[GenerateLearningGoalsRequest] = None,
+    authorization: Optional[str] = Header(None),
 ):
     """Generate AI-powered learning goals for a module based on its sources and notes."""
     try:
@@ -578,6 +648,10 @@ async def generate_module_learning_goals(
         module = await Module.get(module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
+
+        if module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
 
         # Get sources and notes for context
         sources = await module.get_sources()

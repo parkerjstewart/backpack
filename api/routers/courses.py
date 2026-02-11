@@ -16,23 +16,17 @@ from api.models import (
     ModuleMasteryResponse,
     StudentWithMasteryResponse,
 )
+from api.routers.authz import (
+    get_course_membership_role,
+    get_current_user_id_from_auth,
+    require_authenticated_user_id,
+    require_course_membership_role,
+    require_teaching_role,
+)
 from backpack.database.repository import ensure_record_id, repo_query
 from backpack.domain.course import Course, User
 
 router = APIRouter()
-
-
-def _get_current_user_id(authorization: Optional[str] = None) -> Optional[str]:
-    """
-    Extract current user ID from authorization header.
-    Token format: "Bearer user:xxx" after email login.
-    """
-    if not authorization:
-        return None
-    token = authorization.replace("Bearer ", "").strip()
-    if token.startswith("user:"):
-        return token
-    return None
 
 
 # ============================================
@@ -50,7 +44,7 @@ async def list_courses(
     If user is authenticated, only returns courses they're a member of.
     """
     try:
-        user_id = _get_current_user_id(authorization)
+        user_id = get_current_user_id_from_auth(authorization)
 
         if user_id:
             # Get courses for authenticated user, including membership role
@@ -117,7 +111,7 @@ async def create_course(
 ):
     """Create a new course. Auto-enrolls the creator as instructor."""
     try:
-        user_id = _get_current_user_id(authorization)
+        user_id = get_current_user_id_from_auth(authorization)
 
         course = Course(
             title=course_data.title,
@@ -147,9 +141,19 @@ async def create_course(
 
 
 @router.get("/courses/{course_id}", response_model=CourseResponse)
-async def get_course(course_id: str):
+async def get_course(course_id: str, authorization: Optional[str] = Header(None)):
     """Get a specific course by ID."""
     try:
+        user_id = get_current_user_id_from_auth(authorization)
+        membership_role = None
+        if user_id:
+            membership_role = await get_course_membership_role(course_id, user_id)
+            if not membership_role:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You do not have access to this course",
+                )
+
         result = await repo_query(
             """
             SELECT *,
@@ -174,6 +178,7 @@ async def get_course(course_id: str):
             updated=str(c.get("updated", "")),
             module_count=c.get("module_count", 0),
             student_count=c.get("student_count", 0),
+            membership_role=membership_role,
         )
     except HTTPException:
         raise
@@ -183,9 +188,16 @@ async def get_course(course_id: str):
 
 
 @router.put("/courses/{course_id}", response_model=CourseResponse)
-async def update_course(course_id: str, course_update: CourseUpdate):
+async def update_course(
+    course_id: str,
+    course_update: CourseUpdate,
+    authorization: Optional[str] = Header(None),
+):
     """Update a course."""
     try:
+        user_id = require_authenticated_user_id(authorization)
+        membership_role = await require_teaching_role(course_id, user_id)
+
         course = await Course.get(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
@@ -221,6 +233,7 @@ async def update_course(course_id: str, course_update: CourseUpdate):
             updated=str(course.updated),
             module_count=counts.get("module_count", 0),
             student_count=counts.get("student_count", 0),
+            membership_role=membership_role,
         )
     except HTTPException:
         raise
@@ -230,9 +243,12 @@ async def update_course(course_id: str, course_update: CourseUpdate):
 
 
 @router.delete("/courses/{course_id}")
-async def delete_course(course_id: str):
+async def delete_course(course_id: str, authorization: Optional[str] = Header(None)):
     """Delete a course."""
     try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_teaching_role(course_id, user_id)
+
         course = await Course.get(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
@@ -252,9 +268,12 @@ async def delete_course(course_id: str):
 
 
 @router.get("/courses/{course_id}/students", response_model=List[StudentWithMasteryResponse])
-async def get_course_students(course_id: str):
+async def get_course_students(course_id: str, authorization: Optional[str] = Header(None)):
     """Get all students in a course with their module mastery."""
     try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_course_membership_role(course_id, user_id)
+
         course = await Course.get(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
@@ -332,9 +351,14 @@ async def get_course_students(course_id: str):
 
 
 @router.get("/courses/{course_id}/teaching-team", response_model=List[CourseMemberResponse])
-async def get_course_teaching_team(course_id: str):
+async def get_course_teaching_team(
+    course_id: str, authorization: Optional[str] = Header(None)
+):
     """Get all instructors and TAs for a course."""
     try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_course_membership_role(course_id, user_id)
+
         course = await Course.get(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
@@ -360,9 +384,14 @@ async def get_course_teaching_team(course_id: str):
 
 
 @router.get("/courses/{course_id}/needs-attention", response_model=List[CourseMemberResponse])
-async def get_course_needs_attention(course_id: str):
+async def get_course_needs_attention(
+    course_id: str, authorization: Optional[str] = Header(None)
+):
     """Get students who need attention (struggling with learning goals)."""
     try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_teaching_role(course_id, user_id)
+
         course = await Course.get(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
@@ -388,9 +417,16 @@ async def get_course_needs_attention(course_id: str):
 
 
 @router.post("/courses/{course_id}/members", response_model=CourseMemberResponse)
-async def add_course_member(course_id: str, request: AddCourseMemberRequest):
+async def add_course_member(
+    course_id: str,
+    request: AddCourseMemberRequest,
+    authorization: Optional[str] = Header(None),
+):
     """Add a member to a course by email. Creates user if doesn't exist."""
     try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_teaching_role(course_id, user_id)
+
         course = await Course.get(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
@@ -437,9 +473,16 @@ async def add_course_member(course_id: str, request: AddCourseMemberRequest):
 
 
 @router.delete("/courses/{course_id}/members/{user_id}")
-async def remove_course_member(course_id: str, user_id: str):
+async def remove_course_member(
+    course_id: str,
+    user_id: str,
+    authorization: Optional[str] = Header(None),
+):
     """Remove a member from a course."""
     try:
+        current_user_id = require_authenticated_user_id(authorization)
+        await require_teaching_role(course_id, current_user_id)
+
         course = await Course.get(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")

@@ -26,6 +26,7 @@ import {
   useCreateInvitation,
 } from "@/lib/hooks/use-invitations";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { getCoursePermissions } from "@/lib/permissions/course";
 
 export default function CourseStudentsPage() {
   const params = useParams();
@@ -38,11 +39,14 @@ export default function CourseStudentsPage() {
     useCourseStudents(courseId);
   const { data: teachingTeam, isLoading: teamLoading } =
     useCourseTeachingTeam(courseId);
+  const permissions = getCoursePermissions(course?.membership_role);
   const { data: needsAttention, isLoading: attentionLoading } =
-    useCourseNeedsAttention(courseId);
+    useCourseNeedsAttention(courseId, { enabled: permissions.canManageMembers });
 
   const removeMember = useRemoveCourseMember(courseId);
-  const { data: pendingInvitations } = useCourseInvitations(courseId);
+  const { data: pendingInvitations } = useCourseInvitations(
+    permissions.canManageMembers ? courseId : undefined
+  );
   const cancelInvitation = useCancelInvitation(courseId);
   const resendInvitation = useCreateInvitation(courseId);
 
@@ -94,7 +98,11 @@ export default function CourseStudentsPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-8 p-8">
           {/* Course Header with tabs */}
-          <CourseHeader courseId={courseId} courseName={course.title} />
+          <CourseHeader
+            courseId={courseId}
+            courseName={course.title}
+            membershipRole={course.membership_role}
+          />
 
           {/* Search bar */}
           <div className="relative max-w-md">
@@ -109,7 +117,9 @@ export default function CourseStudentsPage() {
           </div>
 
           {/* Needs Attention section */}
-          {needsAttention && needsAttention.length > 0 && (
+          {permissions.canManageMembers &&
+            needsAttention &&
+            needsAttention.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="text-title text-teal-800">Needs Attention</h2>
               <div className="flex flex-wrap gap-6">
@@ -138,17 +148,19 @@ export default function CourseStudentsPage() {
                 />
               ))}
               {/* Add Teacher button with dotted outline */}
-              <button
-                onClick={() => openInviteDialog("instructor")}
-                className="flex flex-col items-center gap-2 p-2 group"
-              >
-                <div className="w-[100px] h-[100px] rounded-full border-2 border-dashed border-primary flex items-center justify-center transition-colors group-hover:bg-secondary">
-                  <Plus className="h-8 w-8 text-primary group-hover:text-primary transition-colors" />
-                </div>
-                <span className="text-base text-primary transition-colors">
-                  Add Teacher
-                </span>
-              </button>
+              {permissions.canManageMembers && (
+                <button
+                  onClick={() => openInviteDialog("instructor")}
+                  className="flex flex-col items-center gap-2 p-2 group"
+                >
+                  <div className="w-[100px] h-[100px] rounded-full border-2 border-dashed border-primary flex items-center justify-center transition-colors group-hover:bg-secondary">
+                    <Plus className="h-8 w-8 text-primary group-hover:text-primary transition-colors" />
+                  </div>
+                  <span className="text-base text-primary transition-colors">
+                    Add Teacher
+                  </span>
+                </button>
+              )}
             </div>
           </section>
 
@@ -158,12 +170,14 @@ export default function CourseStudentsPage() {
               <h2 className="text-title text-teal-800">
                 All Students ({filteredStudents?.length ?? 0})
               </h2>
-              <IconButton
-                onClick={() => openInviteDialog("student")}
-                aria-label="Add student"
-              >
-                <Plus className="h-6 w-6 text-teal-800" />
-              </IconButton>
+              {permissions.canManageMembers && (
+                <IconButton
+                  onClick={() => openInviteDialog("student")}
+                  aria-label="Add student"
+                >
+                  <Plus className="h-6 w-6 text-teal-800" />
+                </IconButton>
+              )}
             </div>
 
             {(filteredStudents && filteredStudents.length > 0) ||
@@ -176,11 +190,16 @@ export default function CourseStudentsPage() {
                     email={student.email}
                     avatarUrl={student.avatar_url}
                     moduleMastery={student.module_mastery}
-                    onRemove={() => removeMember.mutate(student.id)}
+                    onRemove={
+                      permissions.canManageMembers
+                        ? () => removeMember.mutate(student.id)
+                        : undefined
+                    }
                   />
                 ))}
                 {/* Pending invitation rows (Figma: faded italic style) */}
-                {pendingInvitations?.map((inv) => (
+                {permissions.canManageMembers &&
+                  pendingInvitations?.map((inv) => (
                   <StudentListRow
                     key={inv.id}
                     variant="pending"
@@ -204,7 +223,7 @@ export default function CourseStudentsPage() {
                     ? "No students match your search"
                     : "No students enrolled yet"}
                 </p>
-                {!searchQuery && (
+                {!searchQuery && permissions.canManageMembers && (
                   <Button
                     variant="outline"
                     onClick={() => openInviteDialog("student")}
@@ -220,12 +239,14 @@ export default function CourseStudentsPage() {
       </div>
 
       {/* Invite Dialog */}
-      <InviteDialog
-        open={inviteDialogOpen}
-        onOpenChange={setInviteDialogOpen}
-        courseId={courseId}
-        defaultRole={inviteRole}
-      />
+      {permissions.canManageMembers && (
+        <InviteDialog
+          open={inviteDialogOpen}
+          onOpenChange={setInviteDialogOpen}
+          courseId={courseId}
+          defaultRole={inviteRole}
+        />
+      )}
     </AppShell>
   );
 }

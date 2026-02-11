@@ -78,11 +78,14 @@ export function useCourseTeachingTeam(courseId: string | undefined) {
 /**
  * Hook to fetch students needing attention.
  */
-export function useCourseNeedsAttention(courseId: string | undefined) {
+export function useCourseNeedsAttention(
+  courseId: string | undefined,
+  options?: { enabled?: boolean }
+) {
   return useQuery<CourseMemberResponse[]>({
     queryKey: COURSE_QUERY_KEYS.needsAttention(courseId ?? ''),
     queryFn: () => coursesApi.getNeedsAttention(courseId!),
-    enabled: !!courseId,
+    enabled: !!courseId && (options?.enabled ?? true),
   })
 }
 

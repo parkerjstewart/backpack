@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { Archive, ArchiveRestore, Trash2 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -23,6 +24,7 @@ import {
   useDeleteCourse,
 } from "@/lib/hooks/use-courses";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { getCoursePermissions } from "@/lib/permissions/course";
 
 export default function CourseSettingsPage() {
   const params = useParams();
@@ -102,12 +104,47 @@ export default function CourseSettingsPage() {
     );
   }
 
+  const permissions = getCoursePermissions(course.membership_role);
+  if (!permissions.canManageCourseSettings) {
+    return (
+      <AppShell>
+        <div className="flex-1 overflow-y-auto">
+          <div className="flex flex-col gap-8 p-8">
+            <CourseHeader
+              courseId={courseId}
+              courseName={course.title}
+              membershipRole={course.membership_role}
+            />
+            <Card className="max-w-2xl">
+              <CardHeader>
+                <CardTitle>Settings are instructor-only</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-end">
+                  <Button asChild variant="outline">
+                    <Link href={`/courses/${encodeURIComponent(courseId)}`}>
+                      Back to course
+                    </Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-8 p-8">
           {/* Course Header with tabs */}
-          <CourseHeader courseId={courseId} courseName={course.title} />
+          <CourseHeader
+            courseId={courseId}
+            courseName={course.title}
+            membershipRole={course.membership_role}
+          />
 
           {/* Settings content */}
           <div className="flex flex-col gap-8 max-w-2xl">
