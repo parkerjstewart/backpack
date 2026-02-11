@@ -29,6 +29,7 @@ interface SourcesColumnProps {
   isLoading: boolean
   moduleId: string
   moduleName?: string
+  canEdit?: boolean
   onRefresh?: () => void
   contextSelections?: Record<string, ContextMode>
   onContextModeChange?: (sourceId: string, mode: ContextMode) => void
@@ -42,6 +43,7 @@ export function SourcesColumn({
   sources,
   isLoading,
   moduleId,
+  canEdit = true,
   onRefresh,
   contextSelections,
   onContextModeChange,
@@ -158,25 +160,27 @@ export function SourcesColumn({
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-lg">{t.navigation.sources}</CardTitle>
               <div className="flex items-center gap-2">
-                <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4 mr-2" />
-                      {t.sources.addSource}
-                      <ChevronDown className="h-4 w-4 ml-2" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      {t.sources.addSource}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
-                      <Link2 className="h-4 w-4 mr-2" />
-                      {t.sources.addExistingTitle}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {canEdit && (
+                  <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm">
+                        <Plus className="h-4 w-4 mr-2" />
+                        {t.sources.addSource}
+                        <ChevronDown className="h-4 w-4 ml-2" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        {t.sources.addSource}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
+                        <Link2 className="h-4 w-4 mr-2" />
+                        {t.sources.addExistingTitle}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 {collapseButton}
               </div>
             </div>
@@ -200,11 +204,11 @@ export function SourcesColumn({
                     key={source.id}
                     source={source}
                     onClick={handleSourceClick}
-                    onDelete={handleDeleteClick}
+                    onDelete={canEdit ? handleDeleteClick : undefined}
                     onRetry={handleRetry}
-                    onRemoveFromModule={handleRemoveFromModule}
+                    onRemoveFromModule={canEdit ? handleRemoveFromModule : undefined}
                     onRefresh={onRefresh}
-                    showRemoveFromModule={true}
+                    showRemoveFromModule={canEdit}
                     contextMode={contextSelections?.[source.id]}
                     onContextModeChange={onContextModeChange
                       ? (mode) => onContextModeChange(source.id, mode)
@@ -224,40 +228,48 @@ export function SourcesColumn({
         </Card>
       </CollapsibleColumn>
 
-      <AddSourceDialog
-        open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
-        defaultModuleId={moduleId}
-      />
+      {canEdit && (
+        <AddSourceDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          defaultModuleId={moduleId}
+        />
+      )}
 
-      <AddExistingSourceDialog
-        open={addExistingDialogOpen}
-        onOpenChange={setAddExistingDialogOpen}
-        moduleId={moduleId}
-        onSuccess={onRefresh}
-      />
+      {canEdit && (
+        <AddExistingSourceDialog
+          open={addExistingDialogOpen}
+          onOpenChange={setAddExistingDialogOpen}
+          moduleId={moduleId}
+          onSuccess={onRefresh}
+        />
+      )}
 
-      <ConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        title={t.sources.delete}
-        description={t.sources.deleteConfirm}
-        confirmText={t.common.delete}
-        onConfirm={handleDeleteConfirm}
-        isLoading={deleteSource.isPending}
-        confirmVariant="destructive"
-      />
+      {canEdit && (
+        <ConfirmDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          title={t.sources.delete}
+          description={t.sources.deleteConfirm}
+          confirmText={t.common.delete}
+          onConfirm={handleDeleteConfirm}
+          isLoading={deleteSource.isPending}
+          confirmVariant="destructive"
+        />
+      )}
 
-      <ConfirmDialog
-        open={removeDialogOpen}
-        onOpenChange={setRemoveDialogOpen}
-        title={t.sources.removeFromModule}
-        description={t.sources.removeConfirm}
-        confirmText={t.common.remove}
-        onConfirm={handleRemoveConfirm}
-        isLoading={removeFromModule.isPending}
-        confirmVariant="default"
-      />
+      {canEdit && (
+        <ConfirmDialog
+          open={removeDialogOpen}
+          onOpenChange={setRemoveDialogOpen}
+          title={t.sources.removeFromModule}
+          description={t.sources.removeConfirm}
+          confirmText={t.common.remove}
+          onConfirm={handleRemoveConfirm}
+          isLoading={removeFromModule.isPending}
+          confirmVariant="default"
+        />
+      )}
     </>
   )
 }

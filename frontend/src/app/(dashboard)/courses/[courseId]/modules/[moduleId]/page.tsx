@@ -190,6 +190,7 @@ export default function CourseModuleOverviewPage() {
                     isLoading={sourcesLoading}
                     moduleId={moduleId}
                     moduleName={module?.name}
+                    canEdit={permissions.canEditModuleContent}
                     onRefresh={refetchSources}
                     contextSelections={contextSelections.sources}
                     onContextModeChange={(sourceId, mode) =>
@@ -201,7 +202,10 @@ export default function CourseModuleOverviewPage() {
                   />
                 )}
                 {mobileActiveTab === "details" && module && (
-                  <ModuleDetails module={module} />
+                  <ModuleDetails
+                    module={module}
+                    canEdit={permissions.canEditModuleContent}
+                  />
                 )}
               </div>
             </>
@@ -226,6 +230,7 @@ export default function CourseModuleOverviewPage() {
                 isLoading={sourcesLoading}
                 moduleId={moduleId}
                 moduleName={module?.name}
+                canEdit={permissions.canEditModuleContent}
                 onRefresh={refetchSources}
                 contextSelections={contextSelections.sources}
                 onContextModeChange={(sourceId, mode) =>
@@ -239,7 +244,12 @@ export default function CourseModuleOverviewPage() {
 
             {/* Module Details Column - always expanded, takes remaining space */}
             <div className="transition-all duration-150 flex-1 overflow-y-auto lg:pr-6 lg:-mr-6">
-              {module && <ModuleDetails module={module} />}
+              {module && (
+                <ModuleDetails
+                  module={module}
+                  canEdit={permissions.canEditModuleContent}
+                />
+              )}
             </div>
           </div>
         </div>
