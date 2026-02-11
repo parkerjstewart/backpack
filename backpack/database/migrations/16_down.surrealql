@@ -1,0 +1,6 @@
+-- ============================================
+-- Migration 16 DOWN: Remove takeaways and competencies from learning_goal
+-- ============================================
+
+REMOVE FIELD IF EXISTS takeaways ON TABLE learning_goal;
+REMOVE FIELD IF EXISTS competencies ON TABLE learning_goal;
