@@ -17,6 +17,8 @@ from api.models import (
     PreviewLearningGoalsResponse,
     PreviewModuleContentRequest,
     PreviewModuleContentResponse,
+    PreviewOverviewResponse,
+    PreviewSourcesRequest
 )
 from api.routers.authz import (
     require_authenticated_user_id,
