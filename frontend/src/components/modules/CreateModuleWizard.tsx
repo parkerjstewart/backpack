@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { useModuleDraftStore } from "@/lib/stores/module-draft-store";
@@ -21,20 +21,20 @@ export function CreateModuleWizard({
   const { addPendingSource, setTargetCourseId, reset } = useModuleDraftStore();
   const hasInitialized = useRef(false);
 
-  // Reset draft store when dialog first opens
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (nextOpen && !hasInitialized.current) {
+  // Initialize draft store when dialog opens — useEffect instead of onOpenChange
+  // because AddSourceDialog only calls onOpenChange(false) on close, never on open
+  useEffect(() => {
+    if (open && !hasInitialized.current) {
       hasInitialized.current = true;
       reset();
       if (courseId) {
         setTargetCourseId(courseId);
       }
     }
-    if (!nextOpen) {
+    if (!open) {
       hasInitialized.current = false;
     }
-    onOpenChange(nextOpen);
-  };
+  }, [open, courseId, reset, setTargetCourseId]);
 
   const handleSourceCreated = (sourceId: string) => {
     addPendingSource(sourceId);
@@ -47,7 +47,7 @@ export function CreateModuleWizard({
   return (
     <AddSourceDialog
       open={open}
-      onOpenChange={handleOpenChange}
+      onOpenChange={onOpenChange}
       draftMode
       title="Add Sources"
       onSourceCreated={handleSourceCreated}
