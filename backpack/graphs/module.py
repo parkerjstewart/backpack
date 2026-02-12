@@ -5,9 +5,6 @@ Generates module names, overviews, and learning goals from source materials.
 Each generation function can be called individually or composed via the graph.
 """
 
-import json
-from typing import Optional
-
 from ai_prompter import Prompter
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
@@ -19,13 +16,24 @@ from backpack.ai.provision import provision_langchain_model
 from backpack.domain.module import LearningGoal, Module, Source
 from backpack.domain.transformation import Transformation
 from backpack.graphs.transformation import graph as transform_graph
-from backpack.utils import clean_thinking_content
 from backpack.utils.token_utils import token_count
 
 
 # ============================================
 # Pydantic output models for structured AI responses
 # ============================================
+
+
+class GeneratedName(BaseModel):
+    """Structured output for module name generation."""
+
+    name: str = Field(..., description="Short, descriptive module title (under 5 words)")
+
+
+class GeneratedOverview(BaseModel):
+    """Structured output for module overview generation."""
+
+    overview: str = Field(..., description="3-4 sentence high-level summary")
 
 
 class GeneratedLearningGoal(BaseModel):
@@ -40,12 +48,13 @@ class GeneratedLearningGoal(BaseModel):
     )
 
 
-class ModuleGenerationResult(BaseModel):
-    """Complete result of module content generation."""
+class GeneratedLearningGoals(BaseModel):
+    """Structured output wrapper for learning goals generation."""
 
-    name: Optional[str] = None
-    overview: Optional[str] = None
-    learning_goals: list[GeneratedLearningGoal] = Field(default_factory=list)
+    goals: list[GeneratedLearningGoal] = Field(
+        ..., description="List of 3-5 learning goals"
+    )
+
 
 
 # ============================================
@@ -99,15 +108,7 @@ async def build_sources_context(sources: list[Source]) -> list[dict]:
         ]
 
     # Over budget — use dense summaries
-    # Look up the Dense Summary transformation once for potential on-the-fly generation
-    dense_transform = None
-    try:
-        for t in await Transformation.get_all():
-            if t.title.lower() == "dense summary":
-                dense_transform = t
-                break
-    except Exception as e:
-        logger.warning(f"Failed to look up Dense Summary transformation: {e}")
+    dense_transform = await Transformation.get_by_title("Dense Summary")
 
     sources_context = []
     for source in sources:
@@ -156,13 +157,9 @@ async def generate_name(
         "transformation",
         max_tokens=100,
     )
-    ai_message = await model.ainvoke(system_prompt)
-    content = (
-        ai_message.content
-        if isinstance(ai_message.content, str)
-        else str(ai_message.content)
-    )
-    return clean_thinking_content(content).strip().strip("\"'")
+    structured_model = model.with_structured_output(GeneratedName)
+    result = await structured_model.ainvoke(system_prompt)
+    return result.name
 
 
 async def generate_overview(
@@ -188,68 +185,9 @@ async def generate_overview(
         "transformation",
         max_tokens=500,
     )
-    ai_message = await model.ainvoke(system_prompt)
-    content = (
-        ai_message.content
-        if isinstance(ai_message.content, str)
-        else str(ai_message.content)
-    )
-    return clean_thinking_content(content)
-
-
-def _parse_learning_goals_response(raw: str) -> list[GeneratedLearningGoal]:
-    """Parse LLM output into a list of GeneratedLearningGoal models.
-
-    Tries JSON first, falls back to line-by-line parsing.
-    """
-    content = raw.strip()
-
-    # Strip markdown code fences if the model wrapped the JSON
-    if content.startswith("```"):
-        content = content.split("\n", 1)[1] if "\n" in content else content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-        content = content.strip()
-
-    # Try JSON parsing into Pydantic models
-    try:
-        parsed = json.loads(content)
-        if isinstance(parsed, list):
-            goals = []
-            for item in parsed:
-                if isinstance(item, dict) and "description" in item:
-                    # Normalize arrays to bullet-point strings
-                    takeaways = item.get("takeaways", "")
-                    if isinstance(takeaways, list):
-                        takeaways = "\n".join(f"- {t}" for t in takeaways)
-                    competencies = item.get("competencies", "")
-                    if isinstance(competencies, list):
-                        competencies = "\n".join(f"- {c}" for c in competencies)
-                    goals.append(
-                        GeneratedLearningGoal(
-                            description=item["description"],
-                            takeaways=takeaways,
-                            competencies=competencies,
-                        )
-                    )
-            return goals
-    except json.JSONDecodeError:
-        logger.warning(
-            "Failed to parse learning goals as JSON, falling back to line parsing"
-        )
-
-    # Fallback: one goal per line (no takeaways/competencies)
-    goal_lines = [
-        line.strip()
-        for line in content.strip().split("\n")
-        if line.strip() and not line.strip().startswith("#")
-    ]
-    goals = []
-    for line in goal_lines:
-        cleaned = line.lstrip("0123456789.-*) ").strip()
-        if cleaned:
-            goals.append(GeneratedLearningGoal(description=cleaned))
-    return goals
+    structured_model = model.with_structured_output(GeneratedOverview)
+    result = await structured_model.ainvoke(system_prompt)
+    return result.overview
 
 
 async def generate_learning_goals(
@@ -275,14 +213,9 @@ async def generate_learning_goals(
         "transformation",
         max_tokens=2000,
     )
-    ai_message = await model.ainvoke(system_prompt)
-    content = (
-        ai_message.content
-        if isinstance(ai_message.content, str)
-        else str(ai_message.content)
-    )
-    content = clean_thinking_content(content)
-    return _parse_learning_goals_response(content)
+    structured_model = model.with_structured_output(GeneratedLearningGoals)
+    result = await structured_model.ainvoke(system_prompt)
+    return result.goals
 
 
 # ============================================
