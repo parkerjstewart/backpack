@@ -82,6 +82,8 @@ export interface LearningGoalResponse {
   module: string
   description: string
   mastery_criteria: string | null
+  takeaways: string | null
+  competencies: string | null
   order: number
   created: string
   updated: string
@@ -90,12 +92,16 @@ export interface LearningGoalResponse {
 export interface CreateLearningGoalRequest {
   description: string
   mastery_criteria?: string
+  takeaways?: string
+  competencies?: string
   order?: number
 }
 
 export interface UpdateLearningGoalRequest {
   description?: string
   mastery_criteria?: string
+  takeaways?: string
+  competencies?: string
   order?: number
 }
 
@@ -271,9 +277,31 @@ export interface PreviewModuleContentRequest {
 }
 
 export interface PreviewModuleContentResponse {
+  name: string | null
   overview: string | null
   learning_goals: Array<{
     description: string
+    takeaways?: string
+    competencies?: string
+    order: number
+  }>
+}
+
+// Individual preview endpoints for regeneration
+export interface PreviewSourcesRequest {
+  source_ids: string[]
+  name: string
+}
+
+export interface PreviewOverviewResponse {
+  overview: string
+}
+
+export interface PreviewLearningGoalsResponse {
+  learning_goals: Array<{
+    description: string
+    takeaways?: string
+    competencies?: string
     order: number
   }>
 }

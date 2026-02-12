@@ -17,7 +17,8 @@ import {
   useDeleteLearningGoal,
   useGenerateLearningGoals,
 } from '@/lib/hooks/use-modules'
-import { Plus, X, Sparkles, Loader2 } from 'lucide-react'
+import { Plus, X, Sparkles, Loader2, ChevronDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ModuleDetailsProps {
   module: ModuleResponse
@@ -36,8 +37,9 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
   const deleteLearningGoal = useDeleteLearningGoal()
   const generateLearningGoals = useGenerateLearningGoals()
 
-  // Local state for editing goals (tracks which goal is being edited and its current value)
-  const [editingGoals, setEditingGoals] = useState<Record<string, string>>({})
+  // Local state for editing goals
+  const [editingGoals, setEditingGoals] = useState<Record<string, { description: string; takeaways: string; competencies: string }>>({})
+  const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null)
 
   const metadata = getModuleMetadata(module.id)
   // Use overview from API (module.overview) as primary source, fall back to local store
@@ -96,10 +98,14 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
 
   // Initialize editing state when goals load
   useEffect(() => {
-    const newEditingState: Record<string, string> = {}
+    const newEditingState: Record<string, { description: string; takeaways: string; competencies: string }> = {}
     learningGoals.forEach((goal) => {
       if (!(goal.id in editingGoals)) {
-        newEditingState[goal.id] = goal.description
+        newEditingState[goal.id] = {
+          description: goal.description,
+          takeaways: goal.takeaways || '',
+          competencies: goal.competencies || '',
+        }
       }
     })
     if (Object.keys(newEditingState).length > 0) {
@@ -155,14 +161,19 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
     })
   }
 
-  const handleUpdateLearningGoalDescription = (goal: LearningGoalResponse) => {
+  const handleUpdateLearningGoal = (goal: LearningGoalResponse) => {
     if (!canEdit) return
-    const newDescription = editingGoals[goal.id]
-    if (newDescription && newDescription !== goal.description) {
+    const editing = editingGoals[goal.id]
+    if (!editing) return
+    const updates: Record<string, string> = {}
+    if (editing.description !== goal.description) updates.description = editing.description
+    if (editing.takeaways !== (goal.takeaways || '')) updates.takeaways = editing.takeaways
+    if (editing.competencies !== (goal.competencies || '')) updates.competencies = editing.competencies
+    if (Object.keys(updates).length > 0) {
       updateLearningGoal.mutate({
         goalId: goal.id,
         moduleId: module.id,
-        data: { description: newDescription },
+        data: updates,
       })
     }
   }
@@ -306,35 +317,114 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
             </p>
           ) : (
             <div className="space-y-3">
-              {learningGoals.map((goal) => (
-                <div key={goal.id} className="flex items-start gap-2">
-                  <Input
-                    value={editingGoals[goal.id] ?? goal.description}
-                    onChange={(e) =>
-                      setEditingGoals((prev) => ({
-                        ...prev,
-                        [goal.id]: e.target.value,
-                      }))
-                    }
-                    onBlur={() => handleUpdateLearningGoalDescription(goal)}
-                    placeholder="Learning goal description"
-                    className="flex-1"
-                    readOnly={!canEdit}
-                    disabled={!canEdit}
-                  />
-                  {canEdit && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteLearningGoal(goal.id)}
-                      className="h-10 w-10 p-0"
+              {learningGoals.map((goal) => {
+                const isExpanded = expandedGoalId === goal.id
+                const editing = editingGoals[goal.id]
+                return (
+                  <div
+                    key={goal.id}
+                    className={cn(
+                      'border rounded-lg overflow-hidden transition-all',
+                      isExpanded && 'bg-muted/30'
+                    )}
+                  >
+                    {/* Header row */}
+                    <div
+                      className={cn(
+                        'flex items-center gap-2 p-3 cursor-pointer transition-colors',
+                        !isExpanded && 'hover:bg-muted/30'
+                      )}
+                      onClick={() => setExpandedGoalId(isExpanded ? null : goal.id)}
                     >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
+                      <ChevronDown
+                        className={cn(
+                          'h-4 w-4 text-muted-foreground transition-transform flex-shrink-0',
+                          isExpanded && 'rotate-180'
+                        )}
+                      />
+                      {isExpanded ? (
+                        <Input
+                          value={editing?.description ?? goal.description}
+                          onChange={(e) =>
+                            setEditingGoals((prev) => ({
+                              ...prev,
+                              [goal.id]: { ...(prev[goal.id] || { description: goal.description, takeaways: goal.takeaways || '', competencies: goal.competencies || '' }), description: e.target.value },
+                            }))
+                          }
+                          onBlur={() => handleUpdateLearningGoal(goal)}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder="Learning goal description"
+                          className="flex-1"
+                          readOnly={!canEdit}
+                          disabled={!canEdit}
+                        />
+                      ) : (
+                        <span className="flex-1 text-sm truncate">
+                          {editing?.description || goal.description || 'Untitled goal'}
+                        </span>
+                      )}
+                      {canEdit && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteLearningGoal(goal.id)
+                          }}
+                          className="h-8 w-8 p-0 flex-shrink-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Expanded content: takeaways & competencies */}
+                    {isExpanded && (
+                      <div className="px-6 pb-4 space-y-4">
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium uppercase text-muted-foreground">
+                            Takeaways
+                          </Label>
+                          <Textarea
+                            value={editing?.takeaways ?? goal.takeaways ?? ''}
+                            onChange={(e) =>
+                              setEditingGoals((prev) => ({
+                                ...prev,
+                                [goal.id]: { ...(prev[goal.id] || { description: goal.description, takeaways: goal.takeaways || '', competencies: goal.competencies || '' }), takeaways: e.target.value },
+                              }))
+                            }
+                            onBlur={() => handleUpdateLearningGoal(goal)}
+                            placeholder="Key concepts or skills to be learned..."
+                            className="min-h-[60px] resize-none"
+                            readOnly={!canEdit}
+                            disabled={!canEdit}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium uppercase text-muted-foreground">
+                            Competencies
+                          </Label>
+                          <Textarea
+                            value={editing?.competencies ?? goal.competencies ?? ''}
+                            onChange={(e) =>
+                              setEditingGoals((prev) => ({
+                                ...prev,
+                                [goal.id]: { ...(prev[goal.id] || { description: goal.description, takeaways: goal.takeaways || '', competencies: goal.competencies || '' }), competencies: e.target.value },
+                              }))
+                            }
+                            onBlur={() => handleUpdateLearningGoal(goal)}
+                            placeholder="Abilities to apply learned concepts..."
+                            className="min-h-[60px] resize-none"
+                            readOnly={!canEdit}
+                            disabled={!canEdit}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
           {canEdit && (

@@ -18,6 +18,7 @@ from loguru import logger
 from backpack.ai.models import model_manager
 
 from .chunking import CHUNK_SIZE, ContentType, chunk_text
+from .token_utils import token_count
 
 
 async def mean_pool_embeddings(embeddings: List[List[float]]) -> List[float]:
@@ -103,22 +104,39 @@ async def generate_embeddings(texts: List[str]) -> List[List[float]]:
         )
 
     # Log text sizes for debugging
-    text_sizes = [len(t) for t in texts]
+    text_sizes = [token_count(t) for t in texts]
     logger.debug(
         f"Generating embeddings for {len(texts)} texts "
-        f"(sizes: min={min(text_sizes)}, max={max(text_sizes)}, "
-        f"total={sum(text_sizes)} chars)"
+        f"(sizes (tokens): min={min(text_sizes)}, max={max(text_sizes)}, "
+        f"total={sum(text_sizes)} tokens)"
     )
 
     try:
-        # Single API call for all texts
-        embeddings = await embedding_model.aembed(texts)
-        logger.debug(f"Generated {len(embeddings)} embeddings")
-        return embeddings
+        # Batch to stay under API token limits
+        MAX_TOKENS = 200_000  # ~200k tokens, well under OpenAI's 300k limit
+        all_embeddings: List[List[float]] = []
+        batch: List[str] = []
+        batch_tokens = 0
+
+        for text, text_size in zip(texts, text_sizes):
+            if batch and batch_tokens + text_size > MAX_TOKENS:
+                logger.debug(f"Embedding batch of {len(batch)} texts ({batch_tokens} tokens)")
+                all_embeddings.extend(await embedding_model.aembed(batch))
+                batch = []
+                batch_tokens = 0
+            batch.append(text)
+            batch_tokens += text_size
+
+        if batch:
+            logger.debug(f"Embedding batch of {len(batch)} texts ({batch_tokens} tokens)")
+            all_embeddings.extend(await embedding_model.aembed(batch))
+
+        logger.debug(f"Generated {len(all_embeddings)} embeddings")
+        return all_embeddings
     except Exception as e:
         logger.error(
             f"Failed to generate embeddings: {e} "
-            f"(tried {len(texts)} texts, max size: {max(text_sizes)} chars)"
+            f"(tried {len(texts)} texts, max size: {max(text_sizes)} tokens)"
         )
         raise RuntimeError(f"Failed to generate embeddings: {e}") from e
 

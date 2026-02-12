@@ -1,6 +1,5 @@
 from typing import List, Optional
 
-from ai_prompter import Prompter
 from fastapi import APIRouter, HTTPException, Query, Header
 from loguru import logger
 
@@ -13,18 +12,25 @@ from api.models import (
     ModuleCreate,
     ModuleResponse,
     ModuleUpdate,
+    PreviewLearningGoalsResponse,
     PreviewModuleContentRequest,
     PreviewModuleContentResponse,
+    PreviewOverviewResponse,
+    PreviewSourcesRequest
 )
 from api.routers.authz import (
     require_authenticated_user_id,
     require_teaching_role,
 )
-from backpack.ai.provision import provision_langchain_model
 from backpack.database.repository import ensure_record_id, repo_query
 from backpack.domain.module import LearningGoal, Module, Source
 from backpack.exceptions import InvalidInputError
-from backpack.utils import clean_thinking_content
+from backpack.graphs.module import (
+    build_sources_context,
+    generate_learning_goals,
+    generate_overview,
+    graph as module_generation_graph,
+)
 
 router = APIRouter()
 
@@ -353,7 +359,6 @@ async def generate_module_overview(
 ):
     """Generate an AI overview for a module based on its sources and notes."""
     try:
-        # Get the module
         module = await Module.get(module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
@@ -365,65 +370,14 @@ async def generate_module_overview(
         # Get sources and notes for context
         sources = await module.get_sources()
         notes = await module.get_notes()
+        sources_context = await build_sources_context(sources)
+        notes_context = [{"title": n.title, "content": n.content} for n in notes]
 
-        # Build context for prompt
-        sources_context = []
-        for source in sources:
-            source_data = {
-                "title": source.title,
-                "full_text": source.full_text,
-                "insights": [],
-            }
-            try:
-                insights = await source.get_insights()
-                for insight in insights:
-                    source_data["insights"].append({
-                        "insight_type": insight.insight_type,
-                        "content": insight.content,
-                    })
-            except Exception as e:
-                logger.warning(f"Error getting insights for source {source.id}: {e}")
-            sources_context.append(source_data)
-
-        notes_context = []
-        for note in notes:
-            notes_context.append({
-                "title": note.title,
-                "content": note.content,
-            })
-
-        # Render prompt
-        prompt_data = {
-            "name": module.name,
-            "description": module.description,
-            "sources": sources_context,
-            "notes": notes_context,
-        }
-        system_prompt = Prompter(prompt_template="module/overview").render(
-            data=prompt_data
-        )
-
-        # Get model ID from request or use default
         model_id = request.model_id if request else None
-
-        # Provision and invoke LLM
-        model = await provision_langchain_model(
-            system_prompt,
-            model_id,
-            "transformation",
-            max_tokens=2000,
+        overview_content = await generate_overview(
+            sources_context, notes_context, module.name, module.description, model_id
         )
-        ai_message = await model.ainvoke(system_prompt)
 
-        # Extract content
-        overview_content = (
-            ai_message.content
-            if isinstance(ai_message.content, str)
-            else str(ai_message.content)
-        )
-        overview_content = clean_thinking_content(overview_content)
-
-        # Save the overview to the module
         module.overview = overview_content
         await module.save()
 
@@ -496,6 +450,8 @@ async def get_module_learning_goals(module_id: str):
                 module=str(goal.module),
                 description=goal.description,
                 mastery_criteria=goal.mastery_criteria,
+                takeaways=goal.takeaways,
+                competencies=goal.competencies,
                 order=goal.order,
                 created=str(goal.created),
                 updated=str(goal.updated),
@@ -539,6 +495,8 @@ async def create_learning_goal(
             module=str(ensure_record_id(module_id)),
             description=request.description,
             mastery_criteria=request.mastery_criteria,
+            takeaways=request.takeaways,
+            competencies=request.competencies,
             order=order,
         )
         await goal.save()
@@ -548,6 +506,8 @@ async def create_learning_goal(
             module=str(goal.module),
             description=goal.description,
             mastery_criteria=goal.mastery_criteria,
+            takeaways=goal.takeaways,
+            competencies=goal.competencies,
             order=goal.order,
             created=str(goal.created),
             updated=str(goal.updated),
@@ -584,6 +544,10 @@ async def update_learning_goal(
             goal.description = request.description
         if request.mastery_criteria is not None:
             goal.mastery_criteria = request.mastery_criteria
+        if request.takeaways is not None:
+            goal.takeaways = request.takeaways
+        if request.competencies is not None:
+            goal.competencies = request.competencies
         if request.order is not None:
             goal.order = request.order
 
@@ -594,6 +558,8 @@ async def update_learning_goal(
             module=str(goal.module),
             description=goal.description,
             mastery_criteria=goal.mastery_criteria,
+            takeaways=goal.takeaways,
+            competencies=goal.competencies,
             order=goal.order,
             created=str(goal.created),
             updated=str(goal.updated),
@@ -644,7 +610,6 @@ async def generate_module_learning_goals(
 ):
     """Generate AI-powered learning goals for a module based on its sources and notes."""
     try:
-        # Get the module
         module = await Module.get(module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
@@ -656,82 +621,13 @@ async def generate_module_learning_goals(
         # Get sources and notes for context
         sources = await module.get_sources()
         notes = await module.get_notes()
+        sources_context = await build_sources_context(sources)
+        notes_context = [{"title": n.title, "content": n.content} for n in notes]
 
-        # Build context for prompt
-        sources_context = []
-        for source in sources:
-            source_data = {
-                "title": source.title,
-                "full_text": source.full_text,
-                "insights": [],
-            }
-            try:
-                insights = await source.get_insights()
-                for insight in insights:
-                    source_data["insights"].append(
-                        {
-                            "insight_type": insight.insight_type,
-                            "content": insight.content,
-                        }
-                    )
-            except Exception as e:
-                logger.warning(f"Error getting insights for source {source.id}: {e}")
-            sources_context.append(source_data)
-
-        notes_context = []
-        for note in notes:
-            notes_context.append(
-                {
-                    "title": note.title,
-                    "content": note.content,
-                }
-            )
-
-        # Render prompt
-        prompt_data = {
-            "name": module.name,
-            "description": module.description,
-            "sources": sources_context,
-            "notes": notes_context,
-        }
-        system_prompt = Prompter(prompt_template="module/learning_goals").render(
-            data=prompt_data
-        )
-
-        # Get model ID from request or use default
         model_id = request.model_id if request else None
-
-        # Provision and invoke LLM
-        model = await provision_langchain_model(
-            system_prompt,
-            model_id,
-            "transformation",
-            max_tokens=2000,
+        generated_goals = await generate_learning_goals(
+            sources_context, notes_context, module.name, module.description, model_id
         )
-        ai_message = await model.ainvoke(system_prompt)
-
-        # Extract content
-        goals_content = (
-            ai_message.content
-            if isinstance(ai_message.content, str)
-            else str(ai_message.content)
-        )
-        goals_content = clean_thinking_content(goals_content)
-
-        # Parse the generated goals (expecting one goal per line)
-        goal_lines = [
-            line.strip()
-            for line in goals_content.strip().split("\n")
-            if line.strip() and not line.strip().startswith("#")
-        ]
-
-        # Clean up goal lines (remove leading numbers, bullets, etc.)
-        cleaned_goals = []
-        for line in goal_lines:
-            # Remove common prefixes like "1.", "- ", "* ", etc.
-            cleaned = line.lstrip("0123456789.-*) ").strip()
-            if cleaned:
-                cleaned_goals.append(cleaned)
 
         # Delete existing learning goals for this module
         existing_goals = await module.get_learning_goals()
@@ -740,10 +636,12 @@ async def generate_module_learning_goals(
 
         # Create new learning goals
         created_goals = []
-        for i, goal_text in enumerate(cleaned_goals):
+        for i, goal_data in enumerate(generated_goals):
             goal = LearningGoal(
                 module=str(ensure_record_id(module_id)),
-                description=goal_text,
+                description=goal_data.description,
+                takeaways=goal_data.takeaways or None,
+                competencies=goal_data.competencies or None,
                 order=i,
             )
             await goal.save()
@@ -753,6 +651,8 @@ async def generate_module_learning_goals(
                     module=str(goal.module),
                     description=goal.description,
                     mastery_criteria=goal.mastery_criteria,
+                    takeaways=goal.takeaways,
+                    competencies=goal.competencies,
                     order=goal.order,
                     created=str(goal.created),
                     updated=str(goal.updated),
@@ -773,124 +673,75 @@ async def generate_module_learning_goals(
 
 
 # ============================================
-# Preview Content Endpoint (for draft modules)
+# Preview Content Endpoints (for draft modules)
 # ============================================
+
+
+@router.post("/modules/preview-overview", response_model=PreviewOverviewResponse)
+async def preview_overview(request: PreviewSourcesRequest):
+    """Generate an AI overview from sources without creating a module."""
+    try:
+        sources = await Source.get_sources(request.source_ids)
+        if not sources:
+            return PreviewOverviewResponse(overview="")
+
+        sources_context = await build_sources_context(sources)
+        overview = await generate_overview(
+            sources_context, [], name=request.name,
+        )
+        return PreviewOverviewResponse(overview=overview)
+
+    except Exception as e:
+        logger.error(f"Error generating preview overview: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error generating preview overview: {str(e)}"
+        )
+
+
+@router.post("/modules/preview-learning-goals", response_model=PreviewLearningGoalsResponse)
+async def preview_learning_goals(request: PreviewSourcesRequest):
+    """Generate AI learning goals from sources without creating a module."""
+    try:
+        sources = await Source.get_sources(request.source_ids)
+        if not sources:
+            return PreviewLearningGoalsResponse(learning_goals=[])
+
+        sources_context = await build_sources_context(sources)
+        goals = await generate_learning_goals(
+            sources_context, [], name=request.name,
+        )
+        return PreviewLearningGoalsResponse(
+            learning_goals=[g.model_dump() for g in goals]
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating preview learning goals: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error generating preview learning goals: {str(e)}"
+        )
 
 
 @router.post("/modules/preview-content", response_model=PreviewModuleContentResponse)
 async def preview_module_content(request: PreviewModuleContentRequest):
-    """Generate overview and learning goals from sources without creating a module.
-    
-    This endpoint is used during the draft module creation flow to preview
-    AI-generated content before the module is created.
+    """Generate both overview and learning goals from sources without creating a module.
+
+    This endpoint is used during the draft module creation flow for initial
+    auto-generation when all sources finish processing.
+    Uses the full module generation graph (overview and goals run in parallel).
     """
     try:
-        # Fetch sources
-        sources = []
-        for source_id in request.source_ids:
-            source = await Source.get(source_id)
-            if source:
-                sources.append(source)
-            else:
-                logger.warning(f"Source {source_id} not found for preview")
-
-        if not sources:
-            return PreviewModuleContentResponse(
-                overview=None,
-                learning_goals=[],
-            )
-
-        # Build context from sources
-        sources_context = []
-        for source in sources:
-            source_data = {
-                "title": source.title,
-                "full_text": source.full_text,
-                "insights": [],
-            }
-            try:
-                insights = await source.get_insights()
-                for insight in insights:
-                    source_data["insights"].append({
-                        "insight_type": insight.insight_type,
-                        "content": insight.content,
-                    })
-            except Exception as e:
-                logger.warning(f"Error getting insights for source {source.id}: {e}")
-            sources_context.append(source_data)
-
-        # Generate overview
-        overview_prompt_data = {
-            "name": request.name,
-            "description": "",
-            "sources": sources_context,
-            "notes": [],
-        }
-        overview_system_prompt = Prompter(prompt_template="module/overview").render(
-            data=overview_prompt_data
+        result = await module_generation_graph.ainvoke(
+            {"source_ids": request.source_ids, "name": request.name}
         )
-
-        overview_model = await provision_langchain_model(
-            overview_system_prompt,
-            None,  # Use default model
-            "transformation",
-            max_tokens=2000,
-        )
-        overview_message = await overview_model.ainvoke(overview_system_prompt)
-        overview_content = (
-            overview_message.content
-            if isinstance(overview_message.content, str)
-            else str(overview_message.content)
-        )
-        overview_content = clean_thinking_content(overview_content)
-
-        # Generate learning goals
-        goals_prompt_data = {
-            "name": request.name,
-            "description": "",
-            "sources": sources_context,
-            "notes": [],
-        }
-        goals_system_prompt = Prompter(prompt_template="module/learning_goals").render(
-            data=goals_prompt_data
-        )
-
-        goals_model = await provision_langchain_model(
-            goals_system_prompt,
-            None,  # Use default model
-            "transformation",
-            max_tokens=2000,
-        )
-        goals_message = await goals_model.ainvoke(goals_system_prompt)
-        goals_content = (
-            goals_message.content
-            if isinstance(goals_message.content, str)
-            else str(goals_message.content)
-        )
-        goals_content = clean_thinking_content(goals_content)
-
-        # Parse learning goals
-        goal_lines = [
-            line.strip()
-            for line in goals_content.strip().split("\n")
-            if line.strip() and not line.strip().startswith("#")
-        ]
-
-        # Clean up goal lines
-        learning_goals = []
-        for i, line in enumerate(goal_lines):
-            cleaned = line.lstrip("0123456789.-*) ").strip()
-            if cleaned:
-                learning_goals.append({
-                    "description": cleaned,
-                    "order": i,
-                })
 
         return PreviewModuleContentResponse(
-            overview=overview_content,
-            learning_goals=learning_goals,
+            name=result.get("generated_name"),
+            overview=result.get("overview"),
+            learning_goals=result.get("learning_goals", []),
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating preview content: {str(e)}")
         raise HTTPException(

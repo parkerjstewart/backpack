@@ -46,6 +46,12 @@ class LearningGoalCreate(BaseModel):
     mastery_criteria: Optional[str] = Field(
         None, description="Criteria for mastering this goal"
     )
+    takeaways: Optional[str] = Field(
+        None, description="Key concepts or skills to be learned"
+    )
+    competencies: Optional[str] = Field(
+        None, description="Abilities that demonstrate mastery"
+    )
     order: Optional[int] = Field(None, description="Display order (auto-assigned if not provided)")
 
 
@@ -53,6 +59,12 @@ class LearningGoalUpdate(BaseModel):
     description: Optional[str] = Field(None, description="Learning goal description")
     mastery_criteria: Optional[str] = Field(
         None, description="Criteria for mastering this goal"
+    )
+    takeaways: Optional[str] = Field(
+        None, description="Key concepts or skills to be learned"
+    )
+    competencies: Optional[str] = Field(
+        None, description="Abilities that demonstrate mastery"
     )
     order: Optional[int] = Field(None, description="Display order")
 
@@ -62,6 +74,8 @@ class LearningGoalResponse(BaseModel):
     module: str
     description: str
     mastery_criteria: Optional[str] = None
+    takeaways: Optional[str] = None
+    competencies: Optional[str] = None
     order: int
     created: str
     updated: str
@@ -461,7 +475,25 @@ class PreviewModuleContentRequest(BaseModel):
 
 
 class PreviewModuleContentResponse(BaseModel):
+    name: Optional[str] = Field(None, description="AI-generated module name")
     overview: Optional[str] = Field(None, description="Generated module overview")
+    learning_goals: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Generated learning goals"
+    )
+
+
+# Individual preview endpoints for regeneration
+class PreviewSourcesRequest(BaseModel):
+    """Base request for preview endpoints that operate on unlinked sources."""
+    source_ids: List[str] = Field(..., description="List of source IDs to generate from")
+    name: str = Field("", description="Module name for context")
+
+
+class PreviewOverviewResponse(BaseModel):
+    overview: str = Field(..., description="Generated module overview")
+
+
+class PreviewLearningGoalsResponse(BaseModel):
     learning_goals: List[Dict[str, Any]] = Field(
         default_factory=list, description="Generated learning goals"
     )

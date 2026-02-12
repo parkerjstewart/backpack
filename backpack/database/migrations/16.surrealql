@@ -1,0 +1,6 @@
+-- ============================================
+-- Migration 16: Add takeaways and competencies to learning_goal
+-- ============================================
+
+DEFINE FIELD IF NOT EXISTS takeaways ON TABLE learning_goal TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS competencies ON TABLE learning_goal TYPE option<string>;
