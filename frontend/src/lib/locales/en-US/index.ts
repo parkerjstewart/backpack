@@ -263,6 +263,7 @@ export const enUS = {
     createSuccess: "Module created successfully",
     updateSuccess: "Module updated successfully",
     deleteSuccess: "Module deleted successfully",
+    review: "Review",
   },
   sources: {
     title: "Sources",
@@ -943,5 +944,15 @@ export const enUS = {
     proceedToRebuildPrompt: "Would you like to proceed to the Advanced page to start the rebuild now?",
     changeModelOnly: "Change Model Only",
     changeAndRebuild: "Change & Go to Rebuild",
+  },
+  tutor: {
+    reviewSession: "Review Session",
+    initializing: "Starting review session...",
+    startingSession: "Preparing your review session...",
+    currentGoal: "Current Goal",
+    goals: "goals",
+    complete: "Complete",
+    sessionComplete: "Review session complete! Great work.",
+    responsePlaceholder: "Type your response...",
   }
 }

@@ -38,6 +38,7 @@ from api.routers import (
     sources,
     speaker_profiles,
     transformations,
+    tutor,
     users,
 )
 from api.routers import commands as commands_router
@@ -179,6 +180,7 @@ app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
 app.include_router(users.router, prefix="/api", tags=["users"])
 app.include_router(courses.router, prefix="/api", tags=["courses"])
 app.include_router(invitations.router, prefix="/api", tags=["invitations"])
+app.include_router(tutor.router, prefix="/api", tags=["tutor"])
 
 
 @app.get("/")

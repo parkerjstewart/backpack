@@ -409,3 +409,44 @@ export interface StudentWithMasteryResponse {
   avatar_url: string | null
   module_mastery: ModuleMasteryResponse[]
 }
+
+// ============================================
+// Tutor Types
+// ============================================
+export interface TutorSessionResponse {
+  session_id: string
+  module_id: string
+  module_name: string
+  first_message: string
+  current_goal_id: string | null
+  current_goal_description: string | null
+  total_goals: number
+}
+
+export interface TutorResponsePayload {
+  session_id: string
+  phase: 'in_progress' | 'goal_complete' | 'session_complete'
+  current_goal_id: string | null
+  current_goal_description: string | null
+  current_question_index: number | null
+  current_question_text: string | null
+  tutor_message: string
+  latest_understanding_score: number | null
+  goals_completed: number
+  goals_remaining: number
+}
+
+export interface TutorSessionStateResponse {
+  session_id: string
+  module_id: string
+  module_name: string
+  phase: string
+  total_goals: number
+  goals_completed: number
+  current_goal_id: string | null
+  current_goal_description: string | null
+  current_question_index: number | null
+  current_question_text: string | null
+  started_at: string | null
+  elapsed_seconds: number | null
+}

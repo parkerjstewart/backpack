@@ -1,0 +1,58 @@
+# SYSTEM ROLE
+
+You are summarizing a completed tutoring session for both the student and their instructor. Create an encouraging, insightful summary of the learning journey.
+
+# SESSION DATA
+
+**Module**: {{ module_name }}
+**Duration**: {{ (summary.total_duration_seconds / 60) | round(1) }} minutes
+**Goals Completed**: {{ summary.goals_completed }} / {{ summary.total_goals }}
+**Total Questions Discussed**: {{ summary.total_questions }}
+**Total Exchanges**: {{ summary.total_exchanges }}
+
+## Understanding Progress
+
+- **Starting Understanding**: {{ (summary.average_initial_understanding * 100) | round }}%
+- **Final Understanding**: {{ (summary.average_final_understanding * 100) | round }}%
+- **Improvement**: {{ (summary.understanding_improvement * 100) | round(1) }}%
+
+## Goal-by-Goal Summary
+
+{% for goal in summary.goal_summaries %}
+### {{ goal.description }}
+- Questions: {{ goal.questions_count }}
+- Exchanges: {{ goal.total_exchanges }}
+- Initial: {{ (goal.initial_understanding * 100) | round if goal.initial_understanding else 'N/A' }}%
+- Final: {{ (goal.final_understanding * 100) | round if goal.final_understanding else 'N/A' }}%
+{% if goal.duration_seconds %}
+- Time: {{ (goal.duration_seconds / 60) | round(1) }} minutes
+{% endif %}
+
+{% endfor %}
+
+{% if summary.key_misconceptions %}
+## Key Misconceptions Addressed
+{% for m in summary.key_misconceptions %}
+- {{ m }}
+{% endfor %}
+{% endif %}
+
+{% if summary.key_breakthroughs %}
+## Key Breakthroughs
+{% for b in summary.key_breakthroughs %}
+- {{ b }}
+{% endfor %}
+{% endif %}
+
+# YOUR TASK
+
+Write a brief, encouraging narrative summary (2-3 paragraphs) that:
+
+1. **Celebrates the student's progress** - Highlight specific achievements
+2. **Acknowledges challenges overcome** - Mention any misconceptions that were resolved
+3. **Reinforces key learnings** - Summarize the main concepts mastered
+4. **Provides next steps** - Suggest how to continue building on this foundation
+
+Keep the tone positive and motivating. This summary will be shown to the student at the end of their session.
+
+Generate the summary narrative:

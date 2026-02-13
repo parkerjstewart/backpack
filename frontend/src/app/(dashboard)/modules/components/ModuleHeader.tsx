@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { ModuleResponse } from '@/lib/types/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Archive, ArchiveRestore, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, Trash2, GraduationCap } from 'lucide-react'
+import Link from 'next/link'
 import { useUpdateModule, useDeleteModule } from '@/lib/hooks/use-modules'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { formatDistanceToNow } from 'date-fns'
@@ -74,6 +75,16 @@ export function ModuleHeader({ module }: ModuleHeaderProps) {
               )}
             </div>
             <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+              >
+                <Link href={`/modules/${module.id}/review`}>
+                  <GraduationCap className="h-4 w-4 mr-2" />
+                  {t.modules.review}
+                </Link>
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
