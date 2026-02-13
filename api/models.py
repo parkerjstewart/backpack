@@ -34,25 +34,18 @@ class ModuleResponse(BaseModel):
 
 
 # Learning Goals models
-class LearningGoalCreate(BaseModel):
-    description: str = Field(..., description="Learning goal description")
-    mastery_criteria: Optional[str] = Field(
-        None, description="Criteria for mastering this goal"
-    )
-    takeaways: Optional[str] = Field(
-        None, description="Key concepts or skills to be learned"
-    )
-    competencies: Optional[str] = Field(
-        None, description="Abilities that demonstrate mastery"
-    )
+class LearningGoalPreview(BaseModel):
+    description: str = Field(..., description="Action-verb learning goal statement")
+    takeaways: str = Field(default="", description="Key concepts or ideas")
+    competencies: str = Field(default="", description="Demonstrable skills")
+
+
+class LearningGoalCreate(LearningGoalPreview):
     order: Optional[int] = Field(None, description="Display order (auto-assigned if not provided)")
 
 
 class LearningGoalUpdate(BaseModel):
     description: Optional[str] = Field(None, description="Learning goal description")
-    mastery_criteria: Optional[str] = Field(
-        None, description="Criteria for mastering this goal"
-    )
     takeaways: Optional[str] = Field(
         None, description="Key concepts or skills to be learned"
     )
@@ -66,9 +59,8 @@ class LearningGoalResponse(BaseModel):
     id: str
     module: str
     description: str
-    mastery_criteria: Optional[str] = None
-    takeaways: Optional[str] = None
-    competencies: Optional[str] = None
+    takeaways: str = ""
+    competencies: str = ""
     order: int
     created: str
     updated: str
@@ -463,7 +455,7 @@ class PreviewModuleContentRequest(BaseModel):
 class PreviewModuleContentResponse(BaseModel):
     name: Optional[str] = Field(None, description="AI-generated module name")
     overview: Optional[str] = Field(None, description="Generated module overview")
-    learning_goals: List[Dict[str, Any]] = Field(
+    learning_goals: List[LearningGoalPreview] = Field(
         default_factory=list, description="Generated learning goals"
     )
 
@@ -496,7 +488,7 @@ class GenerateOverviewResponse(BaseModel):
 
 
 class GenerateLearningGoalsResponse(BaseModel):
-    learning_goals: List[Dict[str, Any]] = Field(
+    learning_goals: List[LearningGoalPreview] = Field(
         default_factory=list, description="Generated learning goals"
     )
 

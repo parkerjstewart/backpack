@@ -8,6 +8,7 @@ from api.models import (
     GenerateLearningGoalsResponse,
     GenerateOverviewResponse,
     LearningGoalCreate,
+    LearningGoalPreview,
     LearningGoalResponse,
     LearningGoalUpdate,
     ModuleCreate,
@@ -440,7 +441,6 @@ async def get_module_learning_goals(module_id: str):
                 id=str(goal.id),
                 module=str(goal.module),
                 description=goal.description,
-                mastery_criteria=goal.mastery_criteria,
                 takeaways=goal.takeaways,
                 competencies=goal.competencies,
                 order=goal.order,
@@ -485,7 +485,6 @@ async def create_learning_goal(
         goal = LearningGoal(
             module=str(ensure_record_id(module_id)),
             description=request.description,
-            mastery_criteria=request.mastery_criteria,
             takeaways=request.takeaways,
             competencies=request.competencies,
             order=order,
@@ -496,7 +495,6 @@ async def create_learning_goal(
             id=str(goal.id),
             module=str(goal.module),
             description=goal.description,
-            mastery_criteria=goal.mastery_criteria,
             takeaways=goal.takeaways,
             competencies=goal.competencies,
             order=goal.order,
@@ -533,8 +531,6 @@ async def update_learning_goal(
 
         if request.description is not None:
             goal.description = request.description
-        if request.mastery_criteria is not None:
-            goal.mastery_criteria = request.mastery_criteria
         if request.takeaways is not None:
             goal.takeaways = request.takeaways
         if request.competencies is not None:
@@ -548,7 +544,6 @@ async def update_learning_goal(
             id=str(goal.id),
             module=str(goal.module),
             description=goal.description,
-            mastery_criteria=goal.mastery_criteria,
             takeaways=goal.takeaways,
             competencies=goal.competencies,
             order=goal.order,
@@ -628,27 +623,28 @@ async def generate_module_learning_goals(
                 goal = LearningGoal(
                     module=str(ensure_record_id(request.module_id)),
                     description=goal_data.description,
-                    takeaways=goal_data.takeaways or None,
-                    competencies=goal_data.competencies or None,
+                    takeaways=goal_data.takeaways,
+                    competencies=goal_data.competencies,
                     order=i,
                 )
                 await goal.save()
-                created_goals.append({
-                    "id": str(goal.id),
-                    "module": str(goal.module),
-                    "description": goal.description,
-                    "mastery_criteria": goal.mastery_criteria,
-                    "takeaways": goal.takeaways,
-                    "competencies": goal.competencies,
-                    "order": goal.order,
-                    "created": str(goal.created),
-                    "updated": str(goal.updated),
-                })
+                created_goals.append(LearningGoalPreview(
+                    description=goal.description,
+                    takeaways=goal.takeaways,
+                    competencies=goal.competencies,
+                ))
 
             return GenerateLearningGoalsResponse(learning_goals=created_goals)
         else:
             return GenerateLearningGoalsResponse(
-                learning_goals=[g.model_dump() for g in generated_goals]
+                learning_goals=[
+                    LearningGoalPreview(
+                        description=g.description,
+                        takeaways=g.takeaways,
+                        competencies=g.competencies,
+                    )
+                    for g in generated_goals
+                ]
             )
 
     except HTTPException:

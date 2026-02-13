@@ -1,0 +1,5 @@
+-- ============================================
+-- Migration 18: Remove mastery_criteria from learning_goal
+-- ============================================
+
+REMOVE FIELD mastery_criteria ON TABLE learning_goal;

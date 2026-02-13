@@ -1,0 +1,5 @@
+-- ============================================
+-- Migration 18 rollback: Restore mastery_criteria on learning_goal
+-- ============================================
+
+DEFINE FIELD IF NOT EXISTS mastery_criteria ON TABLE learning_goal TYPE option<string>;

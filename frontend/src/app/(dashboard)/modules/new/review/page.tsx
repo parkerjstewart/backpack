@@ -107,11 +107,11 @@ export default function ModuleReviewPage() {
           onSuccess: (data) => {
             setGeneratedContent(
               data.overview,
-              data.learning_goals.map((g) => ({
+              data.learning_goals.map((g, i) => ({
                 description: g.description,
                 takeaways: g.takeaways || "",
                 competencies: g.competencies || "",
-                order: g.order,
+                order: i,
               }))
             );
             // Use AI-generated name if user hasn't set one
@@ -166,11 +166,11 @@ export default function ModuleReviewPage() {
             }
             setGeneratedContent(
               data.overview,
-              data.learning_goals.map((g) => ({
+              data.learning_goals.map((g, i) => ({
                 description: g.description,
                 takeaways: g.takeaways || "",
                 competencies: g.competencies || "",
-                order: g.order,
+                order: i,
               }))
             );
           },
@@ -204,11 +204,11 @@ export default function ModuleReviewPage() {
         onSuccess: (data) => {
           setGeneratedContent(
             overview,
-            data.learning_goals.map((g) => ({
+            data.learning_goals.map((g, i) => ({
               description: g.description,
               takeaways: g.takeaways || "",
               competencies: g.competencies || "",
-              order: g.order,
+              order: i,
             }))
           );
         },
