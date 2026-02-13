@@ -8,9 +8,9 @@ import {
   UpdateLearningGoalRequest,
   PreviewModuleContentRequest,
   PreviewModuleContentResponse,
-  PreviewSourcesRequest,
-  PreviewOverviewResponse,
-  PreviewLearningGoalsResponse,
+  GenerateContentRequest,
+  GenerateOverviewResponse,
+  GenerateLearningGoalsResponse,
 } from '@/lib/types/api'
 
 export const modulesApi = {
@@ -48,10 +48,10 @@ export const modulesApi = {
     return response.data
   },
 
-  generateOverview: async (moduleId: string, modelId?: string) => {
-    const response = await apiClient.post<ModuleResponse>(
-      `/modules/${moduleId}/generate-overview`,
-      modelId ? { model_id: modelId } : {}
+  generateOverview: async (params: GenerateContentRequest) => {
+    const response = await apiClient.post<GenerateOverviewResponse>(
+      '/modules/generate-overview',
+      params
     )
     return response.data
   },
@@ -84,10 +84,10 @@ export const modulesApi = {
     await apiClient.delete(`/learning-goals/${goalId}`)
   },
 
-  generateLearningGoals: async (moduleId: string, modelId?: string) => {
-    const response = await apiClient.post<LearningGoalResponse[]>(
-      `/modules/${moduleId}/generate-learning-goals`,
-      modelId ? { model_id: modelId } : {}
+  generateLearningGoals: async (params: GenerateContentRequest) => {
+    const response = await apiClient.post<GenerateLearningGoalsResponse>(
+      '/modules/generate-learning-goals',
+      params
     )
     return response.data
   },
@@ -95,28 +95,11 @@ export const modulesApi = {
   /**
    * Preview module content (overview + learning goals) without creating a module.
    * Used during draft module creation flow for initial auto-generation.
+   * Uses the full generation graph (name + overview + goals in parallel).
    */
   previewContent: async (data: PreviewModuleContentRequest) => {
     const response = await apiClient.post<PreviewModuleContentResponse>(
       '/modules/preview-content',
-      data
-    )
-    return response.data
-  },
-
-  /** Regenerate only the overview from sources. */
-  previewOverview: async (data: PreviewSourcesRequest) => {
-    const response = await apiClient.post<PreviewOverviewResponse>(
-      '/modules/preview-overview',
-      data
-    )
-    return response.data
-  },
-
-  /** Regenerate only the learning goals from sources. */
-  previewLearningGoals: async (data: PreviewSourcesRequest) => {
-    const response = await apiClient.post<PreviewLearningGoalsResponse>(
-      '/modules/preview-learning-goals',
       data
     )
     return response.data

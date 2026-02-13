@@ -4,19 +4,17 @@ from fastapi import APIRouter, HTTPException, Query, Header
 from loguru import logger
 
 from api.models import (
-    GenerateLearningGoalsRequest,
-    GenerateOverviewRequest,
+    GenerateContentRequest,
+    GenerateLearningGoalsResponse,
+    GenerateOverviewResponse,
     LearningGoalCreate,
     LearningGoalResponse,
     LearningGoalUpdate,
     ModuleCreate,
     ModuleResponse,
     ModuleUpdate,
-    PreviewLearningGoalsResponse,
     PreviewModuleContentRequest,
     PreviewModuleContentResponse,
-    PreviewOverviewResponse,
-    PreviewSourcesRequest
 )
 from api.routers.authz import (
     require_authenticated_user_id,
@@ -351,15 +349,16 @@ async def delete_module(module_id: str, authorization: Optional[str] = Header(No
         )
 
 
-@router.post("/modules/{module_id}/generate-overview", response_model=ModuleResponse)
-async def generate_module_overview(
-    module_id: str,
-    request: Optional[GenerateOverviewRequest] = None,
-    authorization: Optional[str] = Header(None),
+async def _resolve_generation_context(
+    request: GenerateContentRequest,
+    authorization: Optional[str] = None,
 ):
-    """Generate an AI overview for a module based on its sources and notes."""
-    try:
-        module = await Module.get(module_id)
+    """Resolve sources+notes context from either module_id or source_ids.
+
+    Returns (module_or_none, sources_context, notes_context, name, description).
+    """
+    if request.module_id:
+        module = await Module.get(request.module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
 
@@ -367,62 +366,54 @@ async def generate_module_overview(
             user_id = require_authenticated_user_id(authorization)
             await require_teaching_role(str(module.course), user_id)
 
-        # Get sources and notes for context
         sources = await module.get_sources()
         notes = await module.get_notes()
-        sources_context = await build_sources_context(sources)
         notes_context = [{"title": n.title, "content": n.content} for n in notes]
+        name = request.name or module.name
+        description = module.description
+    else:
+        module = None
+        sources = await Source.get_sources(request.source_ids)
+        notes_context = []
+        name = request.name
+        description = ""
 
-        model_id = request.model_id if request else None
+    sources_context = await build_sources_context(sources)
+    return module, sources_context, notes_context, name, description
+
+
+@router.post("/modules/generate-overview", response_model=GenerateOverviewResponse)
+async def generate_module_overview(
+    request: GenerateContentRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """Generate an AI overview from a module or from specific sources.
+
+    If module_id is provided, generates from the module's sources+notes and saves the result.
+    If source_ids is provided, generates from those sources without saving (preview mode).
+    """
+    try:
+        module, sources_context, notes_context, name, description = (
+            await _resolve_generation_context(request, authorization)
+        )
+
+        if not sources_context:
+            return GenerateOverviewResponse(overview="")
+
         overview_content = await generate_overview(
-            sources_context, notes_context, module.name, module.description, model_id
+            sources_context, notes_context, name, description,
         )
 
-        module.overview = overview_content
-        await module.save()
+        if module:
+            module.overview = overview_content
+            await module.save()
 
-        # Return updated module
-        query = """
-            SELECT *,
-            count(<-reference) as source_count,
-            count(<-artifact) as note_count
-            FROM $module_id
-        """
-        result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
-
-        if result:
-            nb = result[0]
-            return ModuleResponse(
-                id=str(nb.get("id", "")),
-                name=nb.get("name", ""),
-                description=nb.get("description", ""),
-                archived=nb.get("archived", False),
-                overview=nb.get("overview"),
-                created=str(nb.get("created", "")),
-                updated=str(nb.get("updated", "")),
-                source_count=nb.get("source_count", 0),
-                note_count=nb.get("note_count", 0),
-                course_id=str(nb.get("course")) if nb.get("course") else None,
-            )
-
-        # Fallback
-        return ModuleResponse(
-            id=module.id or "",
-            name=module.name,
-            description=module.description,
-            archived=module.archived or False,
-            overview=module.overview,
-            created=str(module.created),
-            updated=str(module.updated),
-            source_count=0,
-            note_count=0,
-            course_id=str(module.course) if module.course else None,
-        )
+        return GenerateOverviewResponse(overview=overview_content)
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating overview for module {module_id}: {str(e)}")
+        logger.error(f"Error generating overview: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error generating overview: {str(e)}"
         )
@@ -600,73 +591,70 @@ async def delete_learning_goal(goal_id: str, authorization: Optional[str] = Head
 
 
 @router.post(
-    "/modules/{module_id}/generate-learning-goals",
-    response_model=List[LearningGoalResponse],
+    "/modules/generate-learning-goals",
+    response_model=GenerateLearningGoalsResponse,
 )
 async def generate_module_learning_goals(
-    module_id: str,
-    request: Optional[GenerateLearningGoalsRequest] = None,
+    request: GenerateContentRequest,
     authorization: Optional[str] = Header(None),
 ):
-    """Generate AI-powered learning goals for a module based on its sources and notes."""
+    """Generate AI-powered learning goals from a module or from specific sources.
+
+    If module_id is provided, generates from the module's sources+notes,
+    replaces existing goals, and saves the new ones.
+    If source_ids is provided, generates from those sources without saving (preview mode).
+    """
     try:
-        module = await Module.get(module_id)
-        if not module:
-            raise HTTPException(status_code=404, detail="Module not found")
-
-        if module.course:
-            user_id = require_authenticated_user_id(authorization)
-            await require_teaching_role(str(module.course), user_id)
-
-        # Get sources and notes for context
-        sources = await module.get_sources()
-        notes = await module.get_notes()
-        sources_context = await build_sources_context(sources)
-        notes_context = [{"title": n.title, "content": n.content} for n in notes]
-
-        model_id = request.model_id if request else None
-        generated_goals = await generate_learning_goals(
-            sources_context, notes_context, module.name, module.description, model_id
+        module, sources_context, notes_context, name, description = (
+            await _resolve_generation_context(request, authorization)
         )
 
-        # Delete existing learning goals for this module
-        existing_goals = await module.get_learning_goals()
-        for existing in existing_goals:
-            await existing.delete()
+        if not sources_context:
+            return GenerateLearningGoalsResponse(learning_goals=[])
 
-        # Create new learning goals
-        created_goals = []
-        for i, goal_data in enumerate(generated_goals):
-            goal = LearningGoal(
-                module=str(ensure_record_id(module_id)),
-                description=goal_data.description,
-                takeaways=goal_data.takeaways or None,
-                competencies=goal_data.competencies or None,
-                order=i,
-            )
-            await goal.save()
-            created_goals.append(
-                LearningGoalResponse(
-                    id=str(goal.id),
-                    module=str(goal.module),
-                    description=goal.description,
-                    mastery_criteria=goal.mastery_criteria,
-                    takeaways=goal.takeaways,
-                    competencies=goal.competencies,
-                    order=goal.order,
-                    created=str(goal.created),
-                    updated=str(goal.updated),
+        generated_goals = await generate_learning_goals(
+            sources_context, notes_context, name, description,
+        )
+
+        if module:
+            # Delete existing learning goals for this module
+            existing_goals = await module.get_learning_goals()
+            for existing in existing_goals:
+                await existing.delete()
+
+            # Create new learning goals
+            created_goals = []
+            for i, goal_data in enumerate(generated_goals):
+                goal = LearningGoal(
+                    module=str(ensure_record_id(request.module_id)),
+                    description=goal_data.description,
+                    takeaways=goal_data.takeaways or None,
+                    competencies=goal_data.competencies or None,
+                    order=i,
                 )
-            )
+                await goal.save()
+                created_goals.append({
+                    "id": str(goal.id),
+                    "module": str(goal.module),
+                    "description": goal.description,
+                    "mastery_criteria": goal.mastery_criteria,
+                    "takeaways": goal.takeaways,
+                    "competencies": goal.competencies,
+                    "order": goal.order,
+                    "created": str(goal.created),
+                    "updated": str(goal.updated),
+                })
 
-        return created_goals
+            return GenerateLearningGoalsResponse(learning_goals=created_goals)
+        else:
+            return GenerateLearningGoalsResponse(
+                learning_goals=[g.model_dump() for g in generated_goals]
+            )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Error generating learning goals for module {module_id}: {str(e)}"
-        )
+        logger.error(f"Error generating learning goals: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error generating learning goals: {str(e)}"
         )
@@ -676,49 +664,6 @@ async def generate_module_learning_goals(
 # Preview Content Endpoints (for draft modules)
 # ============================================
 
-
-@router.post("/modules/preview-overview", response_model=PreviewOverviewResponse)
-async def preview_overview(request: PreviewSourcesRequest):
-    """Generate an AI overview from sources without creating a module."""
-    try:
-        sources = await Source.get_sources(request.source_ids)
-        if not sources:
-            return PreviewOverviewResponse(overview="")
-
-        sources_context = await build_sources_context(sources)
-        overview = await generate_overview(
-            sources_context, [], name=request.name,
-        )
-        return PreviewOverviewResponse(overview=overview)
-
-    except Exception as e:
-        logger.error(f"Error generating preview overview: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Error generating preview overview: {str(e)}"
-        )
-
-
-@router.post("/modules/preview-learning-goals", response_model=PreviewLearningGoalsResponse)
-async def preview_learning_goals(request: PreviewSourcesRequest):
-    """Generate AI learning goals from sources without creating a module."""
-    try:
-        sources = await Source.get_sources(request.source_ids)
-        if not sources:
-            return PreviewLearningGoalsResponse(learning_goals=[])
-
-        sources_context = await build_sources_context(sources)
-        goals = await generate_learning_goals(
-            sources_context, [], name=request.name,
-        )
-        return PreviewLearningGoalsResponse(
-            learning_goals=[g.model_dump() for g in goals]
-        )
-
-    except Exception as e:
-        logger.error(f"Error generating preview learning goals: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Error generating preview learning goals: {str(e)}"
-        )
 
 
 @router.post("/modules/preview-content", response_model=PreviewModuleContentResponse)

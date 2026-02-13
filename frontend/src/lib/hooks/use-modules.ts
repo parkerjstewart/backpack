@@ -10,7 +10,7 @@ import {
   CreateLearningGoalRequest,
   UpdateLearningGoalRequest,
   PreviewModuleContentRequest,
-  PreviewSourcesRequest,
+  GenerateContentRequest,
 } from '@/lib/types/api'
 
 export function useModules(archived?: boolean) {
@@ -106,11 +106,13 @@ export function useGenerateOverview() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, modelId }: { id: string; modelId?: string }) =>
-      modulesApi.generateOverview(id, modelId),
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.modules })
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.module(id) })
+    mutationFn: (params: GenerateContentRequest) =>
+      modulesApi.generateOverview(params),
+    onSuccess: (_, params) => {
+      if (params.module_id) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.modules })
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.module(params.module_id) })
+      }
     },
   })
 }
@@ -209,12 +211,14 @@ export function useGenerateLearningGoals() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, modelId }: { id: string; modelId?: string }) =>
-      modulesApi.generateLearningGoals(id, modelId),
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.learningGoals(id),
-      })
+    mutationFn: (params: GenerateContentRequest) =>
+      modulesApi.generateLearningGoals(params),
+    onSuccess: (_, params) => {
+      if (params.module_id) {
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.learningGoals(params.module_id),
+        })
+      }
     },
   })
 }
@@ -222,26 +226,11 @@ export function useGenerateLearningGoals() {
 /**
  * Hook to preview module content (overview + learning goals) without creating a module.
  * Used during the draft module creation flow for initial auto-generation.
+ * Uses the full generation graph (name + overview + goals in parallel).
  */
 export function usePreviewModuleContent() {
   return useMutation({
     mutationFn: (data: PreviewModuleContentRequest) =>
       modulesApi.previewContent(data),
-  })
-}
-
-/** Regenerate only the overview from sources. */
-export function usePreviewOverview() {
-  return useMutation({
-    mutationFn: (data: PreviewSourcesRequest) =>
-      modulesApi.previewOverview(data),
-  })
-}
-
-/** Regenerate only the learning goals from sources. */
-export function usePreviewLearningGoals() {
-  return useMutation({
-    mutationFn: (data: PreviewSourcesRequest) =>
-      modulesApi.previewLearningGoals(data),
   })
 }

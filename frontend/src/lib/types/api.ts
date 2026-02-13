@@ -287,17 +287,18 @@ export interface PreviewModuleContentResponse {
   }>
 }
 
-// Individual preview endpoints for regeneration
-export interface PreviewSourcesRequest {
-  source_ids: string[]
-  name: string
+// Unified generation request (replaces separate preview/generate models)
+export interface GenerateContentRequest {
+  module_id?: string
+  source_ids?: string[]
+  name?: string
 }
 
-export interface PreviewOverviewResponse {
+export interface GenerateOverviewResponse {
   overview: string
 }
 
-export interface PreviewLearningGoalsResponse {
+export interface GenerateLearningGoalsResponse {
   learning_goals: Array<{
     description: string
     takeaways?: string

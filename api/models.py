@@ -33,13 +33,6 @@ class ModuleResponse(BaseModel):
     course_id: Optional[str] = None
 
 
-class GenerateOverviewRequest(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-    model_id: Optional[str] = Field(
-        None, description="Model ID to use for generation"
-    )
-
-
 # Learning Goals models
 class LearningGoalCreate(BaseModel):
     description: str = Field(..., description="Learning goal description")
@@ -79,13 +72,6 @@ class LearningGoalResponse(BaseModel):
     order: int
     created: str
     updated: str
-
-
-class GenerateLearningGoalsRequest(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-    model_id: Optional[str] = Field(
-        None, description="Model ID to use for generation"
-    )
 
 
 # Search models
@@ -482,18 +468,34 @@ class PreviewModuleContentResponse(BaseModel):
     )
 
 
-# Individual preview endpoints for regeneration
-class PreviewSourcesRequest(BaseModel):
-    """Base request for preview endpoints that operate on unlinked sources."""
-    source_ids: List[str] = Field(..., description="List of source IDs to generate from")
+# Unified generation request (replaces separate preview/generate models)
+class GenerateContentRequest(BaseModel):
+    """Unified request for generating overview or learning goals.
+    Provide module_id to generate from an existing module (saves result),
+    or source_ids to generate from specific sources (preview mode, no save).
+    """
+    module_id: Optional[str] = Field(
+        None, description="Module ID (uses module's sources+notes, saves result)"
+    )
+    source_ids: Optional[List[str]] = Field(
+        None, description="Source IDs (preview mode, no save)"
+    )
     name: str = Field("", description="Module name for context")
 
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.module_id is None and self.source_ids is None:
+            raise ValueError("Either 'module_id' or 'source_ids' must be provided")
+        if self.module_id is not None and self.source_ids is not None:
+            raise ValueError("Cannot specify both 'module_id' and 'source_ids'")
+        return self
 
-class PreviewOverviewResponse(BaseModel):
+
+class GenerateOverviewResponse(BaseModel):
     overview: str = Field(..., description="Generated module overview")
 
 
-class PreviewLearningGoalsResponse(BaseModel):
+class GenerateLearningGoalsResponse(BaseModel):
     learning_goals: List[Dict[str, Any]] = Field(
         default_factory=list, description="Generated learning goals"
     )
