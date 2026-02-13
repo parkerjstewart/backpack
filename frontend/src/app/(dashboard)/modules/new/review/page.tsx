@@ -11,8 +11,8 @@ import { useModuleDraftStore } from "@/lib/stores/module-draft-store";
 import { useSourcePolling } from "@/lib/hooks/use-source-polling";
 import {
   usePreviewModuleContent,
-  usePreviewOverview,
-  usePreviewLearningGoals,
+  useGenerateOverview,
+  useGenerateLearningGoals,
   useCreateModule,
 } from "@/lib/hooks/use-modules";
 import { useBatchDeleteSources } from "@/lib/hooks/use-sources";
@@ -49,8 +49,8 @@ export default function ModuleReviewPage() {
     statuses: sourceStatuses,
   } = useSourcePolling(pendingSourceIds);
   const previewContent = usePreviewModuleContent();
-  const previewOverview = usePreviewOverview();
-  const previewLearningGoals = usePreviewLearningGoals();
+  const generateOverview = useGenerateOverview();
+  const generateLearningGoals = useGenerateLearningGoals();
   const createModule = useCreateModule();
   const batchDelete = useBatchDeleteSources();
 
@@ -107,11 +107,11 @@ export default function ModuleReviewPage() {
           onSuccess: (data) => {
             setGeneratedContent(
               data.overview,
-              data.learning_goals.map((g) => ({
+              data.learning_goals.map((g, i) => ({
                 description: g.description,
                 takeaways: g.takeaways || "",
                 competencies: g.competencies || "",
-                order: g.order,
+                order: i,
               }))
             );
             // Use AI-generated name if user hasn't set one
@@ -166,11 +166,11 @@ export default function ModuleReviewPage() {
             }
             setGeneratedContent(
               data.overview,
-              data.learning_goals.map((g) => ({
+              data.learning_goals.map((g, i) => ({
                 description: g.description,
                 takeaways: g.takeaways || "",
                 competencies: g.competencies || "",
-                order: g.order,
+                order: i,
               }))
             );
           },
@@ -184,7 +184,7 @@ export default function ModuleReviewPage() {
   const handleRegenerateOverview = () => {
     if (pendingSourceIds.length === 0) return;
 
-    previewOverview.mutate(
+    generateOverview.mutate(
       { source_ids: pendingSourceIds, name: name || "New Module" },
       {
         onSuccess: (data) => {
@@ -198,17 +198,17 @@ export default function ModuleReviewPage() {
   const handleRegenerateLearningGoals = () => {
     if (pendingSourceIds.length === 0) return;
 
-    previewLearningGoals.mutate(
+    generateLearningGoals.mutate(
       { source_ids: pendingSourceIds, name: name || "New Module" },
       {
         onSuccess: (data) => {
           setGeneratedContent(
             overview,
-            data.learning_goals.map((g) => ({
+            data.learning_goals.map((g, i) => ({
               description: g.description,
               takeaways: g.takeaways || "",
               competencies: g.competencies || "",
-              order: g.order,
+              order: i,
             }))
           );
         },
@@ -314,8 +314,8 @@ export default function ModuleReviewPage() {
   };
 
   const isGeneratingAll = previewContent.isPending;
-  const isGeneratingOverview = previewOverview.isPending || isGeneratingAll;
-  const isGeneratingGoals = previewLearningGoals.isPending || isGeneratingAll;
+  const isGeneratingOverview = generateOverview.isPending || isGeneratingAll;
+  const isGeneratingGoals = generateLearningGoals.isPending || isGeneratingAll;
   const isGenerating = isGeneratingOverview || isGeneratingGoals;
   const canConfirm = name.trim().length > 0 && !isGenerating && !isConfirming;
 

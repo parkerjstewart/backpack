@@ -33,33 +33,19 @@ class ModuleResponse(BaseModel):
     course_id: Optional[str] = None
 
 
-class GenerateOverviewRequest(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-    model_id: Optional[str] = Field(
-        None, description="Model ID to use for generation"
-    )
-
-
 # Learning Goals models
-class LearningGoalCreate(BaseModel):
-    description: str = Field(..., description="Learning goal description")
-    mastery_criteria: Optional[str] = Field(
-        None, description="Criteria for mastering this goal"
-    )
-    takeaways: Optional[str] = Field(
-        None, description="Key concepts or skills to be learned"
-    )
-    competencies: Optional[str] = Field(
-        None, description="Abilities that demonstrate mastery"
-    )
+class LearningGoalPreview(BaseModel):
+    description: str = Field(..., description="Action-verb learning goal statement")
+    takeaways: str = Field(default="", description="Key concepts or ideas")
+    competencies: str = Field(default="", description="Demonstrable skills")
+
+
+class LearningGoalCreate(LearningGoalPreview):
     order: Optional[int] = Field(None, description="Display order (auto-assigned if not provided)")
 
 
 class LearningGoalUpdate(BaseModel):
     description: Optional[str] = Field(None, description="Learning goal description")
-    mastery_criteria: Optional[str] = Field(
-        None, description="Criteria for mastering this goal"
-    )
     takeaways: Optional[str] = Field(
         None, description="Key concepts or skills to be learned"
     )
@@ -73,19 +59,11 @@ class LearningGoalResponse(BaseModel):
     id: str
     module: str
     description: str
-    mastery_criteria: Optional[str] = None
-    takeaways: Optional[str] = None
-    competencies: Optional[str] = None
+    takeaways: str = ""
+    competencies: str = ""
     order: int
     created: str
     updated: str
-
-
-class GenerateLearningGoalsRequest(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-    model_id: Optional[str] = Field(
-        None, description="Model ID to use for generation"
-    )
 
 
 # Search models
@@ -477,24 +455,40 @@ class PreviewModuleContentRequest(BaseModel):
 class PreviewModuleContentResponse(BaseModel):
     name: Optional[str] = Field(None, description="AI-generated module name")
     overview: Optional[str] = Field(None, description="Generated module overview")
-    learning_goals: List[Dict[str, Any]] = Field(
+    learning_goals: List[LearningGoalPreview] = Field(
         default_factory=list, description="Generated learning goals"
     )
 
 
-# Individual preview endpoints for regeneration
-class PreviewSourcesRequest(BaseModel):
-    """Base request for preview endpoints that operate on unlinked sources."""
-    source_ids: List[str] = Field(..., description="List of source IDs to generate from")
+# Unified generation request (replaces separate preview/generate models)
+class GenerateContentRequest(BaseModel):
+    """Unified request for generating overview or learning goals.
+    Provide module_id to generate from an existing module (saves result),
+    or source_ids to generate from specific sources (preview mode, no save).
+    """
+    module_id: Optional[str] = Field(
+        None, description="Module ID (uses module's sources+notes, saves result)"
+    )
+    source_ids: Optional[List[str]] = Field(
+        None, description="Source IDs (preview mode, no save)"
+    )
     name: str = Field("", description="Module name for context")
 
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.module_id is None and self.source_ids is None:
+            raise ValueError("Either 'module_id' or 'source_ids' must be provided")
+        if self.module_id is not None and self.source_ids is not None:
+            raise ValueError("Cannot specify both 'module_id' and 'source_ids'")
+        return self
 
-class PreviewOverviewResponse(BaseModel):
+
+class GenerateOverviewResponse(BaseModel):
     overview: str = Field(..., description="Generated module overview")
 
 
-class PreviewLearningGoalsResponse(BaseModel):
-    learning_goals: List[Dict[str, Any]] = Field(
+class GenerateLearningGoalsResponse(BaseModel):
+    learning_goals: List[LearningGoalPreview] = Field(
         default_factory=list, description="Generated learning goals"
     )
 

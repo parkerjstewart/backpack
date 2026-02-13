@@ -81,9 +81,8 @@ export interface LearningGoalResponse {
   id: string
   module: string
   description: string
-  mastery_criteria: string | null
-  takeaways: string | null
-  competencies: string | null
+  takeaways: string
+  competencies: string
   order: number
   created: string
   updated: string
@@ -91,7 +90,6 @@ export interface LearningGoalResponse {
 
 export interface CreateLearningGoalRequest {
   description: string
-  mastery_criteria?: string
   takeaways?: string
   competencies?: string
   order?: number
@@ -99,7 +97,6 @@ export interface CreateLearningGoalRequest {
 
 export interface UpdateLearningGoalRequest {
   description?: string
-  mastery_criteria?: string
   takeaways?: string
   competencies?: string
   order?: number
@@ -276,34 +273,31 @@ export interface PreviewModuleContentRequest {
   name: string
 }
 
+export interface LearningGoalPreview {
+  description: string
+  takeaways: string
+  competencies: string
+}
+
 export interface PreviewModuleContentResponse {
   name: string | null
   overview: string | null
-  learning_goals: Array<{
-    description: string
-    takeaways?: string
-    competencies?: string
-    order: number
-  }>
+  learning_goals: LearningGoalPreview[]
 }
 
-// Individual preview endpoints for regeneration
-export interface PreviewSourcesRequest {
-  source_ids: string[]
-  name: string
+// Unified generation request (replaces separate preview/generate models)
+export interface GenerateContentRequest {
+  module_id?: string
+  source_ids?: string[]
+  name?: string
 }
 
-export interface PreviewOverviewResponse {
+export interface GenerateOverviewResponse {
   overview: string
 }
 
-export interface PreviewLearningGoalsResponse {
-  learning_goals: Array<{
-    description: string
-    takeaways?: string
-    competencies?: string
-    order: number
-  }>
+export interface GenerateLearningGoalsResponse {
+  learning_goals: LearningGoalPreview[]
 }
 
 // ============================================

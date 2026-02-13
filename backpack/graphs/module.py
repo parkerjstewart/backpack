@@ -108,7 +108,7 @@ async def build_sources_context(sources: list[Source]) -> list[dict]:
         ]
 
     # Over budget — use dense summaries
-    dense_transform = await Transformation.get_by_title("Dense Summary")
+    dense_transform = await Transformation.get(Transformation.DENSE_SUMMARY)
 
     sources_context = []
     for source in sources:
