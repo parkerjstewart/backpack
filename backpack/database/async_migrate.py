@@ -111,6 +111,8 @@ class AsyncMigrationManager:
             AsyncMigration.from_file("backpack/database/migrations/13.surrealql"),
             AsyncMigration.from_file("backpack/database/migrations/14.surrealql"),
             AsyncMigration.from_file("backpack/database/migrations/15.surrealql"),
+            AsyncMigration.from_file("backpack/database/migrations/16.surrealql"),
+            AsyncMigration.from_file("backpack/database/migrations/17.surrealql"),
         ]
         self.down_migrations = [
             AsyncMigration.from_file(
@@ -157,6 +159,12 @@ class AsyncMigrationManager:
             ),
             AsyncMigration.from_file(
                 "backpack/database/migrations/15_down.surrealql"
+            ),
+            AsyncMigration.from_file(
+                "backpack/database/migrations/16_down.surrealql"
+            ),
+            AsyncMigration.from_file(
+                "backpack/database/migrations/17_down.surrealql"
             ),
         ]
         self.runner = AsyncMigrationRunner(

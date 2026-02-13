@@ -1,0 +1,5 @@
+-- ============================================
+-- Migration 17 down: No-op (cannot restore original random IDs)
+-- ============================================
+-- The fixed IDs are strictly better; rolling back would just re-randomize them.
+-- The transformations themselves are unchanged.

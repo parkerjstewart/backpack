@@ -1,0 +1,27 @@
+-- ============================================
+-- Migration 17: Assign fixed IDs to built-in transformations
+-- ============================================
+-- Moves existing transformations to deterministic record IDs so they can be
+-- referenced reliably by code (e.g. Transformation.DENSE_SUMMARY) instead of
+-- fragile title-based lookups.
+
+-- For each built-in transformation: copy to fixed ID, then delete the old record.
+-- Using LET + IF so it's safe to run on fresh DBs (where the fixed IDs may already exist).
+
+LET $old = (SELECT * FROM transformation WHERE name = "Dense Summary" AND id != transformation:dense_summary LIMIT 1);
+IF $old { CREATE transformation:dense_summary CONTENT $old[0]; DELETE $old[0].id; };
+
+LET $old = (SELECT * FROM transformation WHERE name = "Analyze Paper" AND id != transformation:analyze_paper LIMIT 1);
+IF $old { CREATE transformation:analyze_paper CONTENT $old[0]; DELETE $old[0].id; };
+
+LET $old = (SELECT * FROM transformation WHERE name = "Key Insights" AND id != transformation:key_insights LIMIT 1);
+IF $old { CREATE transformation:key_insights CONTENT $old[0]; DELETE $old[0].id; };
+
+LET $old = (SELECT * FROM transformation WHERE name = "Reflections" AND id != transformation:reflections LIMIT 1);
+IF $old { CREATE transformation:reflections CONTENT $old[0]; DELETE $old[0].id; };
+
+LET $old = (SELECT * FROM transformation WHERE name = "Table of Contents" AND id != transformation:table_of_contents LIMIT 1);
+IF $old { CREATE transformation:table_of_contents CONTENT $old[0]; DELETE $old[0].id; };
+
+LET $old = (SELECT * FROM transformation WHERE name = "Simple Summary" AND id != transformation:simple_summary LIMIT 1);
+IF $old { CREATE transformation:simple_summary CONTENT $old[0]; DELETE $old[0].id; };
