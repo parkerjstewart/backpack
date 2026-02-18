@@ -27,6 +27,9 @@ interface ModuleDraftState {
   
   // Track if content has been generated
   hasGeneratedContent: boolean
+
+  // Draft module ID (set after saving as draft, before publish)
+  draftModuleId: string | null
   
   // Actions
   addPendingSource: (sourceId: string) => void
@@ -38,6 +41,7 @@ interface ModuleDraftState {
   updateLearningGoal: (index: number, updates: Partial<Omit<DraftLearningGoal, 'order'>>) => void
   removeLearningGoal: (index: number) => void
   setTargetCourseId: (courseId: string | null) => void
+  setDraftModuleId: (moduleId: string | null) => void
   reset: () => void
   
   // Computed getters
@@ -67,6 +71,7 @@ const initialState = {
   prerequisites: null,
   targetCourseId: null,
   hasGeneratedContent: false,
+  draftModuleId: null,
 }
 
 export const useModuleDraftStore = create<ModuleDraftState>()((set, get) => ({
@@ -141,6 +146,10 @@ export const useModuleDraftStore = create<ModuleDraftState>()((set, get) => ({
 
   setTargetCourseId: (courseId: string | null) => {
     set({ targetCourseId: courseId })
+  },
+
+  setDraftModuleId: (moduleId: string | null) => {
+    set({ draftModuleId: moduleId })
   },
 
   reset: () => {

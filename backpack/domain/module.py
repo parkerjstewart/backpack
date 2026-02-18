@@ -56,6 +56,7 @@ class Module(ObjectModel):
     overview: Optional[str] = None
     course: Optional[str] = None  # record<course> reference
     order: int = 0  # Order within the course
+    status: Literal["draft", "published"] = "published"
 
     @field_validator("course", mode="before")
     @classmethod

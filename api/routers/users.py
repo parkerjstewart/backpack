@@ -214,7 +214,7 @@ async def get_current_user_courses(authorization: Optional[str] = Header(None)):
             SELECT
                 out.* as course,
                 role as membership_role,
-                count((SELECT * FROM module WHERE course = out.id)) as module_count,
+                count((SELECT * FROM module WHERE course = out.id AND (status != "draft" OR status = NONE))) as module_count,
                 count((SELECT * FROM course_membership WHERE out = out.id AND role = 'student')) as student_count
             FROM course_membership
             WHERE in = $user_id

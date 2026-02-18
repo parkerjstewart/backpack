@@ -104,7 +104,7 @@ class Course(ObjectModel):
         try:
             result = await repo_query(
                 """
-                SELECT * FROM module WHERE course = $course_id ORDER BY order ASC
+                SELECT * FROM module WHERE course = $course_id AND (status != "draft" OR status = NONE) ORDER BY order ASC
                 """,
                 {"course_id": ensure_record_id(self.id)},
             )
@@ -323,7 +323,7 @@ class Course(ObjectModel):
                     SELECT *,
                            (SELECT * FROM learning_goal WHERE module = parent.id) as lg
                     FROM module
-                    WHERE course = $course_id
+                    WHERE course = $course_id AND (status != "draft" OR status = NONE)
                 ) as module
                 ORDER BY module.order ASC
                 """,

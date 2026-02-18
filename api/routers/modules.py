@@ -22,7 +22,7 @@ from api.routers.authz import (
     require_teaching_role,
 )
 from backpack.database.repository import ensure_record_id, repo_query
-from backpack.domain.module import LearningGoal, Module, Source
+from backpack.domain.module import LearningGoal, Module, Note, Source
 from backpack.exceptions import InvalidInputError
 from backpack.graphs.module import (
     build_sources_context,
@@ -34,6 +34,62 @@ from backpack.graphs.module import (
 router = APIRouter()
 
 
+async def _get_related_item_ids(
+    relation_table: str, module_id: str, item_prefix: str
+) -> List[str]:
+    """Get related item IDs for a module across both edge directions."""
+    module_record_id = ensure_record_id(module_id)
+    related_ids: set[str] = set()
+
+    out_edges = await repo_query(
+        f"SELECT in as item_id FROM {relation_table} WHERE out = $module_id",
+        {"module_id": module_record_id},
+    )
+    in_edges = await repo_query(
+        f"SELECT out as item_id FROM {relation_table} WHERE in = $module_id",
+        {"module_id": module_record_id},
+    )
+
+    for row in (out_edges or []) + (in_edges or []):
+        item_id = row.get("item_id")
+        item_id_str = str(item_id) if item_id else ""
+        if item_id_str.startswith(item_prefix):
+            related_ids.add(item_id_str)
+
+    return list(related_ids)
+
+
+async def _unlink_module_relation(
+    relation_table: str, module_id: str, item_id: str
+) -> None:
+    """Remove all relations between a module and an item in either direction."""
+    await repo_query(
+        f"""
+        DELETE {relation_table}
+        WHERE (out = $module_id AND in = $item_id)
+           OR (out = $item_id AND in = $module_id)
+        """,
+        {
+            "module_id": ensure_record_id(module_id),
+            "item_id": ensure_record_id(item_id),
+        },
+    )
+
+
+async def _count_item_relations(relation_table: str, item_id: str) -> int:
+    """Count remaining relations for an item in either direction."""
+    result = await repo_query(
+        f"""
+        SELECT count() as count
+        FROM {relation_table}
+        WHERE out = $item_id OR in = $item_id
+        GROUP ALL
+        """,
+        {"item_id": ensure_record_id(item_id)},
+    )
+    return int(result[0].get("count", 0)) if result else 0
+
+
 @router.get("/modules", response_model=List[ModuleResponse])
 async def get_modules(
     archived: Optional[bool] = Query(None, description="Filter by archived status"),
@@ -41,12 +97,13 @@ async def get_modules(
 ):
     """Get all modules with optional filtering and ordering."""
     try:
-        # Build the query with counts
+        # Build the query with counts; exclude drafts by default
         query = f"""
             SELECT *,
             count(<-reference) as source_count,
             count(<-artifact) as note_count
             FROM module
+            WHERE status != "draft" OR status = NONE
             ORDER BY {order_by}
         """
 
@@ -62,6 +119,7 @@ async def get_modules(
                 name=nb.get("name", ""),
                 description=nb.get("description", ""),
                 archived=nb.get("archived", False),
+                status=nb.get("status") or "published",
                 overview=nb.get("overview"),
                 created=str(nb.get("created", "")),
                 updated=str(nb.get("updated", "")),
@@ -90,6 +148,7 @@ async def create_module(module: ModuleCreate, authorization: Optional[str] = Hea
             name=module.name,
             description=module.description,
             course=module.course_id,
+            status=module.status,
         )
         await new_module.save()
 
@@ -98,6 +157,7 @@ async def create_module(module: ModuleCreate, authorization: Optional[str] = Hea
             name=new_module.name,
             description=new_module.description,
             archived=new_module.archived or False,
+            status=new_module.status or "published",
             overview=new_module.overview,
             created=str(new_module.created),
             updated=str(new_module.updated),
@@ -136,6 +196,7 @@ async def get_module(module_id: str):
             name=nb.get("name", ""),
             description=nb.get("description", ""),
             archived=nb.get("archived", False),
+            status=nb.get("status") or "published",
             overview=nb.get("overview"),
             created=str(nb.get("created", "")),
             updated=str(nb.get("updated", "")),
@@ -202,6 +263,7 @@ async def update_module(
                 name=nb.get("name", ""),
                 description=nb.get("description", ""),
                 archived=nb.get("archived", False),
+                status=nb.get("status") or "published",
                 overview=nb.get("overview"),
                 created=str(nb.get("created", "")),
                 updated=str(nb.get("updated", "")),
@@ -216,6 +278,7 @@ async def update_module(
             name=module.name,
             description=module.description,
             archived=module.archived or False,
+            status=module.status or "published",
             overview=module.overview,
             created=str(module.created),
             updated=str(module.updated),
@@ -231,6 +294,152 @@ async def update_module(
         logger.error(f"Error updating module {module_id}: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error updating module: {str(e)}"
+        )
+
+
+@router.patch("/modules/{module_id}/publish", response_model=ModuleResponse)
+async def publish_module(module_id: str, authorization: Optional[str] = Header(None)):
+    """Publish a draft module, making it visible in listings."""
+    try:
+        module = await Module.get(module_id)
+        if not module:
+            raise HTTPException(status_code=404, detail="Module not found")
+
+        if module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
+
+        if module.status != "draft":
+            raise HTTPException(
+                status_code=400, detail="Only draft modules can be published"
+            )
+
+        module.status = "published"
+        await module.save()
+
+        query = """
+            SELECT *,
+            count(<-reference) as source_count,
+            count(<-artifact) as note_count
+            FROM $module_id
+        """
+        result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
+
+        if result:
+            nb = result[0]
+            return ModuleResponse(
+                id=str(nb.get("id", "")),
+                name=nb.get("name", ""),
+                description=nb.get("description", ""),
+                archived=nb.get("archived", False),
+                status=nb.get("status") or "published",
+                overview=nb.get("overview"),
+                created=str(nb.get("created", "")),
+                updated=str(nb.get("updated", "")),
+                source_count=nb.get("source_count", 0),
+                note_count=nb.get("note_count", 0),
+                course_id=str(nb.get("course")) if nb.get("course") else None,
+            )
+
+        return ModuleResponse(
+            id=module.id or "",
+            name=module.name,
+            description=module.description,
+            archived=module.archived or False,
+            status=module.status or "published",
+            overview=module.overview,
+            created=str(module.created),
+            updated=str(module.updated),
+            source_count=0,
+            note_count=0,
+            course_id=str(module.course) if module.course else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error publishing module {module_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error publishing module: {str(e)}"
+        )
+
+
+@router.delete("/modules/{module_id}/discard-draft")
+async def discard_draft_module(
+    module_id: str, authorization: Optional[str] = Header(None)
+):
+    """Discard a draft module and fully clean up draft-generated data."""
+    try:
+        module = await Module.get(module_id)
+        if not module:
+            raise HTTPException(status_code=404, detail="Module not found")
+
+        if module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
+
+        if module.status != "draft":
+            raise HTTPException(
+                status_code=400, detail="Only draft modules can be discarded"
+            )
+
+        deleted_goals = 0
+        deleted_sources = 0
+        unlinked_sources = 0
+        deleted_notes = 0
+        unlinked_notes = 0
+
+        # Remove learning goals tied to this draft module.
+        goals = await module.get_learning_goals()
+        for goal in goals:
+            await goal.delete()
+            deleted_goals += 1
+
+        # Cleanup sources linked to this draft.
+        source_ids = await _get_related_item_ids("reference", module_id, "source:")
+        for source_id in source_ids:
+            await _unlink_module_relation("reference", module_id, source_id)
+
+            remaining_relations = await _count_item_relations("reference", source_id)
+            if remaining_relations == 0:
+                source = await Source.get(source_id)
+                if source:
+                    await source.delete()
+                    deleted_sources += 1
+            else:
+                unlinked_sources += 1
+
+        # Cleanup notes linked to this draft.
+        note_ids = await _get_related_item_ids("artifact", module_id, "note:")
+        for note_id in note_ids:
+            await _unlink_module_relation("artifact", module_id, note_id)
+
+            remaining_relations = await _count_item_relations("artifact", note_id)
+            if remaining_relations == 0:
+                note = await Note.get(note_id)
+                if note:
+                    await note.delete()
+                    deleted_notes += 1
+            else:
+                unlinked_notes += 1
+
+        await module.delete()
+
+        return {
+            "message": "Draft module discarded successfully",
+            "cleanup": {
+                "deleted_goals": deleted_goals,
+                "deleted_sources": deleted_sources,
+                "unlinked_sources": unlinked_sources,
+                "deleted_notes": deleted_notes,
+                "unlinked_notes": unlinked_notes,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error discarding draft module {module_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error discarding draft module: {str(e)}"
         )
 
 

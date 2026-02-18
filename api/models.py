@@ -8,6 +8,10 @@ class ModuleCreate(BaseModel):
     name: str = Field(..., description="Name of the module")
     description: str = Field(default="", description="Description of the module")
     course_id: Optional[str] = Field(None, description="ID of the course this module belongs to")
+    status: Literal["draft", "published"] = Field(
+        default="published",
+        description="Module status",
+    )
 
 
 class ModuleUpdate(BaseModel):
@@ -25,6 +29,7 @@ class ModuleResponse(BaseModel):
     name: str
     description: str
     archived: bool
+    status: Literal["draft", "published"] = "published"
     overview: Optional[str] = None
     created: str
     updated: str

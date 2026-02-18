@@ -19,7 +19,7 @@ import { useModuleColumnsStore } from "@/lib/stores/module-columns-store";
 import { useIsDesktop } from "@/lib/hooks/use-media-query";
 import { useTranslation } from "@/lib/hooks/use-translation";
 import { cn } from "@/lib/utils";
-import { FileText } from "lucide-react";
+import { FileText, GraduationCap } from "lucide-react";
 import { getCoursePermissions } from "@/lib/permissions/course";
 
 type ContextMode = "off" | "insights" | "full";
@@ -59,7 +59,7 @@ export default function CourseModuleOverviewPage() {
 
   // Mobile tab state (Sources or Details)
   const [mobileActiveTab, setMobileActiveTab] = useState<"sources" | "details">(
-    "sources"
+    "sources",
   );
 
   // Context selection state
@@ -67,7 +67,7 @@ export default function CourseModuleOverviewPage() {
     {
       sources: {},
       notes: {},
-    }
+    },
   );
 
   // Initialize default selections when sources load
@@ -151,11 +151,19 @@ export default function CourseModuleOverviewPage() {
                 <p className="text-muted-foreground">{module.description}</p>
               )}
             </div>
-            {permissions.canEditModuleContent && (
-              <Button onClick={() => setUploadOpen(true)}>
-                Upload documents
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/modules/${encodeURIComponent(moduleId)}/review`}>
+                  <GraduationCap className="h-4 w-4 mr-2" />
+                  {t.modules.review}
+                </Link>
               </Button>
-            )}
+              {permissions.canEditModuleContent && (
+                <Button onClick={() => setUploadOpen(true)}>
+                  Upload documents
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -215,14 +223,14 @@ export default function CourseModuleOverviewPage() {
           <div
             className={cn(
               "hidden lg:flex h-full min-h-0 gap-6 transition-all duration-150",
-              "flex-row"
+              "flex-row",
             )}
           >
             {/* Sources Column */}
             <div
               className={cn(
                 "transition-all duration-150",
-                sourcesCollapsed ? "w-12 flex-shrink-0" : "flex-none basis-1/3"
+                sourcesCollapsed ? "w-12 flex-shrink-0" : "flex-none basis-1/3",
               )}
             >
               <SourcesColumn

@@ -70,7 +70,7 @@ export default function ReviewPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => router.push(`/modules/${moduleId}`)}
+              onClick={() => router.back()}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               {t.common.back}

@@ -8,6 +8,14 @@ You are an educational assessment expert evaluating a student's response to dete
 {% if goal.mastery_criteria %}
 **Mastery Criteria**: {{ goal.mastery_criteria }}
 {% endif %}
+{% if goal.takeaways %}
+**Key Takeaways** (concepts the student should retain):
+{{ goal.takeaways }}
+{% endif %}
+{% if goal.competencies %}
+**Competencies** (skills to demonstrate mastery):
+{{ goal.competencies }}
+{% endif %}
 
 # CURRENT QUESTION
 

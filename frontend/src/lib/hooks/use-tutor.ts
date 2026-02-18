@@ -65,6 +65,18 @@ export function useTutor({ moduleId }: UseTutorParams) {
     }
   }, [createSessionMutation])
 
+  // Reset session state so a new session can be started
+  const resetSession = useCallback(() => {
+    setSessionId(null)
+    setMessages([])
+    setIsSending(false)
+    setIsInitializing(false)
+    setSessionPhase('in_progress')
+    setCurrentGoal(null)
+    setGoalsCompleted(0)
+    setGoalsRemaining(0)
+  }, [])
+
   // Send response to tutor
   const sendMessage = useCallback(async (message: string) => {
     if (!sessionId) {
@@ -125,5 +137,6 @@ export function useTutor({ moduleId }: UseTutorParams) {
     // Actions
     initializeSession,
     sendMessage,
+    resetSession,
   }
 }

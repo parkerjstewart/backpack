@@ -38,6 +38,16 @@ export const modulesApi = {
     await apiClient.delete(`/modules/${id}`)
   },
 
+  publish: async (id: string) => {
+    const response = await apiClient.patch<ModuleResponse>(`/modules/${id}/publish`)
+    return response.data
+  },
+
+  discardDraft: async (id: string) => {
+    const response = await apiClient.delete(`/modules/${id}/discard-draft`)
+    return response.data
+  },
+
   addSource: async (moduleId: string, sourceId: string) => {
     const response = await apiClient.post(`/modules/${moduleId}/sources/${sourceId}`)
     return response.data

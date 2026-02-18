@@ -141,7 +141,13 @@ def initialize_session(state: TutorState, config: RunnableConfig) -> dict:
         }
 
     learning_goals = [
-        {"id": g.id, "description": g.description, "mastery_criteria": g.mastery_criteria, "order": g.order}
+        {
+            "id": g.id,
+            "description": g.description,
+            "takeaways": g.takeaways,
+            "competencies": g.competencies,
+            "order": g.order,
+        }
         for g in goals
     ]
 

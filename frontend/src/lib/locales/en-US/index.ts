@@ -954,5 +954,14 @@ export const enUS = {
     complete: "Complete",
     sessionComplete: "Review session complete! Great work.",
     responsePlaceholder: "Type your response...",
+    tryTutor: "Try Tutor",
+    tryTutorDescription: "Test the tutor agent with your module before publishing.",
+    publish: "Publish Module",
+    publishing: "Publishing...",
+    discard: "Discard Draft",
+    discarding: "Discarding...",
+    tryAgain: "Try Again",
+    publishConfirm: "Are you satisfied with the tutor? Publish this module to make it available.",
+    discardConfirm: "Are you sure? This will delete the draft module and all its data.",
   }
 }
