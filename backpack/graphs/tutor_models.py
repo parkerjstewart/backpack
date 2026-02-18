@@ -10,7 +10,7 @@ These models are used for:
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 # ============================================================================
@@ -42,12 +42,53 @@ class GeneratedQuestions(BaseModel):
     )
 
 
+class CompetencyScore(BaseModel):
+    """Per-competency evaluation for a student response."""
+    competency: str = Field(..., description="The competency criterion being scored")
+    score: float = Field(..., ge=0.0, le=1.0, description="Score 0.0-1.0 for this competency")
+    evidence: str = Field(
+        default="",
+        description="What in the response indicated this score",
+    )
+
+
 class EvaluationResult(BaseModel):
     """Result of evaluating a student's response."""
-    score: float = Field(..., ge=0.0, le=1.0, description="Understanding score 0-1")
-    notes: str = Field(default="", description="Reasoning for the score")
+    overall_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Overall understanding score 0-1",
+        validation_alias=AliasChoices("overall_score", "score"),
+    )
+    competency_scores: List[CompetencyScore] = Field(
+        default_factory=list,
+        description="Per-competency scores",
+    )
+    weakest_competency: Optional[str] = Field(
+        default=None,
+        description="ID or name of the competency with lowest score",
+    )
+    notes: str = Field(default="", description="Reasoning for the evaluation")
     misconceptions: List[str] = Field(default_factory=list)
     breakthroughs: List[str] = Field(default_factory=list)
+    is_resolved: bool = Field(
+        default=False,
+        description="True when all competencies >= 0.7",
+    )
+    hypothesized_gaps: List[str] = Field(
+        default_factory=list,
+        description="Prerequisite concepts that might be missing",
+    )
+    confirmed_knowledge: List[str] = Field(
+        default_factory=list,
+        description="Concepts the student demonstrated correctly",
+    )
+
+    @property
+    def score(self) -> float:
+        """Backward-compatible alias for overall_score."""
+        return self.overall_score
 
 
 class GoalSelection(BaseModel):

@@ -652,6 +652,7 @@ async def get_module_learning_goals(module_id: str):
                 description=goal.description,
                 takeaways=goal.takeaways,
                 competencies=goal.competencies,
+                anchor_examples=getattr(goal, "anchor_examples", "") or "",
                 order=goal.order,
                 created=str(goal.created),
                 updated=str(goal.updated),
@@ -696,6 +697,7 @@ async def create_learning_goal(
             description=request.description,
             takeaways=request.takeaways,
             competencies=request.competencies,
+            anchor_examples=getattr(request, "anchor_examples", "") or "",
             order=order,
         )
         await goal.save()
@@ -706,6 +708,7 @@ async def create_learning_goal(
             description=goal.description,
             takeaways=goal.takeaways,
             competencies=goal.competencies,
+            anchor_examples=getattr(goal, "anchor_examples", "") or "",
             order=goal.order,
             created=str(goal.created),
             updated=str(goal.updated),
@@ -744,6 +747,8 @@ async def update_learning_goal(
             goal.takeaways = request.takeaways
         if request.competencies is not None:
             goal.competencies = request.competencies
+        if request.anchor_examples is not None:
+            goal.anchor_examples = request.anchor_examples
         if request.order is not None:
             goal.order = request.order
 
@@ -755,6 +760,7 @@ async def update_learning_goal(
             description=goal.description,
             takeaways=goal.takeaways,
             competencies=goal.competencies,
+            anchor_examples=getattr(goal, "anchor_examples", "") or "",
             order=goal.order,
             created=str(goal.created),
             updated=str(goal.updated),
@@ -834,14 +840,19 @@ async def generate_module_learning_goals(
                     description=goal_data.description,
                     takeaways=goal_data.takeaways,
                     competencies=goal_data.competencies,
+                    anchor_examples=goal_data.anchor_examples,
                     order=i,
                 )
                 await goal.save()
-                created_goals.append(LearningGoalPreview(
-                    description=goal.description,
-                    takeaways=goal.takeaways,
-                    competencies=goal.competencies,
-                ))
+                created_goals.append(
+                    LearningGoalPreview(
+                        description=goal.description,
+                        takeaways=goal.takeaways,
+                        competencies=goal.competencies,
+                        anchor_examples=getattr(goal, "anchor_examples", "")
+                        or "",
+                    )
+                )
 
             return GenerateLearningGoalsResponse(learning_goals=created_goals)
         else:
@@ -851,6 +862,7 @@ async def generate_module_learning_goals(
                         description=g.description,
                         takeaways=g.takeaways,
                         competencies=g.competencies,
+                        anchor_examples=getattr(g, "anchor_examples", "") or "",
                     )
                     for g in generated_goals
                 ]

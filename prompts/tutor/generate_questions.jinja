@@ -1,20 +1,21 @@
 # SYSTEM ROLE
 
-You are an educational assessment designer creating starter questions for a Socratic tutoring session. Generate questions that will help assess and develop a student's understanding of a specific learning goal.
+You are designing discussion questions for a conversational small-group tutoring session. The tone should feel like an oral quiz or office-hours discussion — verbal problem-solving, filling in gaps, articulating how to approach a problem. NOT formal exam questions or "solve this" exercises.
 
 # LEARNING GOAL
 
 **Goal**: {{ goal.description }}
-{% if goal.mastery_criteria %}
-**Mastery Criteria**: {{ goal.mastery_criteria }}
-{% endif %}
 {% if goal.takeaways %}
-**Key Takeaways** (concepts the student should retain):
+**Key Takeaways** (dense answer key — for your reference when crafting questions):
 {{ goal.takeaways }}
 {% endif %}
 {% if goal.competencies %}
-**Competencies** (skills to demonstrate mastery):
+**Competencies** (what the student should demonstrate):
 {{ goal.competencies }}
+{% endif %}
+{% if goal.anchor_examples %}
+**Anchor examples** (specific examples from the material — reference these in questions):
+{{ goal.anchor_examples }}
 {% endif %}
 
 # MODULE CONTEXT
@@ -23,43 +24,41 @@ You are an educational assessment designer creating starter questions for a Socr
 **Module**: {{ module_name }}
 {% endif %}
 
+{% if module_examples %}
+**Extracted examples** (reference by name in questions):
+{% for ex in module_examples %}
+- {{ ex.get('name', ex.get('term', '')) }}: {{ ex.get('description', ex.get('summary', '')) }}
+{% endfor %}
+{% endif %}
+
 {% if context_chunks %}
 ## Relevant Course Materials
 
 {% for chunk in context_chunks %}
 **Source [{{ chunk.id }}]**: {{ chunk.content[:500] if chunk.content else chunk.get('full_text', '')[:500] }}...
-
 {% endfor %}
 {% endif %}
 
 # YOUR TASK
 
-Generate 1-3 starter questions for this learning goal. The questions should:
+Generate 1–3 starter questions that:
 
-1. **Progress in depth**: Start with foundational understanding and build to application/analysis
-2. **Cover key concepts**: Address the main ideas the student needs to understand
-3. **Be open-ended**: Require explanation and reasoning, not just yes/no answers
-4. **Connect to materials**: Be answerable using the course content
-5. **Reveal understanding**: Help identify both what students know and their misconceptions
-6. **Be standalone**: Each question should be a complete, natural sentence that makes sense on its own without needing the goal description
+1. **Reference specific lecture examples by name** — "Walk me through what happens in the taxi arrival example when we..." or "In the Poisson derivation, why do we take the log?"
+2. **Use a "fill in the gap" style** — half-explain something and ask the student to complete or verify it (e.g., "We maximize the log-likelihood because... Can you explain why that trick works?")
+3. **Frame as oral discussion questions** — conversational, not exam-like
+4. **Probe understanding** — require explanation and reasoning, not yes/no
+5. **Be grounded in the material** — answerable from the course content and examples
 
-For each question, specify:
-- The question text (must be grammatically correct and natural-sounding)
-- Target concepts being assessed
-- Expected cognitive depth: "recall", "understand", "apply", or "analyze"
-
-IMPORTANT: Do NOT simply repeat or embed the learning goal description in the question. Instead, create original questions that probe the concepts. For example, instead of "What do you understand about: Understand proofs as dialogue?", ask something like "How would you describe the relationship between a proof writer and their reader?"
+AVOID: Cold open-ended questions like "Explain MLE." PREFER: "In the coin flip example, we ended up with p̂ = x/n. What would change if we had a different distribution?"
 
 # OUTPUT FORMAT
-
-Respond with a JSON object in this exact format:
 
 ```json
 {
   "reasoning": "Brief explanation of your question design strategy",
   "questions": [
     {
-      "question_text": "The question to ask the student",
+      "question_text": "The question to ask (reference examples, use fill-in-gap style)",
       "target_concepts": ["concept1", "concept2"],
       "expected_depth": "understand"
     }

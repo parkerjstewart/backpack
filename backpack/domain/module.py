@@ -20,6 +20,7 @@ class LearningGoal(ObjectModel):
     description: str
     takeaways: str = ""
     competencies: str = ""
+    anchor_examples: str = ""
     order: int = 0
 
     @field_validator("module", mode="before")

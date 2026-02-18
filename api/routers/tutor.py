@@ -71,10 +71,14 @@ class TutorResponsePayload(BaseModel):
     
     # Latest evaluation (for real-time feedback)
     latest_understanding_score: Optional[float] = Field(
-        None, 
-        description="Latest understanding score (0-1)"
+        None,
+        description="Latest overall understanding score (0-1)",
     )
-    
+    competency_scores: Optional[Dict[str, float]] = Field(
+        None,
+        description="Per-competency scores when available",
+    )
+
     # Progress summary
     goals_completed: int = Field(default=0, description="Number of goals completed")
     goals_remaining: int = Field(default=0, description="Number of goals remaining")
@@ -346,6 +350,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
                 current_question_text=current_question.get("question_text") if current_question else None,
                 tutor_message=interrupt_data.get("message", ""),
                 latest_understanding_score=latest_eval.get("score"),
+                competency_scores=latest_eval.get("competency_score_dict"),
                 goals_completed=completed,
                 goals_remaining=remaining,
             )
@@ -382,6 +387,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
             current_question_text=None,
             tutor_message=last_ai_message or "Session updated.",
             latest_understanding_score=state_values.get("latest_evaluation", {}).get("score"),
+            competency_scores=state_values.get("latest_evaluation", {}).get("competency_score_dict"),
             goals_completed=completed,
             goals_remaining=remaining,
         )

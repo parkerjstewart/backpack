@@ -46,6 +46,10 @@ class GeneratedLearningGoal(BaseModel):
     competencies: str = Field(
         default="", description="Demonstrable skills as bullet points"
     )
+    anchor_examples: str = Field(
+        default="",
+        description="Specific lecture examples this goal is grounded in",
+    )
 
 
 class GeneratedLearningGoals(BaseModel):
@@ -211,7 +215,7 @@ async def generate_learning_goals(
         system_prompt,
         model_id,
         "transformation",
-        max_tokens=2000,
+        max_tokens=4000,
     )
     structured_model = model.with_structured_output(GeneratedLearningGoals)
     result = await structured_model.ainvoke(system_prompt)

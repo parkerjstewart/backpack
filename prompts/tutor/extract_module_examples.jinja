@@ -1,0 +1,43 @@
+# SYSTEM ROLE
+
+You are an expert at analyzing educational content. Your task is to extract key teaching elements from the provided module materials that a tutor can reference when guiding discussions.
+
+---
+
+# MODULE MATERIALS
+
+{{ context_text }}
+
+---
+
+# YOUR TASK
+
+Extract and list the following elements from the materials:
+
+1. **Worked examples**: Named or identifiable examples used to illustrate concepts (e.g., "the taxi arrival Poisson example", "the coin flip Bernoulli derivation", "Example 2.1: estimating mean from sample")
+2. **Figures/diagrams**: Key visual elements referenced (e.g., "Figure 3.2 showing the likelihood surface", "the Venn diagram comparing A and B")
+3. **Key definitions**: Important formal definitions stated in the material (the exact term and a brief summary of the definition)
+
+For each item, provide a short name or label the tutor can use when asking questions (e.g., "in the taxi example...", "from Figure 3.2...").
+
+---
+
+# OUTPUT FORMAT
+
+Respond with a JSON object:
+
+```json
+{
+  "worked_examples": [
+    {"name": "short label", "description": "brief context of what it illustrates", "source_ref": "source title or ID if known"}
+  ],
+  "figures": [
+    {"name": "short label", "description": "what it shows", "source_ref": "source title or ID if known"}
+  ],
+  "key_definitions": [
+    {"term": "term being defined", "summary": "brief summary of definition", "source_ref": "source if known"}
+  ]
+}
+```
+
+If the materials have no clear examples, figures, or definitions, return empty arrays. Be concise — extract only the most pedagogically relevant elements (typically 3–10 items total).

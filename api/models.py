@@ -43,6 +43,10 @@ class LearningGoalPreview(BaseModel):
     description: str = Field(..., description="Action-verb learning goal statement")
     takeaways: str = Field(default="", description="Key concepts or ideas")
     competencies: str = Field(default="", description="Demonstrable skills")
+    anchor_examples: str = Field(
+        default="",
+        description="Specific lecture examples this goal is grounded in",
+    )
 
 
 class LearningGoalCreate(LearningGoalPreview):
@@ -57,6 +61,9 @@ class LearningGoalUpdate(BaseModel):
     competencies: Optional[str] = Field(
         None, description="Abilities that demonstrate mastery"
     )
+    anchor_examples: Optional[str] = Field(
+        None, description="Specific lecture examples this goal is grounded in"
+    )
     order: Optional[int] = Field(None, description="Display order")
 
 
@@ -66,6 +73,7 @@ class LearningGoalResponse(BaseModel):
     description: str
     takeaways: str = ""
     competencies: str = ""
+    anchor_examples: str = ""
     order: int
     created: str
     updated: str

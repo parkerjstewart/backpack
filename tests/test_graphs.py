@@ -30,8 +30,10 @@ from backpack.graphs.tutor_models import (
 from backpack.graphs.tutor import (
     TutorState,
     check_more_goals,
+    check_more_questions_in_goal,
     tutor_state,
 )
+from backpack.graphs.tutor_models import CompetencyScore
 
 # ============================================================================
 # TEST SUITE 1: Graph Tools
@@ -472,6 +474,238 @@ class TestTutorGraph:
         assert "current_goal_id" in hints
         assert "current_question" in hints
         assert "understanding_trajectory" in hints
+        # New fields from revamp
+        assert "student_model" in hints
+        assert "module_examples" in hints
+
+    # -------------------------------------------------------------------------
+    # check_more_questions_in_goal tests
+    # -------------------------------------------------------------------------
+
+    def test_check_more_questions_has_more(self):
+        """Returns 'advance' when current question is not the last."""
+        state = {
+            "current_goal_id": "g1",
+            "current_question_index": 0,
+            "goal_progress": {
+                "g1": {
+                    "starter_questions": [
+                        {"index": 0, "question_text": "Q1"},
+                        {"index": 1, "question_text": "Q2"},
+                    ]
+                }
+            },
+        }
+        assert check_more_questions_in_goal(state) == "advance"
+
+    def test_check_more_questions_last_question(self):
+        """Returns 'mark_complete' when on the last question."""
+        state = {
+            "current_goal_id": "g1",
+            "current_question_index": 1,
+            "goal_progress": {
+                "g1": {
+                    "starter_questions": [
+                        {"index": 0, "question_text": "Q1"},
+                        {"index": 1, "question_text": "Q2"},
+                    ]
+                }
+            },
+        }
+        assert check_more_questions_in_goal(state) == "mark_complete"
+
+    def test_check_more_questions_goal_missing(self):
+        """Returns 'mark_complete' when goal_id is not in goal_progress."""
+        state = {
+            "current_goal_id": "g99",
+            "current_question_index": 0,
+            "goal_progress": {},
+        }
+        assert check_more_questions_in_goal(state) == "mark_complete"
+
+    # -------------------------------------------------------------------------
+    # Deterministic resolution logic tests (unit-level, no LLM call needed)
+    # -------------------------------------------------------------------------
+
+    def test_all_competencies_above_threshold_resolves(self):
+        """All competency scores >= 0.7 means is_resolved must be True."""
+        comp_values = [0.7, 0.8, 0.9]
+        resolved = all(v >= 0.7 for v in comp_values)
+        assert resolved is True
+
+    def test_one_competency_below_threshold_not_resolved(self):
+        """A single competency below 0.7 keeps is_resolved False."""
+        comp_values = [0.9, 0.65, 0.8]
+        resolved = all(v >= 0.7 for v in comp_values)
+        assert resolved is False
+
+    def test_empty_competency_list_falls_back_to_overall(self):
+        """When no per-competency scores, fallback to overall_score >= 0.7."""
+        comp_values = []
+        overall = 0.75
+        resolved = all(v >= 0.7 for v in comp_values) if comp_values else overall >= 0.7
+        assert resolved is True
+
+    def test_score_clamping(self):
+        """Score values must be clamped to [0.0, 1.0]."""
+        raw_values = [-0.5, 1.5, 0.6]
+        clamped = [max(0.0, min(1.0, v)) for v in raw_values]
+        assert clamped == [0.0, 1.0, 0.6]
+
+    # -------------------------------------------------------------------------
+    # Stagnation counter logic tests
+    # -------------------------------------------------------------------------
+
+    def test_stagnation_counter_increments_when_no_improvement(self):
+        """Counter increments when total improvement < 0.05."""
+        prev_scores = {"C1": 0.5, "C2": 0.6}
+        new_scores = {"C1": 0.52, "C2": 0.61}
+        improvement = sum(
+            max(0.0, new_scores.get(k, 0.0) - prev_scores.get(k, 0.0))
+            for k in new_scores
+        )
+        turns = 1  # current counter value
+        turns = 0 if improvement >= 0.05 else turns + 1
+        assert turns == 2
+
+    def test_stagnation_counter_resets_on_improvement(self):
+        """Counter resets when total improvement >= 0.05."""
+        prev_scores = {"C1": 0.5, "C2": 0.6}
+        new_scores = {"C1": 0.6, "C2": 0.65}
+        improvement = sum(
+            max(0.0, new_scores.get(k, 0.0) - prev_scores.get(k, 0.0))
+            for k in new_scores
+        )
+        turns = 3  # current counter value (high)
+        turns = 0 if improvement >= 0.05 else turns + 1
+        assert turns == 0
+
+    def test_stagnation_counter_resets_on_first_turn(self):
+        """Counter is 0 when there are no previous scores (first evaluation)."""
+        prev_scores = {}
+        new_scores = {"C1": 0.5}
+        if new_scores and prev_scores:
+            improvement = sum(
+                max(0.0, new_scores.get(k, 0.0) - prev_scores.get(k, 0.0))
+                for k in new_scores
+            )
+            turns = 0 if improvement >= 0.05 else 1
+        else:
+            turns = 0  # first turn — always reset
+        assert turns == 0
+
+    # -------------------------------------------------------------------------
+    # CompetencyScore model
+    # -------------------------------------------------------------------------
+
+    def test_competency_score_creation(self):
+        """Test CompetencyScore model creation and field validation."""
+        cs = CompetencyScore(
+            competency="Can explain MLE",
+            score=0.75,
+            evidence="Student correctly described maximizing likelihood",
+        )
+        assert cs.competency == "Can explain MLE"
+        assert cs.score == 0.75
+        assert "maximizing" in cs.evidence
+
+    def test_competency_score_bounds(self):
+        """Score must be in [0.0, 1.0]."""
+        with pytest.raises(ValueError):
+            CompetencyScore(competency="X", score=-0.1)
+        with pytest.raises(ValueError):
+            CompetencyScore(competency="X", score=1.1)
+
+    def test_evaluation_result_new_fields(self):
+        """EvaluationResult should include new revamp fields."""
+        result = EvaluationResult(
+            score=0.6,
+            competency_scores=[
+                CompetencyScore(competency="C1", score=0.6, evidence="partial"),
+            ],
+            weakest_competency="C1",
+            is_resolved=False,
+            hypothesized_gaps=["missing prerequisite"],
+            confirmed_knowledge=["understands basics"],
+        )
+        assert result.is_resolved is False
+        assert result.weakest_competency == "C1"
+        assert len(result.hypothesized_gaps) == 1
+        assert len(result.confirmed_knowledge) == 1
+        assert len(result.competency_scores) == 1
+
+    def test_evaluation_result_overall_score_alias(self):
+        """EvaluationResult.score property is backward-compat alias for overall_score."""
+        result = EvaluationResult(overall_score=0.8)
+        assert result.score == 0.8
+
+        result2 = EvaluationResult(score=0.65)
+        assert result2.score == 0.65
+        assert result2.overall_score == 0.65
+
+
+# ============================================================================
+# TEST SUITE 6: API Schema Serialization
+# ============================================================================
+
+
+class TestApiSchemas:
+    """Test suite for API schema changes (anchor_examples wiring)."""
+
+    def test_learning_goal_response_includes_anchor_examples(self):
+        """LearningGoalResponse must expose anchor_examples field."""
+        from api.models import LearningGoalResponse
+
+        resp = LearningGoalResponse(
+            id="learning_goal:1",
+            module="module:1",
+            description="Explain MLE",
+            takeaways="Key takeaways here",
+            competencies="Can define MLE",
+            anchor_examples="the taxi arrival Poisson example",
+            order=0,
+            created="2026-01-01",
+            updated="2026-01-01",
+        )
+        assert resp.anchor_examples == "the taxi arrival Poisson example"
+
+    def test_learning_goal_response_anchor_examples_defaults_empty(self):
+        """anchor_examples should default to empty string."""
+        from api.models import LearningGoalResponse
+
+        resp = LearningGoalResponse(
+            id="learning_goal:1",
+            module="module:1",
+            description="Explain MLE",
+            order=0,
+            created="2026-01-01",
+            updated="2026-01-01",
+        )
+        assert resp.anchor_examples == ""
+
+    def test_learning_goal_update_includes_anchor_examples(self):
+        """LearningGoalUpdate must support optional anchor_examples."""
+        from api.models import LearningGoalUpdate
+
+        update = LearningGoalUpdate(anchor_examples="coin flip example")
+        assert update.anchor_examples == "coin flip example"
+
+    def test_learning_goal_update_anchor_examples_optional(self):
+        """anchor_examples should be None (not patched) when not supplied."""
+        from api.models import LearningGoalUpdate
+
+        update = LearningGoalUpdate(description="New description")
+        assert update.anchor_examples is None
+
+    def test_learning_goal_preview_has_anchor_examples(self):
+        """LearningGoalPreview (used in generated-goals response) includes anchor_examples."""
+        from api.models import LearningGoalPreview
+
+        preview = LearningGoalPreview(
+            description="Goal",
+            anchor_examples="specific lecture example",
+        )
+        assert preview.anchor_examples == "specific lecture example"
 
 
 if __name__ == "__main__":

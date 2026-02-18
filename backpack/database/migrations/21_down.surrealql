@@ -1,0 +1,5 @@
+-- ============================================
+-- Migration 21 DOWN: Remove anchor_examples from learning_goal
+-- ============================================
+
+REMOVE FIELD IF EXISTS anchor_examples ON TABLE learning_goal;
