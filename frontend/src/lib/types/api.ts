@@ -424,10 +424,10 @@ export interface TutorResponsePayload {
   phase: 'in_progress' | 'goal_complete' | 'session_complete'
   current_goal_id: string | null
   current_goal_description: string | null
-  current_question_index: number | null
-  current_question_text: string | null
+  anchor_problem: string | null
   tutor_message: string
   latest_understanding_score: number | null
+  competency_scores: Record<string, number> | null
   goals_completed: number
   goals_remaining: number
 }
@@ -441,8 +441,14 @@ export interface TutorSessionStateResponse {
   goals_completed: number
   current_goal_id: string | null
   current_goal_description: string | null
-  current_question_index: number | null
-  current_question_text: string | null
+  anchor_problem: string | null
+  goal_progress: Array<{
+    goal_id: string
+    description: string
+    completed: boolean
+    exchanges: number
+    anchor_problem: string | null
+  }>
   started_at: string | null
   elapsed_seconds: number | null
 }

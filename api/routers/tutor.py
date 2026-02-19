@@ -63,9 +63,8 @@ class TutorResponsePayload(BaseModel):
     # Current state
     current_goal_id: Optional[str] = Field(None, description="Current goal ID")
     current_goal_description: Optional[str] = Field(None, description="Current goal description")
-    current_question_index: Optional[int] = Field(None, description="Current question index")
-    current_question_text: Optional[str] = Field(None, description="Current question text")
-    
+    anchor_problem: Optional[str] = Field(None, description="Anchor problem being explored for current goal")
+
     # The tutor's response message
     tutor_message: str = Field(..., description="Tutor's response")
     
@@ -96,9 +95,8 @@ class SessionStateResponse(BaseModel):
     goals_completed: int
     current_goal_id: Optional[str]
     current_goal_description: Optional[str]
-    current_question_index: Optional[int]
-    current_question_text: Optional[str]
-    
+    anchor_problem: Optional[str]
+
     # Goal progress list
     goal_progress: List[Dict[str, Any]]
     
@@ -242,12 +240,7 @@ async def get_session(session_id: str):
         state_values = state.values
         current_goal_id, current_goal_description = get_current_goal_info(state_values)
         completed, remaining = count_goals(state_values)
-        
-        # Get current question info
-        current_question = state_values.get("current_question")
-        current_question_index = current_question.get("index") if current_question else None
-        current_question_text = current_question.get("question_text") if current_question else None
-        
+
         # Determine phase
         if remaining == 0 and completed > 0:
             phase = "complete"
@@ -276,10 +269,10 @@ async def get_session(session_id: str):
                 "goal_id": goal["id"],
                 "description": goal["description"],
                 "completed": progress.get("completed", False),
-                "questions_count": len(progress.get("starter_questions", [])),
-                "current_question_index": progress.get("current_question_index", 0),
+                "exchanges": progress.get("exchanges", 0),
+                "anchor_problem": progress.get("anchor_problem"),
             })
-        
+
         return SessionStateResponse(
             session_id=session_id,
             module_id=state_values.get("module_id", ""),
@@ -289,8 +282,7 @@ async def get_session(session_id: str):
             goals_completed=completed,
             current_goal_id=current_goal_id,
             current_goal_description=current_goal_description,
-            current_question_index=current_question_index,
-            current_question_text=current_question_text,
+            anchor_problem=state_values.get("anchor_problem"),
             goal_progress=goal_progress_list,
             started_at=started_at,
             elapsed_seconds=elapsed_seconds,
@@ -338,16 +330,14 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
         
         if interrupt_data:
             # Still in progress - return the tutor's response
-            current_question = state_values.get("current_question")
             latest_eval = state_values.get("latest_evaluation", {})
-            
+
             return TutorResponsePayload(
                 session_id=session_id,
                 phase="in_progress",
                 current_goal_id=current_goal_id,
                 current_goal_description=current_goal_description,
-                current_question_index=current_question.get("index") if current_question else None,
-                current_question_text=current_question.get("question_text") if current_question else None,
+                anchor_problem=state_values.get("anchor_problem"),
                 tutor_message=interrupt_data.get("message", ""),
                 latest_understanding_score=latest_eval.get("score"),
                 competency_scores=latest_eval.get("competency_score_dict"),
@@ -383,8 +373,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
             phase=phase,
             current_goal_id=current_goal_id,
             current_goal_description=current_goal_description,
-            current_question_index=None,
-            current_question_text=None,
+            anchor_problem=state_values.get("anchor_problem"),
             tutor_message=last_ai_message or "Session updated.",
             latest_understanding_score=state_values.get("latest_evaluation", {}).get("score"),
             competency_scores=state_values.get("latest_evaluation", {}).get("competency_score_dict"),
@@ -436,15 +425,8 @@ async def get_trajectory(session_id: str):
                 "initial_understanding": progress.get("initial_understanding"),
                 "final_understanding": progress.get("final_understanding"),
                 "trajectory_points": len(goal_trajectory),
-                "questions": [
-                    {
-                        "index": q.get("index"),
-                        "text": q.get("question_text"),
-                        "resolved": q.get("resolved", False),
-                        "exchanges": q.get("exchanges", 0),
-                    }
-                    for q in progress.get("starter_questions", [])
-                ],
+                "exchanges": progress.get("exchanges", 0),
+                "anchor_problem": progress.get("anchor_problem"),
             })
         
         return TrajectoryResponse(
@@ -493,39 +475,35 @@ async def get_summary(session_id: str):
         trajectory = state_values.get("understanding_trajectory", [])
         
         # Calculate statistics
-        total_questions = 0
         total_exchanges = 0
         initial_scores = []
         final_scores = []
         all_misconceptions = []
         all_breakthroughs = []
         goal_summaries = []
-        
+
         for goal in state_values.get("learning_goals", []):
             progress = goal_progress_dict.get(goal["id"], {})
-            questions = progress.get("starter_questions", [])
-            
-            total_questions += len(questions)
-            for q in questions:
-                total_exchanges += q.get("exchanges", 0)
-            
+            exchanges = progress.get("exchanges", 0)
+            total_exchanges += exchanges
+
             if progress.get("initial_understanding") is not None:
                 initial_scores.append(progress["initial_understanding"])
             if progress.get("final_understanding") is not None:
                 final_scores.append(progress["final_understanding"])
-            
+
             # Collect from trajectory
             for t in progress.get("trajectory", []):
                 if isinstance(t, dict):
                     all_misconceptions.extend(t.get("misconceptions", []))
                     all_breakthroughs.extend(t.get("breakthroughs", []))
-            
+
             goal_summaries.append({
                 "goal_id": goal["id"],
                 "description": goal["description"],
                 "completed": progress.get("completed", False),
-                "questions_count": len(questions),
-                "total_exchanges": sum(q.get("exchanges", 0) for q in questions),
+                "exchanges": exchanges,
+                "anchor_problem": progress.get("anchor_problem"),
                 "initial_understanding": progress.get("initial_understanding"),
                 "final_understanding": progress.get("final_understanding"),
             })
@@ -548,7 +526,6 @@ async def get_summary(session_id: str):
             "module_name": state_values.get("module_name", ""),
             "total_goals": len(state_values.get("learning_goals", [])),
             "goals_completed": completed,
-            "total_questions": total_questions,
             "total_exchanges": total_exchanges,
             "average_initial_understanding": avg_initial,
             "average_final_understanding": avg_final,

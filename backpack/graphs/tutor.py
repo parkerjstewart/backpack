@@ -4,11 +4,19 @@ Socratic Tutoring Agent using LangGraph.
 This module implements a conversational tutoring agent that guides students through
 learning goals using the Socratic method. Uses interrupt() for human-in-the-loop
 conversation flow and Command for dynamic routing based on evaluation results.
+
+Graph flow (per goal):
+  initialize → select_goal → generate_anchor_problem
+    → tutor_turn [interrupt] → evaluate_and_update_model
+        → "continue" (nudge/probe/socratic) → tutor_turn (loop)
+        → "mastered" → mark_goal_complete
+        → "give_up" → tutor_turn (explain mode) → evaluate → mark_goal_complete
+    → mark_goal_complete → [more goals?] → select_goal | summary
+    → summary → END
 """
 
 import asyncio
-import json
-import re
+import concurrent.futures
 import sqlite3
 from datetime import datetime
 from typing import Annotated, Any, Dict, List, Literal, Optional
@@ -25,35 +33,52 @@ from typing_extensions import TypedDict
 
 from backpack.ai.provision import provision_langchain_model
 from backpack.config import LANGGRAPH_CHECKPOINT_FILE
-from backpack.domain.module import LearningGoal, Module, vector_search
-from backpack.graphs.tutor_models import EvaluationResult, GeneratedQuestions
+from backpack.domain.module import Module, vector_search
+from backpack.graphs.tutor_models import (
+    EvaluationResult,
+    GeneratedAnchorProblem,
+    ModuleExamples,
+)
 from backpack.utils import clean_thinking_content
 from backpack.utils.context_builder import ContextBuilder
 
-MAX_EXCHANGES_BEFORE_EXPLAIN = 4
+MAX_EXCHANGES_BEFORE_EXPLAIN = 6
+NUDGE_THRESHOLD = 0.55  # weakest competency >= this → nudge instead of full Socratic
 
 
-def extract_json_from_response(content: str) -> str:
-    """Extract JSON from LLM response, stripping markdown code fences if present."""
-    # Try to find JSON within markdown code blocks
-    code_block_pattern = r"```(?:json)?\s*\n?([\s\S]*?)\n?```"
-    matches = re.findall(code_block_pattern, content)
-    if matches:
-        # Return the first code block content
-        return matches[0].strip()
-    
-    # Try to find raw JSON object or array
-    json_pattern = r"(\{[\s\S]*\}|\[[\s\S]*\])"
-    matches = re.findall(json_pattern, content)
-    if matches:
-        return matches[0].strip()
-    
-    # Return original content if no patterns match
-    return content.strip()
+
+def _run_model(coro_factory):
+    """Run an async model-provisioning coroutine from a sync LangGraph node.
+
+    LangGraph nodes are sync; this helper creates a fresh event loop in a
+    thread-pool worker so it can safely await async AI calls regardless of
+    whether there is already a running loop in the calling thread.
+    """
+    def _in_new_loop():
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(coro_factory())
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+
+    try:
+        asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as ex:
+            return ex.submit(_in_new_loop).result()
+    except RuntimeError:
+        return _in_new_loop()
+
+
+# ============================================================================
+# State
+# ============================================================================
 
 
 class TutorState(TypedDict):
     """State for the Socratic tutoring agent."""
+
     messages: Annotated[list, add_messages]
     module_id: str
     module_name: Optional[str]
@@ -61,138 +86,148 @@ class TutorState(TypedDict):
     goal_progress: Dict[str, Dict[str, Any]]
     completed_goal_ids: List[str]
     current_goal_id: Optional[str]
-    current_question: Optional[Dict[str, Any]]
-    current_question_index: int
+
+    # Anchor problem for current goal (replaces current_question / current_question_index)
+    anchor_problem: Optional[str]
+    opening_framing: Optional[str]
+    exchanges_on_goal: int  # resets to 0 on each new goal
+
+    # Conversation mode — drives tutor_turn behavior
+    # "open" | "nudge" | "probe" | "socratic" | "macro_hint" | "explain"
+    tutor_mode: str
+
+    # Set by evaluate when needs_more_info=True; delivered directly by tutor_turn
+    probe_question: Optional[str]
+
     latest_evaluation: Optional[Dict[str, Any]]
     module_context: Optional[Dict[str, Any]]
     goal_contexts: Dict[str, List[Dict[str, Any]]]
     session_started_at: Optional[str]
     model_override: Optional[str]
     understanding_trajectory: List[Dict[str, Any]]
-    student_model: Dict[str, Dict[str, Any]]  # per-goal: hypothesized_gaps, confirmed_knowledge, competency_scores, turns_since_last_progress
-    module_examples: List[Dict[str, Any]]  # extracted figures, worked examples, key definitions from material
+
+    # Per-goal student model: competency_assessments, active_probe_target, turns_since_last_progress
+    student_model: Dict[str, Dict[str, Any]]
+
+    # Worked examples / figures / definitions extracted from module material
+    module_examples: List[Dict[str, Any]]
+
+
+# ============================================================================
+# Helper: get current goal dict from state
+# ============================================================================
+
+
+def _get_current_goal(state: TutorState) -> Optional[Dict[str, Any]]:
+    current_goal_id = state.get("current_goal_id")
+    for g in state.get("learning_goals", []):
+        if g["id"] == current_goal_id:
+            return g
+    return None
+
+
+def _get_recent_messages(state: TutorState, n: int = 8) -> List[Dict[str, str]]:
+    """Return last N messages as [{"role": "tutor"|"student", "content": "..."}]."""
+    result = []
+    for msg in state.get("messages", [])[-n:]:
+        if isinstance(msg, AIMessage) or (hasattr(msg, "type") and msg.type == "ai"):
+            result.append({"role": "tutor", "content": msg.content or ""})
+        elif isinstance(msg, HumanMessage) or (hasattr(msg, "type") and msg.type == "human"):
+            result.append({"role": "student", "content": msg.content or ""})
+    return result
+
+
+def _get_student_response(state: TutorState) -> str:
+    """Return the most recent human message content."""
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage) or (hasattr(msg, "type") and msg.type == "human"):
+            return msg.content if hasattr(msg, "content") else str(msg)
+    return ""
+
+
+# ============================================================================
+# Node: initialize_session
+# ============================================================================
 
 
 def initialize_session(state: TutorState, config: RunnableConfig) -> dict:
     """Initialize the tutoring session: load module, goals, and build context."""
     logger.info(f"Initializing tutoring session for module: {state['module_id']}")
-
     module_id = state["module_id"]
 
-    # Handle async operations from sync context
-    def run_in_new_loop():
-        new_loop = asyncio.new_event_loop()
+    async def fetch_data():
+        module = await Module.get(module_id)
+        if not module:
+            raise ValueError(f"Module not found: {module_id}")
+        goals = await module.get_learning_goals()
+
+        # Build module context
+        builder = ContextBuilder(
+            module_id=module_id,
+            include_insights=True,
+            include_notes=True,
+            max_tokens=30000,
+        )
+        module_context = await builder.build()
+
+        # Extract lecture examples (figures, worked examples, definitions)
+        module_examples = []
         try:
-            asyncio.set_event_loop(new_loop)
-
-            async def fetch_data():
-                module = await Module.get(module_id)
-                if not module:
-                    raise ValueError(f"Module not found: {module_id}")
-                goals = await module.get_learning_goals()
-
-                # Build module context
-                builder = ContextBuilder(
-                    module_id=module_id,
-                    include_insights=True,
-                    include_notes=True,
-                    max_tokens=30000
+            context_parts = []
+            for src in module_context.get("sources", []):
+                title = src.get("title") or "Untitled"
+                full_text = src.get("full_text") or ""
+                if full_text:
+                    context_parts.append(f"## Source: {title}\n{full_text[:8000]}")
+                for ins in src.get("insights", []):
+                    c = ins.get("content", "") if isinstance(ins, dict) else getattr(ins, "content", "")
+                    if c:
+                        context_parts.append(f"### Insight from {title}\n{c[:2000]}")
+            for note in module_context.get("notes", []):
+                content = note.get("content") or ""
+                if content:
+                    context_parts.append(f"## Note\n{content[:4000]}")
+            context_text = "\n\n---\n\n".join(context_parts)
+            if context_text:
+                prompt_data = {"context_text": context_text[:25000]}
+                extract_prompt = Prompter(prompt_template="tutor/extract_module_examples").render(
+                    data=prompt_data
                 )
-                module_context = await builder.build()
+                model = await provision_langchain_model(
+                    extract_prompt,
+                    config.get("configurable", {}).get("model_id") or state.get("model_override"),
+                    "transformation",
+                    max_tokens=1500,
+                )
+                result = model.with_structured_output(ModuleExamples).invoke(extract_prompt)
+                for item in result.worked_examples:
+                    module_examples.append({**item.model_dump(), "type": "worked_example"})
+                for item in result.figures:
+                    module_examples.append({**item.model_dump(), "type": "figure"})
+                for item in result.key_definitions:
+                    module_examples.append({**item.model_dump(), "type": "key_definition"})
+        except Exception as e:
+            logger.warning(f"Failed to extract module examples: {e}")
 
-                # Extract lecture examples (figures, worked examples, definitions)
-                module_examples = []
-                try:
-                    context_parts = []
-                    for src in module_context.get("sources", []):
-                        title = src.get("title") or "Untitled"
-                        full_text = src.get("full_text") or ""
-                        if full_text:
-                            context_parts.append(f"## Source: {title}\n{full_text[:8000]}")
-                        for ins in src.get("insights", []):
-                            c = ins.get("content", "") if isinstance(ins, dict) else getattr(ins, "content", "")
-                            if c:
-                                context_parts.append(f"### Insight from {title}\n{c[:2000]}")
-                    for note in module_context.get("notes", []):
-                        content = note.get("content") or ""
-                        if content:
-                            context_parts.append(f"## Note\n{content[:4000]}")
-                    for ins in module_context.get("insights", []):
-                        c = ins.get("content", "") if isinstance(ins, dict) else getattr(ins, "content", "")
-                        if c:
-                            context_parts.append(f"### Insight\n{c[:2000]}")
-                    context_text = "\n\n---\n\n".join(context_parts)
-                    if context_text:
-                        prompt_data = {"context_text": context_text[:25000]}
-                        extract_prompt = Prompter(
-                            prompt_template="tutor/extract_module_examples"
-                        ).render(data=prompt_data)
-                        model = await provision_langchain_model(
-                            extract_prompt,
-                            config.get("configurable", {}).get("model_id")
-                            or state.get("model_override"),
-                            "transformation",
-                            max_tokens=1500,
-                        )
-                        ai_msg = model.invoke(extract_prompt)
-                        raw = (
-                            ai_msg.content
-                            if isinstance(ai_msg.content, str)
-                            else str(ai_msg.content)
-                        )
-                        raw = clean_thinking_content(raw)
-                        parsed = json.loads(extract_json_from_response(raw))
-                        for item in parsed.get("worked_examples", []):
-                            module_examples.append({**item, "type": "worked_example"})
-                        for item in parsed.get("figures", []):
-                            module_examples.append({**item, "type": "figure"})
-                        for item in parsed.get("key_definitions", []):
-                            module_examples.append({**item, "type": "key_definition"})
-                except Exception as e:
-                    logger.warning(f"Failed to extract module examples: {e}")
+        # Pre-fetch context for each goal — enrich query with anchor examples
+        goal_contexts = {}
+        for goal in goals:
+            try:
+                anchor = getattr(goal, "anchor_examples", "") or ""
+                query = f"{goal.description}\n{anchor}" if anchor else goal.description
+                results = await vector_search(query, results=8, source=True, note=True)
+                goal_contexts[goal.id] = results if results else []
+            except Exception as e:
+                logger.warning(f"Error building goal context for {goal.id}: {e}")
+                goal_contexts[goal.id] = []
 
-                # Pre-fetch context for each goal — enrich query with anchor examples
-                # so retrieval reflects specific lecture material the goal is grounded in
-                goal_contexts = {}
-                for goal in goals:
-                    try:
-                        anchor = getattr(goal, "anchor_examples", "") or ""
-                        query = goal.description
-                        if anchor:
-                            query = f"{goal.description}\n{anchor}"
-                        results = await vector_search(
-                            query, results=8, source=True, note=True
-                        )
-                        goal_contexts[goal.id] = results if results else []
-                    except Exception as e:
-                        logger.warning(f"Error building goal context: {e}")
-                        goal_contexts[goal.id] = []
+        return module, goals, module_context, goal_contexts, module_examples
 
-                return module, goals, module_context, goal_contexts, module_examples
+    module, goals, module_context, goal_contexts, module_examples = _run_model(
+        lambda: fetch_data()
+    )
 
-            return new_loop.run_until_complete(fetch_data())
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
-
-    try:
-        asyncio.get_running_loop()
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_in_new_loop)
-            module, goals, module_context, goal_contexts, module_examples = (
-                future.result()
-            )
-    except RuntimeError:
-        (
-            module,
-            goals,
-            module_context,
-            goal_contexts,
-            module_examples,
-        ) = run_in_new_loop()
-
-    # Initialize goal progress
+    # Initialize goal progress (one anchor problem per goal, no question list)
     goal_progress = {}
     for goal in goals:
         goal_progress[goal.id] = {
@@ -201,8 +236,8 @@ def initialize_session(state: TutorState, config: RunnableConfig) -> dict:
             "started_at": None,
             "completed_at": None,
             "completed": False,
-            "starter_questions": [],
-            "current_question_index": 0,
+            "anchor_problem": None,
+            "exchanges": 0,
             "initial_understanding": None,
             "final_understanding": None,
             "trajectory": [],
@@ -231,30 +266,43 @@ def initialize_session(state: TutorState, config: RunnableConfig) -> dict:
         "goal_contexts": goal_contexts,
         "session_started_at": datetime.now().isoformat(),
         "understanding_trajectory": [],
-        "current_question_index": 0,
+        "anchor_problem": None,
+        "opening_framing": None,
+        "exchanges_on_goal": 0,
+        "tutor_mode": "open",
+        "probe_question": None,
         "student_model": {},
         "module_examples": module_examples,
-        "messages": [AIMessage(content=f"Hey! Ready to work through '{module.name}' together? I'll ask some questions and we can talk through the concepts — think of it like a small study group.")],
+        "messages": [
+            AIMessage(
+                content=f"Hey! Ready to work through '{module.name}' together? "
+                "I'll ask some questions and we can talk through the concepts — "
+                "think of it like a small study group."
+            )
+        ],
     }
 
 
+# ============================================================================
+# Node: select_next_goal
+# ============================================================================
+
+
 def select_next_goal(state: TutorState, config: RunnableConfig) -> dict:
-    """Select the next learning goal based on topic similarity."""
+    """Select the next learning goal (lowest order among unfinished)."""
     logger.info("Selecting next learning goal")
 
     completed_ids = state.get("completed_goal_ids", [])
     all_goals = state.get("learning_goals", [])
-    unfinished_goals = [g for g in all_goals if g["id"] not in completed_ids]
+    unfinished = [g for g in all_goals if g["id"] not in completed_ids]
 
-    if not unfinished_goals:
+    if not unfinished:
         logger.info("All goals completed")
         return {"current_goal_id": None}
 
-    # Select by order (TODO: implement embedding-based similarity)
-    next_goal = min(unfinished_goals, key=lambda g: g.get("order", 0))
+    next_goal = min(unfinished, key=lambda g: g.get("order", 0))
     logger.info(f"Selected goal: {next_goal['id']}")
 
-    # Mark goal as started
     goal_progress = dict(state.get("goal_progress", {}))
     if next_goal["id"] in goal_progress:
         goal_progress[next_goal["id"]] = dict(goal_progress[next_goal["id"]])
@@ -263,28 +311,31 @@ def select_next_goal(state: TutorState, config: RunnableConfig) -> dict:
     return {
         "current_goal_id": next_goal["id"],
         "goal_progress": goal_progress,
+        # Reset per-goal conversation state
+        "anchor_problem": None,
+        "opening_framing": None,
+        "exchanges_on_goal": 0,
+        "tutor_mode": "open",
+        "probe_question": None,
         "messages": [AIMessage(content=f"Alright, let's talk about **{next_goal['description']}**.")],
     }
 
 
-def generate_starter_questions(state: TutorState, config: RunnableConfig) -> dict:
-    """Generate 2-5 starter questions for the current learning goal."""
-    logger.info(f"Generating starter questions for goal: {state['current_goal_id']}")
+# ============================================================================
+# Node: generate_anchor_problem
+# ============================================================================
 
+
+def generate_anchor_problem(state: TutorState, config: RunnableConfig) -> dict:
+    """Generate ONE anchor problem for the current goal to explore conversationally."""
     current_goal_id = state["current_goal_id"]
-    goal_contexts = state.get("goal_contexts", {})
+    logger.info(f"Generating anchor problem for goal: {current_goal_id}")
 
-    # Get goal details
-    current_goal = None
-    for g in state.get("learning_goals", []):
-        if g["id"] == current_goal_id:
-            current_goal = g
-            break
-
+    current_goal = _get_current_goal(state)
     if not current_goal:
         raise ValueError(f"Goal not found: {current_goal_id}")
 
-    context_chunks = goal_contexts.get(current_goal_id, [])[:5]
+    context_chunks = state.get("goal_contexts", {}).get(current_goal_id, [])[:5]
     module_examples = state.get("module_examples", [])[:10]
 
     prompt_data = {
@@ -294,594 +345,411 @@ def generate_starter_questions(state: TutorState, config: RunnableConfig) -> dic
         "module_examples": module_examples,
     }
 
-    system_prompt = Prompter(
-        prompt_template="tutor/generate_questions"
-    ).render(data=prompt_data)
+    system_prompt = Prompter(prompt_template="tutor/generate_anchor_problem").render(
+        data=prompt_data
+    )
 
-    # Handle async model provisioning from sync context
-    def run_in_new_loop():
-        new_loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(new_loop)
-            return new_loop.run_until_complete(
-                provision_langchain_model(
-                    system_prompt,
-                    config.get("configurable", {}).get("model_id") or state.get("model_override"),
-                    "tools",
-                    max_tokens=2000,
-                    structured=dict(type="json"),
-                )
-            )
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
+    def _provision():
+        return provision_langchain_model(
+            system_prompt,
+            config.get("configurable", {}).get("model_id") or state.get("model_override"),
+            "tools",
+            max_tokens=1000,
+        )
 
+    model = _run_model(_provision)
     try:
-        asyncio.get_running_loop()
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_in_new_loop)
-            model = future.result()
-    except RuntimeError:
-        model = run_in_new_loop()
+        result: GeneratedAnchorProblem = model.with_structured_output(GeneratedAnchorProblem).invoke(system_prompt)
+        anchor_problem = result.anchor_problem
+        opening_framing = result.opening_framing
+    except Exception as e:
+        logger.error(f"Failed to generate anchor problem: {e}")
+        anchor_problem = f"Let's work through {current_goal['description']}."
+        opening_framing = f"Alright — {current_goal['description']}. Walk me through how you'd approach this."
 
-    ai_message = model.invoke(system_prompt)
-    raw_content = ai_message.content if isinstance(ai_message.content, str) else str(ai_message.content)
-    content = clean_thinking_content(raw_content)
+    if not opening_framing:
+        opening_framing = anchor_problem
 
-    # Parse response - extract JSON from potential markdown code blocks
-    json_content = extract_json_from_response(content)
-    try:
-        parsed = json.loads(json_content)
-        questions_data = parsed.get("questions", [])
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse questions JSON: {e}")
-        logger.error(f"Raw LLM response:\n{raw_content}")
-        logger.error(f"Cleaned content:\n{content}")
-        logger.error(f"Extracted JSON attempt:\n{json_content}")
-        questions_data = [{"question_text": f"Can you explain your understanding of this learning goal: {current_goal['description']}"}]
-
-    # Build starter questions
-    starter_questions = []
-    for i, q in enumerate(questions_data[:5]):
-        starter_questions.append({
-            "index": i,
-            "question_text": q.get("question_text", q.get("text", "")),
-            "target_concepts": q.get("target_concepts", []),
-            "expected_depth": q.get("expected_depth", "understand"),
-            "resolved": False,
-            "exchanges": 0,
-        })
-
-    if not starter_questions:
-        starter_questions.append({
-            "index": 0,
-            "question_text": f"Can you explain your understanding of this learning goal: {current_goal['description']}",
-            "target_concepts": [],
-            "expected_depth": "understand",
-            "resolved": False,
-            "exchanges": 0,
-        })
-
-    # Update goal progress
+    # Update goal_progress with anchor_problem
     goal_progress = dict(state.get("goal_progress", {}))
-    goal_progress[current_goal_id] = dict(goal_progress[current_goal_id])
-    goal_progress[current_goal_id]["starter_questions"] = starter_questions
-    goal_progress[current_goal_id]["current_question_index"] = 0
+    if current_goal_id in goal_progress:
+        goal_progress[current_goal_id] = dict(goal_progress[current_goal_id])
+        goal_progress[current_goal_id]["anchor_problem"] = anchor_problem
 
-    logger.info(f"Generated {len(starter_questions)} starter questions")
+    logger.info(f"Anchor problem generated for goal {current_goal_id}")
 
     return {
+        "anchor_problem": anchor_problem,
+        "opening_framing": opening_framing,
         "goal_progress": goal_progress,
-        "current_question": starter_questions[0],
-        "current_question_index": 0,
+        "exchanges_on_goal": 0,
+        "tutor_mode": "open",
+        "probe_question": None,
     }
 
 
-def present_question(state: TutorState, config: RunnableConfig) -> dict:
-    """Present a question and wait for student response using interrupt()."""
-    logger.info("Presenting question to student")
+# ============================================================================
+# Node: tutor_turn  (unified interrupt node)
+# ============================================================================
 
-    current_question = state.get("current_question")
+
+def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
+    """Generate a tutor message and wait for student response.
+
+    Modes:
+      open     — First exchange: deliver the opening_framing directly (no LLM call)
+      probe    — Deliver probe_question directly (no LLM call)
+      nudge    — Short 1-sentence push ("can you say more about X?")
+      socratic — 2-3 sentence hypothesis-driven bridging question
+      explain  — 2-3 paragraph direct explanation from takeaways
+    """
+    tutor_mode = state.get("tutor_mode", "open")
     current_goal_id = state.get("current_goal_id")
+    logger.info(f"tutor_turn in mode={tutor_mode} for goal={current_goal_id}")
 
-    if not current_question:
-        raise ValueError("No current question to present")
+    # --- Modes that don't need an LLM call ---
+    if tutor_mode == "open":
+        message = state.get("opening_framing") or state.get("anchor_problem") or ""
 
-    goal_description = ""
-    goal_anchor_examples = ""
-    for g in state.get("learning_goals", []):
-        if g["id"] == current_goal_id:
-            goal_description = g["description"]
-            goal_anchor_examples = g.get("anchor_examples", "")
-            break
+    elif tutor_mode == "probe":
+        message = state.get("probe_question") or "Can you say a bit more about that?"
 
-    question_text = current_question.get("question_text", "")
-    question_index = current_question.get("index", 0)
-    if question_index == 0:
-        # Build a brief scene-setter referencing anchor examples when available
-        if goal_anchor_examples:
-            # Use just the first "example phrase" — up to first comma or 120 chars
-            first_anchor = goal_anchor_examples.split(",")[0].strip()[:120]
-            scene = f"We'll be drawing on examples like {first_anchor}. "
-        else:
-            scene = ""
-        message = (
-            f"Alright, let's talk through this. {scene}\n\n{question_text}\n\n"
-            "Share your thoughts — there's no single right way to say it."
-        )
     else:
-        message = question_text
+        # nudge / socratic / macro_hint / explain — call the LLM
+        current_goal = _get_current_goal(state)
+        goal_model = state.get("student_model", {}).get(current_goal_id, {})
+        active_target = goal_model.get("active_probe_target")
+        active_assessment = next(
+            (
+                a
+                for a in goal_model.get("competency_assessments", [])
+                if a.get("competency") == active_target
+            ),
+            {},
+        )
 
-    # INTERRUPT: Pause and wait for student response
-    student_response = interrupt({
-        "type": "question",
-        "message": message,
-        "question_index": question_index,
-        "goal_id": current_goal_id,
-        "goal_description": goal_description,
-    })
+        prompt_data = {
+            "goal": current_goal or {},
+            "anchor_problem": state.get("anchor_problem", ""),
+            "tutor_mode": tutor_mode,
+            "exchanges_on_goal": state.get("exchanges_on_goal", 0),
+            "conversation": _get_recent_messages(state, n=8),
+            "student_model": goal_model,
+            "active_probe_target": active_target,
+            "active_assessment": active_assessment,
+            "module_examples": state.get("module_examples", [])[:8],
+            "context_chunks": state.get("goal_contexts", {}).get(current_goal_id, [])[:3],
+        }
 
-    logger.info(f"Received student response: {student_response[:100]}...")
+        system_prompt = Prompter(prompt_template="tutor/tutor_turn").render(data=prompt_data)
+
+        def _provision():
+            return provision_langchain_model(
+                system_prompt,
+                config.get("configurable", {}).get("model_id") or state.get("model_override"),
+                "chat",
+                max_tokens=800,
+            )
+
+        model = _run_model(_provision)
+        ai_msg = model.invoke(system_prompt)
+        message = clean_thinking_content(
+            ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
+        )
+
+    if not message:
+        message = "What are your thoughts on this?"
+
+    # INTERRUPT: pause and wait for the student's response
+    student_response = interrupt(
+        {
+            "type": "tutor_turn",
+            "message": message,
+            "tutor_mode": tutor_mode,
+            "goal_id": current_goal_id,
+        }
+    )
+
+    logger.info(f"Received student response ({tutor_mode}): {str(student_response)[:80]}...")
 
     return {
         "messages": [AIMessage(content=message), HumanMessage(content=student_response)],
     }
 
 
-def evaluate_and_route(
+# ============================================================================
+# Node: evaluate_and_update_model
+# ============================================================================
+
+
+def evaluate_and_update_model(
     state: TutorState, config: RunnableConfig
-) -> Command[Literal["socratic_response", "advance_to_next_question", "mark_goal_complete"]]:
-    """Evaluate student understanding and route to next step."""
-    logger.info("Evaluating student response")
+) -> Command[Literal["tutor_turn", "mark_goal_complete"]]:
+    """Evaluate the student's latest response and update the running student model."""
+    logger.info("Evaluating student response and updating student model")
 
     current_goal_id = state.get("current_goal_id")
-    current_question = state.get("current_question")
+    tutor_mode = state.get("tutor_mode", "socratic")
+    current_goal = _get_current_goal(state)
     goal_contexts = state.get("goal_contexts", {})
     goal_progress = dict(state.get("goal_progress", {}))
-
-    # Get student's latest message
-    messages = state.get("messages", [])
-    student_message = ""
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage) or (hasattr(msg, 'type') and msg.type == 'human'):
-            student_message = msg.content if hasattr(msg, 'content') else str(msg)
-            break
+    student_message = _get_student_response(state)
 
     if not student_message:
-        logger.warning("No student message found")
-        return Command(goto="socratic_response", update={"latest_evaluation": {"score": 0.0, "notes": "No response"}})
+        logger.warning("No student message found; routing back to tutor_turn")
+        return Command(goto="tutor_turn", update={"tutor_mode": "socratic"})
 
-    # Get goal
-    current_goal = None
-    for g in state.get("learning_goals", []):
-        if g["id"] == current_goal_id:
-            current_goal = g
-            break
+    # ---- If the previous turn was an explain, just mark complete ----
+    if tutor_mode == "explain":
+        logger.info("Explain turn acknowledged — marking goal complete")
+        return Command(goto="mark_goal_complete", update={})
+
+    # ---- Build evaluation prompt ----
+    prior_student_model = state.get("student_model", {}).get(current_goal_id, {})
+    prior_assessments = {
+        a["competency"]: a
+        for a in prior_student_model.get("competency_assessments", [])
+    }
 
     context_chunks = goal_contexts.get(current_goal_id, [])[:3]
-    module_examples = state.get("module_examples", [])[:10]
+    module_examples = state.get("module_examples", [])[:8]
+
+    # Pass prior evidence per competency so the LLM can reason cumulatively
+    prior_evidence_by_comp = {
+        comp: a.get("evidence", [])
+        for comp, a in prior_assessments.items()
+    }
 
     prompt_data = {
-        "goal": current_goal,
-        "question": current_question,
+        "goal": current_goal or {},
+        "anchor_problem": state.get("anchor_problem", ""),
         "student_response": student_message,
         "context_chunks": context_chunks,
         "module_examples": module_examples,
+        "prior_evidence": prior_evidence_by_comp,
+        "conversation": _get_recent_messages(state, n=6),
     }
 
-    system_prompt = Prompter(
-        prompt_template="tutor/evaluate_understanding"
-    ).render(data=prompt_data)
+    system_prompt = Prompter(prompt_template="tutor/evaluate_understanding").render(
+        data=prompt_data
+    )
 
-    # Handle async model provisioning
-    def run_in_new_loop():
-        new_loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(new_loop)
-            return new_loop.run_until_complete(
-                provision_langchain_model(
-                    system_prompt,
-                    config.get("configurable", {}).get("model_id") or state.get("model_override"),
-                    "tools",
-                    max_tokens=1500,
-                    structured=dict(type="json"),
-                )
-            )
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
+    def _provision():
+        return provision_langchain_model(
+            system_prompt,
+            config.get("configurable", {}).get("model_id") or state.get("model_override"),
+            "tools",
+            max_tokens=1500,
+        )
 
+    model = _run_model(_provision)
+
+    # ---- Parse evaluation result ----
     try:
-        asyncio.get_running_loop()
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_in_new_loop)
-            model = future.result()
-    except RuntimeError:
-        model = run_in_new_loop()
+        result: EvaluationResult = model.with_structured_output(EvaluationResult).invoke(system_prompt)
+        overall = result.overall_score  # already validated 0.0–1.0 by Pydantic
+        needs_more_info = result.needs_more_info
+        probe_question = result.probe_question
+        comp_scores_raw = result.competency_scores
 
-    ai_message = model.invoke(system_prompt)
-    raw_content = ai_message.content if isinstance(ai_message.content, str) else str(ai_message.content)
-    content = clean_thinking_content(raw_content)
+        comp_score_dict: Dict[str, float] = {cs.competency: cs.score for cs in comp_scores_raw}
 
-    # Parse evaluation - extract JSON from potential markdown code blocks
-    json_content = extract_json_from_response(content)
-    try:
-        parsed = json.loads(json_content)
-        overall = float(parsed.get("overall_score", parsed.get("score", 0.5)))
-        overall = max(0.0, min(1.0, overall))
-        comp_scores = parsed.get("competency_scores", [])
-        hyp_gaps = parsed.get("hypothesized_gaps", [])
-        conf_know = parsed.get("confirmed_knowledge", [])
-
-        # Build per-competency score dict with clamped, normalised floats
-        comp_score_dict = {}
-        for cs in comp_scores:
-            if isinstance(cs, dict):
-                raw_score = cs.get("score", 0.5)
-                try:
-                    clamped = max(0.0, min(1.0, float(raw_score)))
-                except (TypeError, ValueError):
-                    clamped = 0.5
-                comp_score_dict[cs.get("competency", "")] = clamped
-            else:
-                comp_score_dict[str(cs)] = 0.5
-
-        # Deterministic resolution: all competency scores must reach 0.7.
-        # Fall back to prompt-provided value only when no competency scores exist.
+        # Deterministic resolution: all competencies >= 0.7
         comp_values = list(comp_score_dict.values())
-        if comp_values:
-            is_resolved = all(v >= 0.7 for v in comp_values)
-        else:
-            is_resolved = bool(parsed.get("is_resolved", overall >= 0.7))
+        is_resolved = all(v >= 0.7 for v in comp_values) if comp_values else overall >= 0.7
 
         evaluation = {
             "score": overall,
             "overall_score": overall,
-            "competency_scores": comp_scores,
+            "competency_scores": [cs.model_dump() for cs in comp_scores_raw],
             "competency_score_dict": comp_score_dict,
-            "weakest_competency": parsed.get("weakest_competency"),
-            "notes": parsed.get("notes", ""),
-            "misconceptions": parsed.get("misconceptions", []),
-            "breakthroughs": parsed.get("breakthroughs", []),
+            "weakest_competency": result.weakest_competency,
+            "notes": result.notes,
+            "misconceptions": result.misconceptions,
+            "breakthroughs": result.breakthroughs,
             "is_resolved": is_resolved,
-            "hypothesized_gaps": hyp_gaps,
-            "confirmed_knowledge": conf_know,
+            "needs_more_info": needs_more_info,
+            "probe_question": probe_question,
+            "hypothesized_gaps": result.hypothesized_gaps,
+            "confirmed_knowledge": result.confirmed_knowledge,
+            "suggested_next_action": result.suggested_next_action,
+            "action_rationale": result.action_rationale,
         }
-    except (json.JSONDecodeError, ValueError) as e:
+    except Exception as e:
         logger.error(f"Failed to parse evaluation: {e}")
-        logger.error(f"Raw LLM response:\n{raw_content}")
-        logger.error(f"Extracted JSON attempt:\n{json_content}")
         evaluation = {
-            "score": 0.5,
-            "overall_score": 0.5,
-            "competency_scores": [],
-            "competency_score_dict": {},
-            "weakest_competency": None,
-            "notes": "Parsing failed",
-            "misconceptions": [],
-            "breakthroughs": [],
-            "is_resolved": False,
-            "hypothesized_gaps": [],
-            "confirmed_knowledge": [],
+            "score": 0.5, "overall_score": 0.5,
+            "competency_scores": [], "competency_score_dict": {},
+            "weakest_competency": None, "notes": "Parsing failed",
+            "misconceptions": [], "breakthroughs": [],
+            "is_resolved": False, "needs_more_info": False, "probe_question": None,
+            "hypothesized_gaps": [], "confirmed_knowledge": [],
         }
+        comp_score_dict = {}
+        is_resolved = False
+        needs_more_info = False
+        probe_question = None
+        overall = 0.5
+        comp_scores_raw = []
 
-    # Record trajectory point
+    # ---- Accumulate student model ----
+    new_assessments = []
+    for cs in comp_scores_raw:
+        prev = prior_assessments.get(cs.competency, {})
+        evidence_list = list(prev.get("evidence", []))
+        if cs.evidence:
+            evidence_list.append(cs.evidence)
+        new_assessments.append({
+            "competency": cs.competency,
+            "score": cs.score,
+            "evidence": evidence_list,
+            "gap": cs.gap,
+            "hypotheses": [h.model_dump() for h in cs.hypotheses],
+            "attempts": prev.get("attempts", 0) + 1,
+        })
+
+    # Set active_probe_target to weakest unresolved competency
+    unresolved = [(a["score"], a["competency"]) for a in new_assessments if a["score"] < 0.7]
+    active_probe_target = min(unresolved, key=lambda x: x[0])[1] if unresolved else None
+
+    # Stagnation detection (compare to previous scores)
+    prev_comp_scores = {
+        a["competency"]: a["score"] for a in prior_student_model.get("competency_assessments", [])
+    }
+    turns_since_last_progress: int = prior_student_model.get("turns_since_last_progress", 0)
+    new_comp_scores = {a["competency"]: a["score"] for a in new_assessments}
+
+    if new_comp_scores and prev_comp_scores:
+        improvement = sum(
+            max(0.0, new_comp_scores.get(k, 0.0) - prev_comp_scores.get(k, 0.0))
+            for k in new_comp_scores
+        )
+        turns_since_last_progress = 0 if improvement >= 0.05 else turns_since_last_progress + 1
+    else:
+        turns_since_last_progress = 0
+
+    student_model = dict(state.get("student_model", {}))
+    student_model[current_goal_id] = {
+        "competency_assessments": new_assessments,
+        "active_probe_target": active_probe_target,
+        "turns_since_last_progress": turns_since_last_progress,
+        "confirmed_knowledge": evaluation.get("confirmed_knowledge", []),
+    }
+
+    # ---- Record trajectory point ----
+    exchanges_on_goal = state.get("exchanges_on_goal", 0) + 1
     trajectory_point = {
         "timestamp": datetime.now().isoformat(),
         "goal_id": current_goal_id,
-        "question_index": current_question.get("index", 0),
-        "exchange_number": current_question.get("exchanges", 0) + 1,
+        "exchange_number": exchanges_on_goal,
         "student_message": student_message,
         "understanding_score": evaluation["score"],
         "evaluation_notes": evaluation["notes"],
         "misconceptions": evaluation["misconceptions"],
         "breakthroughs": evaluation["breakthroughs"],
     }
-
     trajectory = list(state.get("understanding_trajectory", []))
     trajectory.append(trajectory_point)
 
-    # Update goal progress
     if current_goal_id in goal_progress:
         goal_progress[current_goal_id] = dict(goal_progress[current_goal_id])
-        goal_progress[current_goal_id]["trajectory"] = list(goal_progress[current_goal_id].get("trajectory", []))
+        goal_progress[current_goal_id]["trajectory"] = list(
+            goal_progress[current_goal_id].get("trajectory", [])
+        )
         goal_progress[current_goal_id]["trajectory"].append(trajectory_point)
+        goal_progress[current_goal_id]["exchanges"] = exchanges_on_goal
 
         if goal_progress[current_goal_id].get("initial_understanding") is None:
             goal_progress[current_goal_id]["initial_understanding"] = evaluation["score"]
         goal_progress[current_goal_id]["final_understanding"] = evaluation["score"]
 
-    # Update question exchange count
-    updated_question = dict(current_question)
-    new_exchange_count = updated_question.get("exchanges", 0) + 1
-    updated_question["exchanges"] = new_exchange_count
-
-    # Update student model: track competency progress and stagnation counter
-    student_model = dict(state.get("student_model", {}))
-    prev_goal_model = student_model.get(current_goal_id, {})
-    prev_competency_scores: dict = prev_goal_model.get("competency_scores", {})
-    turns_since_last_progress: int = prev_goal_model.get("turns_since_last_progress", 0)
-
-    new_competency_scores: dict = evaluation.get("competency_score_dict", {})
-    if new_competency_scores and prev_competency_scores:
-        # Measurable improvement: any competency improves by >= 0.05
-        improvement = sum(
-            max(0.0, new_competency_scores.get(k, 0.0) - prev_competency_scores.get(k, 0.0))
-            for k in new_competency_scores
-        )
-        turns_since_last_progress = 0 if improvement >= 0.05 else turns_since_last_progress + 1
-    else:
-        # First turn or no competencies — reset counter
-        turns_since_last_progress = 0
-
-    student_model[current_goal_id] = {
-        "hypothesized_gaps": evaluation.get("hypothesized_gaps", []),
-        "confirmed_knowledge": evaluation.get("confirmed_knowledge", []),
-        "competency_scores": new_competency_scores,
-        "weakest_competency": evaluation.get("weakest_competency"),
-        "turns_since_last_progress": turns_since_last_progress,
-    }
-
-    logger.info(
-        f"Evaluation score: {evaluation['score']}, resolved: {evaluation['is_resolved']}, "
-        f"turns_since_progress: {turns_since_last_progress}"
-    )
-
     state_updates = {
         "understanding_trajectory": trajectory,
         "latest_evaluation": evaluation,
         "goal_progress": goal_progress,
-        "current_question": updated_question,
         "student_model": student_model,
+        "exchanges_on_goal": exchanges_on_goal,
     }
 
-    if evaluation["is_resolved"]:
-        # Check if more questions
-        questions = goal_progress.get(current_goal_id, {}).get("starter_questions", [])
-        current_idx = state.get("current_question_index", 0)
-        if current_idx < len(questions) - 1:
-            logger.info("Question resolved, advancing to next question")
-            return Command(goto="advance_to_next_question", update=state_updates)
-        else:
-            logger.info("Question resolved, goal complete")
-            return Command(goto="mark_goal_complete", update=state_updates)
-    elif (
-        new_exchange_count >= MAX_EXCHANGES_BEFORE_EXPLAIN
-        or turns_since_last_progress >= 2
-    ):
+    suggested_action = evaluation.get("suggested_next_action", "continue")
+    action_rationale = evaluation.get("action_rationale") or ""
+
+    logger.info(
+        f"Eval score={evaluation['score']:.2f}, resolved={is_resolved}, "
+        f"action={suggested_action}, exchanges={exchanges_on_goal}, "
+        f"turns_since_progress={turns_since_last_progress}"
+    )
+    logger.debug(f"  Action rationale: {action_rationale}")
+    logger.debug(f"  Notes: {evaluation.get('notes', '')}")
+    for cs in comp_scores_raw:
+        logger.debug(f"  [{cs.score:.2f}] {cs.competency} | gap: {cs.gap}")
+    if active_probe_target:
+        logger.debug(f"  Probe target: '{active_probe_target}'")
+
+    # ---- Route ----
+    if is_resolved:
+        logger.info("Goal mastered — marking complete")
+        return Command(goto="mark_goal_complete", update=state_updates)
+
+    weakest_score = min(comp_score_dict.values()) if comp_score_dict else overall
+
+    # Evaluator-driven meta-actions take priority over score-based routing
+    if suggested_action == "probe" or needs_more_info:
+        logger.info(f"Probing for more info: {action_rationale or 'thin response'}")
+        return Command(
+            goto="tutor_turn",
+            update={**state_updates, "tutor_mode": "probe", "probe_question": probe_question},
+        )
+
+    if suggested_action == "macro_hint":
+        logger.info(f"Macro hint triggered: {action_rationale}")
+        return Command(
+            goto="tutor_turn",
+            update={**state_updates, "tutor_mode": "macro_hint", "probe_question": None},
+        )
+
+    if suggested_action == "give_up":
+        logger.info(f"Give up — switching to explain: {action_rationale}")
+        return Command(
+            goto="tutor_turn",
+            update={**state_updates, "tutor_mode": "explain", "probe_question": None},
+        )
+
+    # Score-based routing (suggested_action == "continue")
+    if exchanges_on_goal >= MAX_EXCHANGES_BEFORE_EXPLAIN or turns_since_last_progress >= 3:
         reason = (
             f"max exchanges ({MAX_EXCHANGES_BEFORE_EXPLAIN})"
-            if new_exchange_count >= MAX_EXCHANGES_BEFORE_EXPLAIN
-            else f"stagnation ({turns_since_last_progress} turns without progress)"
+            if exchanges_on_goal >= MAX_EXCHANGES_BEFORE_EXPLAIN
+            else f"stagnation ({turns_since_last_progress} turns)"
         )
-        logger.info(f"Explaining and moving on: {reason}")
-        return Command(goto="explain_and_move_on", update=state_updates)
-    else:
-        logger.info("Continuing Socratic dialogue")
-        return Command(goto="socratic_response", update=state_updates)
-
-
-def socratic_response(state: TutorState, config: RunnableConfig) -> dict:
-    """Generate a Socratic response and wait for next student input."""
-    logger.info("Generating Socratic response")
-
-    current_goal_id = state.get("current_goal_id")
-    current_question = state.get("current_question")
-    latest_evaluation = state.get("latest_evaluation", {})
-    goal_contexts = state.get("goal_contexts", {})
-
-    # Get student's last message
-    messages = state.get("messages", [])
-    student_message = ""
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage) or (hasattr(msg, 'type') and msg.type == 'human'):
-            student_message = msg.content if hasattr(msg, 'content') else str(msg)
-            break
-
-    current_goal = None
-    for g in state.get("learning_goals", []):
-        if g["id"] == current_goal_id:
-            current_goal = g
-            break
-
-    context_chunks = goal_contexts.get(current_goal_id, [])[:5]
-    module_examples = state.get("module_examples", [])[:10]
-    student_model = state.get("student_model", {}).get(current_goal_id, {})
-
-    prompt_data = {
-        "goal": current_goal or {},
-        "current_question": current_question or {},
-        "student_response": student_message,
-        "understanding_score": latest_evaluation.get("score", 0.5),
-        "weakest_competency": latest_evaluation.get("weakest_competency"),
-        "hypothesized_gaps": latest_evaluation.get("hypothesized_gaps")
-        or student_model.get("hypothesized_gaps", []),
-        "confirmed_knowledge": latest_evaluation.get("confirmed_knowledge")
-        or student_model.get("confirmed_knowledge", []),
-        "misconceptions": latest_evaluation.get("misconceptions", []),
-        "breakthroughs": latest_evaluation.get("breakthroughs", []),
-        "context_chunks": context_chunks,
-        "module_examples": module_examples,
-        "anchor_examples": (current_goal or {}).get("anchor_examples", ""),
-    }
-
-    system_prompt = Prompter(
-        prompt_template="tutor/socratic_response"
-    ).render(data=prompt_data)
-
-    # Handle async model provisioning
-    def run_in_new_loop():
-        new_loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(new_loop)
-            return new_loop.run_until_complete(
-                provision_langchain_model(
-                    system_prompt,
-                    config.get("configurable", {}).get("model_id") or state.get("model_override"),
-                    "chat",
-                    max_tokens=1500,
-                )
-            )
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
-
-    try:
-        asyncio.get_running_loop()
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_in_new_loop)
-            model = future.result()
-    except RuntimeError:
-        model = run_in_new_loop()
-
-    ai_message = model.invoke(system_prompt)
-    socratic_message = clean_thinking_content(
-        ai_message.content if isinstance(ai_message.content, str) else str(ai_message.content)
-    )
-
-    # INTERRUPT: Wait for student's next response
-    student_response = interrupt({
-        "type": "socratic_dialogue",
-        "message": socratic_message,
-        "evaluation": latest_evaluation,
-        "exchange_number": current_question.get("exchanges", 0) + 1,
-        "goal_id": current_goal_id,
-    })
-
-    logger.info(f"Received follow-up response: {student_response[:100]}...")
-
-    return {
-        "messages": [AIMessage(content=socratic_message), HumanMessage(content=student_response)],
-    }
-
-
-def explain_and_move_on(state: TutorState, config: RunnableConfig) -> dict:
-    """Generate a direct explanation when max exchanges reached, then advance or complete."""
-    logger.info("Explaining concept and moving on (max exchanges reached)")
-
-    current_goal_id = state.get("current_goal_id")
-    current_question = state.get("current_question")
-    latest_evaluation = state.get("latest_evaluation", {})
-    goal_progress = dict(state.get("goal_progress", {}))
-
-    messages = state.get("messages", [])
-    student_message = ""
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage) or (
-            hasattr(msg, "type") and msg.type == "human"
-        ):
-            student_message = msg.content if hasattr(msg, "content") else str(msg)
-            break
-
-    current_goal = None
-    for g in state.get("learning_goals", []):
-        if g["id"] == current_goal_id:
-            current_goal = g
-            break
-
-    prompt_data = {
-        "goal": current_goal or {},
-        "question": current_question or {},
-        "student_response": student_message,
-        "weakest_competency": latest_evaluation.get("weakest_competency"),
-        "hypothesized_gaps": latest_evaluation.get("hypothesized_gaps", []),
-        "anchor_examples": (current_goal or {}).get("anchor_examples", ""),
-    }
-
-    system_prompt = Prompter(
-        prompt_template="tutor/explain_and_move_on"
-    ).render(data=prompt_data)
-
-    def run_in_new_loop():
-        new_loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(new_loop)
-            return new_loop.run_until_complete(
-                provision_langchain_model(
-                    system_prompt,
-                    config.get("configurable", {}).get("model_id")
-                    or state.get("model_override"),
-                    "chat",
-                    max_tokens=1000,
-                )
-            )
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
-
-    try:
-        asyncio.get_running_loop()
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_in_new_loop)
-            model = future.result()
-    except RuntimeError:
-        model = run_in_new_loop()
-
-    ai_message = model.invoke(system_prompt)
-    explanation = clean_thinking_content(
-        ai_message.content
-        if isinstance(ai_message.content, str)
-        else str(ai_message.content)
-    )
-
-    # Mark current question as resolved
-    if current_goal_id in goal_progress:
-        goal_progress[current_goal_id] = dict(goal_progress[current_goal_id])
-        questions = goal_progress[current_goal_id].get("starter_questions", [])
-        current_idx = state.get("current_question_index", 0)
-        if current_idx < len(questions):
-            questions = [dict(q) for q in questions]
-            questions[current_idx]["resolved"] = True
-            goal_progress[current_goal_id]["starter_questions"] = questions
-        goal_progress[current_goal_id]["final_understanding"] = latest_evaluation.get(
-            "score", 0.5
+        logger.info(f"Switching to explain mode: {reason}")
+        return Command(
+            goto="tutor_turn",
+            update={**state_updates, "tutor_mode": "explain", "probe_question": None},
         )
 
-    return {
-        "goal_progress": goal_progress,
-        "messages": [AIMessage(content=explanation)],
-    }
+    if weakest_score >= NUDGE_THRESHOLD:
+        logger.info(f"Student is close (weakest={weakest_score:.2f}) — nudging")
+        return Command(
+            goto="tutor_turn",
+            update={**state_updates, "tutor_mode": "nudge", "probe_question": None},
+        )
+
+    logger.info("Continuing Socratic dialogue")
+    return Command(
+        goto="tutor_turn",
+        update={**state_updates, "tutor_mode": "socratic", "probe_question": None},
+    )
 
 
-def advance_to_next_question(state: TutorState, config: RunnableConfig) -> dict:
-    """Advance to the next starter question for the current goal."""
-    logger.info("Advancing to next question")
-
-    current_goal_id = state.get("current_goal_id")
-    goal_progress = dict(state.get("goal_progress", {}))
-    current_idx = state.get("current_question_index", 0)
-
-    if current_goal_id not in goal_progress:
-        raise ValueError(f"Goal progress not found: {current_goal_id}")
-
-    goal_progress[current_goal_id] = dict(goal_progress[current_goal_id])
-    questions = goal_progress[current_goal_id].get("starter_questions", [])
-
-    # Mark current as resolved
-    if current_idx < len(questions):
-        questions = [dict(q) for q in questions]
-        questions[current_idx]["resolved"] = True
-        goal_progress[current_goal_id]["starter_questions"] = questions
-
-    next_idx = current_idx + 1
-    next_question = questions[next_idx] if next_idx < len(questions) else None
-    goal_progress[current_goal_id]["current_question_index"] = next_idx
-
-    return {
-        "goal_progress": goal_progress,
-        "current_question": next_question,
-        "current_question_index": next_idx,
-        "messages": [AIMessage(content="Good — let's try the next one.")],
-    }
+# ============================================================================
+# Node: mark_goal_complete
+# ============================================================================
 
 
 def mark_goal_complete(state: TutorState, config: RunnableConfig) -> dict:
-    """Mark the current learning goal as complete."""
-    logger.info(f"Marking goal complete: {state['current_goal_id']}")
+    """Mark the current learning goal as complete and reset per-goal state."""
+    logger.info(f"Marking goal complete: {state.get('current_goal_id')}")
 
     current_goal_id = state.get("current_goal_id")
     goal_progress = dict(state.get("goal_progress", {}))
@@ -891,13 +759,6 @@ def mark_goal_complete(state: TutorState, config: RunnableConfig) -> dict:
         goal_progress[current_goal_id] = dict(goal_progress[current_goal_id])
         goal_progress[current_goal_id]["completed"] = True
         goal_progress[current_goal_id]["completed_at"] = datetime.now().isoformat()
-
-        # Mark last question resolved
-        questions = goal_progress[current_goal_id].get("starter_questions", [])
-        if questions:
-            questions = [dict(q) for q in questions]
-            questions[-1]["resolved"] = True
-            goal_progress[current_goal_id]["starter_questions"] = questions
 
     if current_goal_id not in completed_goal_ids:
         completed_goal_ids.append(current_goal_id)
@@ -912,31 +773,35 @@ def mark_goal_complete(state: TutorState, config: RunnableConfig) -> dict:
         "goal_progress": goal_progress,
         "completed_goal_ids": completed_goal_ids,
         "current_goal_id": None,
-        "current_question": None,
-        "current_question_index": 0,
-        "messages": [AIMessage(content=f"Nice — you've got a solid handle on **{goal_description}**. Ready for the next topic?")],
+        "anchor_problem": None,
+        "opening_framing": None,
+        "exchanges_on_goal": 0,
+        "tutor_mode": "open",
+        "probe_question": None,
+        "messages": [
+            AIMessage(
+                content=f"Nice — you've got a solid handle on **{goal_description}**. "
+                "Ready for the next topic?"
+            )
+        ],
     }
 
 
+# ============================================================================
+# Conditional edge: check_more_goals
+# ============================================================================
+
+
 def check_more_goals(state: TutorState) -> str:
-    """Check if there are more goals to complete."""
     completed_ids = set(state.get("completed_goal_ids", []))
     all_goals = state.get("learning_goals", [])
     unfinished = [g for g in all_goals if g["id"] not in completed_ids]
     return "more_goals" if unfinished else "all_complete"
 
 
-def check_more_questions_in_goal(state: TutorState) -> str:
-    """Check if there are more questions in the current goal."""
-    current_goal_id = state.get("current_goal_id")
-    goal_progress = state.get("goal_progress", {})
-    current_idx = state.get("current_question_index", 0)
-    if current_goal_id not in goal_progress:
-        return "mark_complete"
-    questions = goal_progress.get(current_goal_id, {}).get(
-        "starter_questions", []
-    )
-    return "advance" if current_idx < len(questions) - 1 else "mark_complete"
+# ============================================================================
+# Node: generate_summary
+# ============================================================================
 
 
 def generate_summary(state: TutorState, config: RunnableConfig) -> dict:
@@ -946,34 +811,45 @@ def generate_summary(state: TutorState, config: RunnableConfig) -> dict:
     goal_progress = state.get("goal_progress", {})
     session_started = state.get("session_started_at")
 
-    # Calculate statistics
     total_goals = len(state.get("learning_goals", []))
     goals_completed = len(state.get("completed_goal_ids", []))
-    total_questions = 0
     total_exchanges = 0
-    initial_scores = []
-    final_scores = []
+    initial_scores, final_scores = [], []
+    all_misconceptions, all_breakthroughs = [], []
+    goal_summaries = []
 
-    for progress in goal_progress.values():
-        questions = progress.get("starter_questions", [])
-        total_questions += len(questions)
-        for q in questions:
-            total_exchanges += q.get("exchanges", 0)
+    for goal in state.get("learning_goals", []):
+        progress = goal_progress.get(goal["id"], {})
+        exchanges = progress.get("exchanges", 0)
+        total_exchanges += exchanges
+
         if progress.get("initial_understanding") is not None:
             initial_scores.append(progress["initial_understanding"])
         if progress.get("final_understanding") is not None:
             final_scores.append(progress["final_understanding"])
 
+        for t in progress.get("trajectory", []):
+            if isinstance(t, dict):
+                all_misconceptions.extend(t.get("misconceptions", []))
+                all_breakthroughs.extend(t.get("breakthroughs", []))
+
+        goal_summaries.append({
+            "goal_id": goal["id"],
+            "description": goal["description"],
+            "completed": progress.get("completed", False),
+            "exchanges": exchanges,
+            "initial_understanding": progress.get("initial_understanding"),
+            "final_understanding": progress.get("final_understanding"),
+        })
+
     avg_initial = sum(initial_scores) / len(initial_scores) if initial_scores else 0
     avg_final = sum(final_scores) / len(final_scores) if final_scores else 0
     improvement = avg_final - avg_initial
 
-    # Calculate duration
     duration_seconds = 0
     if session_started:
         try:
-            start_dt = datetime.fromisoformat(session_started)
-            duration_seconds = (datetime.now() - start_dt).total_seconds()
+            duration_seconds = (datetime.now() - datetime.fromisoformat(session_started)).total_seconds()
         except ValueError:
             pass
 
@@ -983,95 +859,68 @@ def generate_summary(state: TutorState, config: RunnableConfig) -> dict:
             "total_duration_seconds": duration_seconds,
             "total_goals": total_goals,
             "goals_completed": goals_completed,
-            "total_questions": total_questions,
             "total_exchanges": total_exchanges,
             "average_initial_understanding": avg_initial,
             "average_final_understanding": avg_final,
             "understanding_improvement": improvement,
+            "goal_summaries": goal_summaries,
         },
     }
 
     system_prompt = Prompter(prompt_template="tutor/summary").render(data=summary_data)
 
-    # Handle async model provisioning
-    def run_in_new_loop():
-        new_loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(new_loop)
-            return new_loop.run_until_complete(
-                provision_langchain_model(
-                    system_prompt,
-                    config.get("configurable", {}).get("model_id") or state.get("model_override"),
-                    "chat",
-                    max_tokens=1000,
-                )
-            )
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
+    def _provision():
+        return provision_langchain_model(
+            system_prompt,
+            config.get("configurable", {}).get("model_id") or state.get("model_override"),
+            "chat",
+            max_tokens=1000,
+        )
 
-    try:
-        asyncio.get_running_loop()
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_in_new_loop)
-            model = future.result()
-    except RuntimeError:
-        model = run_in_new_loop()
-
-    ai_message = model.invoke(system_prompt)
+    model = _run_model(_provision)
+    ai_msg = model.invoke(system_prompt)
     narrative = clean_thinking_content(
-        ai_message.content if isinstance(ai_message.content, str) else str(ai_message.content)
+        ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
     )
 
-    final_message = f"""## Session Complete! 🎉
-
-{narrative}
-
-### Summary Statistics
-- **Goals Completed**: {goals_completed}/{total_goals}
-- **Total Questions Discussed**: {total_questions}
-- **Total Exchanges**: {total_exchanges}
-- **Understanding Improvement**: {improvement:+.0%}
-- **Duration**: {duration_seconds / 60:.1f} minutes
-"""
+    final_message = (
+        f"## Session Complete!\n\n{narrative}\n\n"
+        f"### Summary\n"
+        f"- **Goals Completed**: {goals_completed}/{total_goals}\n"
+        f"- **Total Exchanges**: {total_exchanges}\n"
+        f"- **Understanding Improvement**: {improvement:+.0%}\n"
+        f"- **Duration**: {duration_seconds / 60:.1f} minutes\n"
+    )
 
     return {"messages": [AIMessage(content=final_message)]}
 
 
-# Create SQLite checkpointer
+# ============================================================================
+# Graph construction
+# ============================================================================
+
 conn = sqlite3.connect(LANGGRAPH_CHECKPOINT_FILE, check_same_thread=False)
 memory = SqliteSaver(conn)
 
-# Build the graph
 tutor_state = StateGraph(TutorState)
+
 tutor_state.add_node("initialize", initialize_session)
 tutor_state.add_node("select_goal", select_next_goal)
-tutor_state.add_node("generate_questions", generate_starter_questions)
-tutor_state.add_node("present_question", present_question)
-tutor_state.add_node("evaluate", evaluate_and_route)
-tutor_state.add_node("socratic_response", socratic_response)
-tutor_state.add_node("explain_and_move_on", explain_and_move_on)
-tutor_state.add_node("advance_to_next_question", advance_to_next_question)
+tutor_state.add_node("generate_anchor_problem", generate_anchor_problem)
+tutor_state.add_node("tutor_turn", tutor_turn)
+tutor_state.add_node("evaluate", evaluate_and_update_model)
 tutor_state.add_node("mark_goal_complete", mark_goal_complete)
 tutor_state.add_node("summary", generate_summary)
 
 tutor_state.add_edge(START, "initialize")
 tutor_state.add_edge("initialize", "select_goal")
-tutor_state.add_edge("select_goal", "generate_questions")
-tutor_state.add_edge("generate_questions", "present_question")
-tutor_state.add_edge("present_question", "evaluate")
-tutor_state.add_edge("socratic_response", "evaluate")
-tutor_state.add_conditional_edges(
-    "explain_and_move_on",
-    check_more_questions_in_goal,
-    {"advance": "advance_to_next_question", "mark_complete": "mark_goal_complete"},
-)
-tutor_state.add_edge("advance_to_next_question", "present_question")
+tutor_state.add_edge("select_goal", "generate_anchor_problem")
+tutor_state.add_edge("generate_anchor_problem", "tutor_turn")
+tutor_state.add_edge("tutor_turn", "evaluate")
 tutor_state.add_conditional_edges(
     "mark_goal_complete",
     check_more_goals,
-    {"more_goals": "select_goal", "all_complete": "summary"}
+    {"more_goals": "select_goal", "all_complete": "summary"},
 )
 tutor_state.add_edge("summary", END)
 
