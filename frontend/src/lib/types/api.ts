@@ -300,6 +300,27 @@ export interface GenerateLearningGoalsResponse {
   learning_goals: LearningGoalPreview[]
 }
 
+// Refinement types (chat-to-edit overview & learning goals)
+export interface RefineContentMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface RefineContentRequest {
+  overview: string
+  learning_goals: LearningGoalPreview[]
+  message: string
+  message_history: RefineContentMessage[]
+  module_id?: string
+  source_ids?: string[]
+}
+
+export interface RefineContentResponse {
+  overview: string
+  learning_goals: LearningGoalPreview[]
+  explanation: string
+}
+
 // ============================================
 // User Types
 // ============================================

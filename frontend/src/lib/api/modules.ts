@@ -11,6 +11,8 @@ import {
   GenerateContentRequest,
   GenerateOverviewResponse,
   GenerateLearningGoalsResponse,
+  RefineContentRequest,
+  RefineContentResponse,
 } from '@/lib/types/api'
 
 export const modulesApi = {
@@ -100,6 +102,18 @@ export const modulesApi = {
   previewContent: async (data: PreviewModuleContentRequest) => {
     const response = await apiClient.post<PreviewModuleContentResponse>(
       '/modules/preview-content',
+      data
+    )
+    return response.data
+  },
+
+  /**
+   * Refine module overview and learning goals via conversational instructions.
+   * Stateless: frontend sends current content + message history each call.
+   */
+  refineContent: async (data: RefineContentRequest) => {
+    const response = await apiClient.post<RefineContentResponse>(
+      '/modules/refine-content',
       data
     )
     return response.data

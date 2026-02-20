@@ -16,6 +16,8 @@ from api.models import (
     ModuleUpdate,
     PreviewModuleContentRequest,
     PreviewModuleContentResponse,
+    RefineContentRequest,
+    RefineContentResponse,
 )
 from api.routers.authz import (
     require_authenticated_user_id,
@@ -30,6 +32,7 @@ from backpack.graphs.module import (
     generate_overview,
     graph as module_generation_graph,
 )
+from backpack.graphs.module_refine import refine_module_content
 
 router = APIRouter()
 
@@ -653,6 +656,82 @@ async def generate_module_learning_goals(
         logger.error(f"Error generating learning goals: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error generating learning goals: {str(e)}"
+        )
+
+
+# ============================================
+# Refine Content Endpoint (chat-to-edit)
+# ============================================
+
+
+@router.post("/modules/refine-content", response_model=RefineContentResponse)
+async def refine_module_content_endpoint(
+    request: RefineContentRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """Refine module overview and learning goals via conversational instructions.
+
+    Accepts the current content, a user message, and conversation history.
+    Returns updated content with an explanation of changes.
+    Does NOT auto-save — the frontend decides when to persist.
+    """
+    try:
+        # Resolve source context for grounding
+        if request.module_id:
+            module = await Module.get(request.module_id)
+            if not module:
+                raise HTTPException(status_code=404, detail="Module not found")
+
+            if module.course:
+                user_id = require_authenticated_user_id(authorization)
+                await require_teaching_role(str(module.course), user_id)
+
+            sources = await module.get_sources()
+            notes = await module.get_notes()
+            notes_context = [{"title": n.title, "content": n.content} for n in notes]
+            name = module.name
+            description = module.description
+        else:
+            sources = await Source.get_sources(request.source_ids)
+            notes_context = []
+            name = ""
+            description = ""
+
+        sources_context = await build_sources_context(sources)
+
+        current_goals = [g.model_dump() for g in request.learning_goals]
+        message_history = [m.model_dump() for m in request.message_history]
+
+        result = await refine_module_content(
+            current_overview=request.overview,
+            current_goals=current_goals,
+            user_message=request.message,
+            message_history=message_history,
+            sources_context=sources_context,
+            notes_context=notes_context,
+            name=name,
+            description=description,
+        )
+
+        return RefineContentResponse(
+            overview=result.overview,
+            learning_goals=[
+                LearningGoalPreview(
+                    description=g.description,
+                    takeaways=g.takeaways,
+                    competencies=g.competencies,
+                )
+                for g in result.goals
+            ],
+            explanation=result.explanation,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error refining module content: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error refining module content: {str(e)}"
         )
 
 

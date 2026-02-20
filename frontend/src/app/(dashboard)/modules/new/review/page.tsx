@@ -25,6 +25,8 @@ import { FilesSidebar } from "@/components/modules/review/FilesSidebar";
 import { DeleteDraftModal } from "@/components/modules/review/DeleteDraftModal";
 import { SourceDetailContent } from "@/components/source/SourceDetailContent";
 import { AddFilesDialog } from "@/components/modules/review/AddFilesDialog";
+import { RefinementChat } from "@/components/modules/RefinementChat";
+import { LearningGoalPreview } from "@/lib/types/api";
 
 export default function ModuleReviewPage() {
   const router = useRouter();
@@ -313,6 +315,19 @@ export default function ModuleReviewPage() {
     setSelectedSourceId(sourceId);
   };
 
+  // Handle refinement chat changes
+  const handleRefinementApply = (newOverview: string, newGoals: LearningGoalPreview[]) => {
+    setGeneratedContent(
+      newOverview,
+      newGoals.map((g, i) => ({
+        description: g.description,
+        takeaways: g.takeaways || "",
+        competencies: g.competencies || "",
+        order: i,
+      }))
+    );
+  };
+
   const isGeneratingAll = previewContent.isPending;
   const isGeneratingOverview = generateOverview.isPending || isGeneratingAll;
   const isGeneratingGoals = generateLearningGoals.isPending || isGeneratingAll;
@@ -340,26 +355,44 @@ export default function ModuleReviewPage() {
 
       {/* Content - 3 column layout */}
       <main className="flex-1 min-h-0 overflow-hidden p-6">
-        <div className="flex gap-6 h-full">
-          {/* Left column - Module info */}
-          <ModuleInfoPanel
-            isGenerating={isGeneratingOverview}
-            onRegenerateOverview={handleRegenerateOverview}
-          />
+        <div className="flex flex-col gap-6 h-full">
+          <div className="flex gap-6 flex-1 min-h-0">
+            {/* Left column - Module info */}
+            <ModuleInfoPanel
+              isGenerating={isGeneratingOverview}
+              onRegenerateOverview={handleRegenerateOverview}
+            />
 
-          {/* Center column - Learning goals */}
-          <LearningGoalsPanel
-            isGenerating={isGeneratingGoals}
-            onRegenerateLearningGoals={handleRegenerateLearningGoals}
-          />
+            {/* Center column - Learning goals */}
+            <LearningGoalsPanel
+              isGenerating={isGeneratingGoals}
+              onRegenerateLearningGoals={handleRegenerateLearningGoals}
+            />
 
-          {/* Right column - Files sidebar */}
-          <FilesSidebar
-            sourceIds={pendingSourceIds}
-            sourceStatuses={sourceStatuses}
-            onAddMore={handleAddMore}
-            onSourceClick={handleSourceClick}
-          />
+            {/* Right column - Files sidebar */}
+            <FilesSidebar
+              sourceIds={pendingSourceIds}
+              sourceStatuses={sourceStatuses}
+              onAddMore={handleAddMore}
+              onSourceClick={handleSourceClick}
+            />
+          </div>
+
+          {/* Refinement Chat */}
+          {allComplete && hasGeneratedContent && (
+            <div className="flex-shrink-0">
+              <RefinementChat
+                currentOverview={overview || ""}
+                currentGoals={learningGoals.map((g) => ({
+                  description: g.description,
+                  takeaways: g.takeaways || "",
+                  competencies: g.competencies || "",
+                }))}
+                onApplyChanges={handleRefinementApply}
+                sourceIds={pendingSourceIds}
+              />
+            </div>
+          )}
         </div>
       </main>
 
