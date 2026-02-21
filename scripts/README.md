@@ -41,35 +41,39 @@ Each exported file includes:
 - The complete content from each markdown file
 - Visual separators between sections
 
-### Example Output Structure
-
-```markdown
-# Getting Started
-
-This document consolidates all content from the getting-started documentation folder.
-
----
-
-## Installation
-
-*Source: installation.md*
-
-[Full content of installation.md]
-
----
-
-## Quick Start
-
-*Source: quick-start.md*
-
-[Full content of quick-start.md]
-
----
-```
-
 ### Notes
 
 - The `doc_exports/` directory is gitignored and safe to regenerate anytime
 - Index files (`index.md`) are automatically excluded
 - Files are sorted alphabetically for consistent output
 - The script handles subdirectories only (ignores files in the root `docs/` folder)
+
+---
+
+## wait-for-api.sh
+
+Health check script that waits for the API to be ready before starting dependent services (e.g., the frontend).
+
+### What It Does
+
+- Polls the API health endpoint (`/health`) using `curl`
+- Retries up to 60 times with 5-second intervals (5-minute maximum wait)
+- Exits with code 0 even on timeout, allowing dependent services to start regardless
+
+### Configuration
+
+| Environment Variable | Default | Description |
+|---|---|---|
+| `INTERNAL_API_URL` | `http://localhost:5055` | API base URL to health-check |
+
+### Usage
+
+Typically invoked in Docker Compose or CI/CD pipelines rather than directly:
+
+```bash
+# Direct usage
+./scripts/wait-for-api.sh
+
+# With custom API URL
+INTERNAL_API_URL=http://api:5055 ./scripts/wait-for-api.sh
+```
