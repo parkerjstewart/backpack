@@ -1,243 +1,278 @@
-# Open Notebook Core Backend
+# Backpack Core Package
 
-The `open_notebook` module is the heart of the system: a multi-layer backend orchestrating AI-powered research workflows. It bridges domain models, asynchronous database operations, LangGraph-based content processing, and multi-provider AI model management.
+The `backpack` package is the Python backend core. It contains domain models, LangGraph workflows, AI provisioning, database operations, and utilities.
 
-## Purpose
-
-Encapsulates the entire backend architecture:
-1. **Data layer**: SurrealDB persistence with async CRUD and migrations
-2. **Domain layer**: Research models (Notebook, Source, Note, etc.) with embedded relationships
-3. **Workflow layer**: LangGraph state machines for content ingestion, chat, and transformations
-4. **AI provisioning**: Multi-provider model management with smart fallback logic
-5. **Support services**: Context building, tokenization, and utility functions
-
-All components communicate through async/await patterns and use Pydantic for validation.
-
-## Architecture Overview
+## Package Structure
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    API / Streamlit UI                        │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-    ┌──────────────────┴──────────────────┐
-    │                                     │
-┌───▼────────────────────┐   ┌──────────▼────────────────┐
-│    Graphs (LangGraph)   │   │   Domain Models (Data)    │
-│ - source.py (ingestion) │   │ - Notebook, Source, Note  │
-│ - chat.py              │   │ - ChatSession, Asset       │
-│ - ask.py (search)      │   │ - SourceInsight, Embedding│
-│ - transformation.py    │   │ - Transformation, Settings│
-└───┬────────────────────┘   │ - EpisodeProfile, Podcast │
-    │                        └──────────┬─────────────────┘
-    │                                   │
-    └───────────────────┬───────────────┘
-                        │
-    ┌───────────────────┴────────────────────┐
-    │                                        │
-┌───▼─────────────────┐      ┌──────────────▼──────┐
-│  AI Module (Models)  │      │  Utils (Helpers)     │
-│ - ModelManager       │      │ - ContextBuilder     │
-│ - DefaultModels      │      │ - TokenUtils         │
-│ - provision_langchain│      │ - TextUtils          │
-│ - Multi-provider AI  │      │ - VersionUtils       │
-└───┬─────────────────┘      └──────────┬──────────┘
-    │                                   │
-    └───────────────────┬───────────────┘
-                        │
-         ┌──────────────▼────────────────┐
-         │  Database (SurrealDB)          │
-         │ - repository.py (CRUD ops)     │
-         │ - async_migrate.py (schema)    │
-         │ - Configuration                │
-         └────────────────────────────────┘
+backpack/
+├── config.py          # Path configuration (data dirs, uploads, checkpoints)
+├── exceptions.py      # Exception hierarchy (BackpackError base)
+├── ai/                # AI model provisioning via Esperanto
+├── database/          # SurrealDB async repository + migrations
+├── domain/            # Data models (Course, Module, Source, Note, User, etc.)
+├── graphs/            # LangGraph workflows (chat, tutor, ask, source, etc.)
+├── podcasts/          # Podcast models (SpeakerProfile, EpisodeProfile, PodcastEpisode)
+└── utils/             # Context building, chunking, embedding, token counting
 ```
 
-## Component Catalog
+See sub-module CLAUDE.md files for detailed patterns:
+- [ai/CLAUDE.md](ai/CLAUDE.md) — Model provisioning, Esperanto, fallback logic
+- [database/CLAUDE.md](database/CLAUDE.md) — SurrealDB repo functions, migrations
+- [domain/CLAUDE.md](domain/CLAUDE.md) — Base classes, model hierarchy, relationships
+- [graphs/CLAUDE.md](graphs/CLAUDE.md) — Workflow design, state machines, interrupt pattern
+- [podcasts/CLAUDE.md](podcasts/CLAUDE.md) — Podcast generation models
+- [utils/CLAUDE.md](utils/CLAUDE.md) — Context builder, chunking, embedding, text/token utils
 
-### Core Layers
+---
 
-**See dedicated CLAUDE.md files for detailed patterns and usage:**
+## config.py
 
-- **`database/`**: Async repository pattern (repo_query, repo_create, repo_upsert), connection pooling, and automatic schema migrations on API startup. See `database/CLAUDE.md`.
+Centralized path configuration. All directories auto-create on import.
 
-- **`domain/`**: Core data models using Pydantic with SurrealDB persistence. Two base classes: `ObjectModel` (mutable records with auto-increment IDs and embedding) and `RecordModel` (singleton configuration). Includes search functions (text_search, vector_search). See `domain/CLAUDE.md`.
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `DATA_FOLDER` | `./data` | Root data directory |
+| `LANGGRAPH_CHECKPOINT_FILE` | `./data/sqlite-db/checkpoints.sqlite` | LangGraph state persistence |
+| `UPLOADS_FOLDER` | `./data/uploads` | Uploaded file storage |
+| `AVATARS_FOLDER` | `./data/avatars` | User avatar images |
+| `TIKTOKEN_CACHE_DIR` | `./data/tiktoken-cache` | Token encoder cache |
 
-- **`graphs/`**: LangGraph state machines for async workflows. Content ingestion (source.py), conversational agents (chat.py), search synthesis (ask.py), and transformations. Uses provision_langchain_model() for smart model selection with token-aware fallback. See `graphs/CLAUDE.md`.
+## exceptions.py
 
-- **`ai/`**: Centralized AI model lifecycle via Esperanto library. ModelConfig reads defaults from environment variables; ModelManager factory with intelligent fallback (large context detection, type-specific defaults). Supports 8+ providers (OpenAI, Anthropic, Google, Groq, Ollama, Mistral, DeepSeek, xAI). See `ai/CLAUDE.md`.
+All inherit from `BackpackError`:
+- `DatabaseOperationError`, `InvalidInputError`, `NotFoundError`
+- `AuthenticationError`, `ConfigurationError`, `ExternalServiceError`
+- `RateLimitError`, `FileOperationError`, `NetworkError`
+- `UnsupportedTypeException`, `NoTranscriptFound`
 
-- **`utils/`**: Cross-cutting utilities: ContextBuilder (flexible context assembly from sources/notes/insights with token budgeting), TextUtils (truncation, cleaning), TokenUtils (GPT token counting), VersionUtils (schema compatibility). See `utils/CLAUDE.md`.
+---
 
-- **`podcasts/`**: Podcast generation models: SpeakerProfile (TTS voice config), EpisodeProfile (generation settings), PodcastEpisode (job tracking via surreal-commands). See `podcasts/CLAUDE.md`.
-
-### Configuration & Exceptions
-
-- **`config.py`**: Paths for data folder, uploads, LangGraph checkpoints, and tiktoken cache. Auto-creates directories.
-- **`exceptions.py`**: Hierarchy of OpenNotebookError subclasses for database, file, network, authentication, and rate-limit failures.
-
-## Data Flow: Content Ingestion
-
-```
-User uploads file/URL
-         │
-         ▼
-┌─────────────────────────────────────┐
-│ source.py (LangGraph state machine) │
-├─────────────────────────────────────┤
-│ 1. content_process()                │
-│    - extract_content() from file/URL│
-│    - Use ContentSettings defaults    │
-│    - speech_to_text model from DB   │
-│                                     │
-│ 2. save_source()                    │
-│    - Update Source with full_text   │
-│    - Preserve title if empty        │
-│                                     │
-│ 3. trigger_transformations()        │
-│    - Parallel fan-out to each TXN   │
-└────────────────┬────────────────────┘
-                 │
-                 ▼
-         ┌──────────────┐
-         │ transformation.py (parallel)
-         │ - Apply prompt to source text
-         │ - Generate insights
-         │ - Auto-embed results
-         └──────────────┘
-                 │
-                 ▼
-        ┌────────────────────┐
-        │ Database Storage    │
-        │ - Source.full_text  │
-        │ - SourceInsight     │
-        │ - Embeddings        │
-        │ - (async job)       │
-        └────────────────────┘
-```
-
-**Fire-and-forget embeddings**: Source.vectorize() returns command_id without awaiting; embedding happens asynchronously via surreal-commands job system.
-
-## Data Flow: Chat & Search
+## Domain Model Hierarchy
 
 ```
-User message in chat
-         │
-         ▼
-┌──────────────────────────┐
-│ ContextBuilder           │
-│ - Select sources/notes   │
-│ - Token budget limiting  │
-│ - Priority weighting     │
-└──────────┬───────────────┘
-           │
-           ▼
-┌──────────────────────────────────┐
-│ chat.py or ask.py (LangGraph)    │
-│ - Load context from above        │
-│ - provision_langchain_model()    │
-│   * Auto-upgrade for large text  │
-│   * Apply model_id override      │
-│ - Call LLM with context          │
-│ - Store message in SqliteSaver   │
-└──────────┬───────────────────────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ LLM Response │
-    │ (persisted)  │
-    └──────────────┘
+User
+Course
+  └── Module (via course field)
+        ├── LearningGoal (via module field)
+        ├── Source (via reference edge)
+        │     ├── SourceInsight
+        │     └── SourceEmbedding
+        ├── Note (via artifact edge)
+        └── ChatSession (via refers_to edge)
+
+Standalone:
+  CourseMembership, Invitation, Transformation, DefaultPrompts,
+  ContentSettings, SpeakerProfile, EpisodeProfile, PodcastEpisode, Asset
 ```
 
-## Key Patterns Across Layers
+### Base Classes (domain/base.py)
 
-### Async/Await Everywhere
-All database operations, model provisioning, and graph execution are async. Mix with sync code only via `asyncio.run()` or LangGraph's async bridges (see graphs/CLAUDE.md for workarounds).
+**ObjectModel** — Base for all mutable records:
+- `table_name: ClassVar[str]` — SurrealDB table
+- `nullable_fields: ClassVar[set[str]]` — Fields allowed to be None
+- `save()` — Create or update; auto-manages `created`/`updated` timestamps
+- `delete()` — Remove by ID
+- `get(id)` — Polymorphic fetch; resolves subclass from `table:id` prefix
+- `get_all(order_by)` — Fetch all records
+- `relate(relationship, target_id, data)` — Create graph edge
+- `_prepare_save_data()` — Hook for custom serialization before DB write
 
-### Type-Driven Dispatch
-Model types (language, embedding, speech_to_text, text_to_speech) drive factory logic in ModelManager. Domain model IDs encode their type: `notebook:uuid`, `source:uuid`, `note:uuid`.
+**RecordModel** — Singleton configuration (e.g., ContentSettings, DefaultPrompts):
+- `get_instance()` — Get or load from DB
+- `update()` / `patch()` — Upsert to DB
+- Uses `__new__()` to enforce single instance
 
-### Smart Fallback Logic
-`provision_langchain_model()` auto-detects large contexts (105K+ tokens) and upgrades to dedicated large_context_model. Falls back to default_chat_model if specific type not found.
+### Key Models
 
-### Fire-and-Forget Jobs
-Time-consuming operations (embedding, podcast generation) return command_id immediately. Caller polls surreal-commands for status; no blocking.
+**User** (`course.py`): email (normalized), name, role (student/instructor/admin), avatar_url. Methods: `get_by_email()`, `get_courses()`.
 
-### Fire-and-Forget Embedding
-Domain models submit embedding commands after save via `submit_command()` (non-blocking). Note.save() submits `embed_note`, Source.add_insight() submits `embed_insight`, Source.vectorize() submits `embed_source`. Search functions (text_search, vector_search) use embeddings for semantic matching.
+**Course** (`course.py`): title, description, instructor_id, archived. Methods: `get_modules()`, `get_members(role)`, `get_students_needing_attention()`, `add_member()`, `remove_member()`, `get_student_module_mastery()`.
 
-### Relationship Management
-SurrealDB graph edges link entities: Notebook→Source (has), Source→Note (artifact), Note→Source (refers_to). See `relate()` in domain/base.py.
+**Module** (`module.py`): name, description, overview, course (ref), order, archived. Methods: `get_learning_goals()`, `get_sources()`, `get_notes()`, `get_chat_sessions()`.
 
-## Integration Points
+**LearningGoal** (`module.py`): module (ref), description, takeaways, competencies, order.
 
-**API startup** (`api/main.py`):
-- AsyncMigrationManager.run_migration_up() on lifespan startup
-- Ensures schema is current before handling requests
+**Source** (`module.py`): asset (Asset), title, topics, full_text, command (ref to job). Key methods:
+- `vectorize()` — Fire-and-forget: submits `embed_source` command, returns command_id
+- `add_insight(type, content)` — Creates SourceInsight, submits `embed_insight` command
+- `get_status()` / `get_processing_progress()` — Query job status
+- `get_context(context_size)` — Returns summary ("short") or full text ("long")
+- `add_to_module(module_id)` — Creates `reference` edge
+- `delete()` — Cleans up file + embeddings + insights + DB record
 
-**Streamlit UI** (`pages/stream_app/`):
-- Calls domain models directly to fetch/create notebooks, sources, notes
-- Invokes graphs (chat, source, ask) via async wrapper
-- Relies on API for migrations (deprecated check in UI)
+**Note** (`module.py`): title, note_type (human/ai), content. `save()` overrides to submit `embed_note` command after save. `add_to_module()` creates `artifact` edge.
 
-**Background Jobs** (`surreal_commands`):
-- Source.vectorize() submits async embedding job
-- PodcastEpisode.get_job_status() polls job queue
-- Decouples long-running operations from request flow
+**ChatSession** (`module.py`): title, model_override. `relate_to_module()` / `relate_to_source()` create `refers_to` edges.
 
-## Important Quirks & Gotchas
+**Invitation** (`invitation.py`): token, course_id, email, role, status, expires_at. Methods: `accept(user_id)` creates membership, `get_by_token()`, `get_pending_for_course()`.
 
-1. **Token counting rough estimate**: Uses cl100k_base encoding; may differ 5-10% from actual model
-2. **Large context threshold hard-coded**: 105,000 token limit for large_context_model upgrade (not configurable)
-3. **Async loop gymnastics in graphs**: ThreadPoolExecutor workaround for LangGraph sync nodes calling async functions (fragile)
-4. **Model config cached after load**: ModelManager caches ModelConfig; use `refresh_config()` to reload after env changes
-5. **Polymorphic model.get()**: Resolves subclass from ID prefix; fails silently if subclass not imported
-6. **RecordID string inconsistency**: repo_update() accepts both "table:id" format and full RecordID
-7. **Snapshot profiles**: podcast profiles stored as dicts, so config updates don't affect past episodes
-8. **No connection pooling**: Each repo_* creates new connection (adequate for HTTP but inefficient for bulk)
-9. **Circular import guard**: utils imports domain; domain must not import utils (breaks on import)
-10. **SqliteSaver shared location**: LangGraph checkpoints from LANGGRAPH_CHECKPOINT_FILE env var; all graphs use same file
+### RecordID Handling Pattern
 
-## How to Add New Feature
+All model fields referencing other records follow this pattern:
+1. Stored as `RecordID` in SurrealDB
+2. Parsed to string on load via `field_validator(mode="before")`
+3. Coerced back to `RecordID` on save via `_prepare_save_data()`
 
-**New data model**:
-1. Create class inheriting from `ObjectModel` with `table_name` ClassVar
-2. Define Pydantic fields and validators
-3. Override `save()` to submit embedding command if searchable (use `submit_command("embed_*", id)`)
-4. Add custom methods for domain logic (get_X, add_to_Y)
-5. Register in domain/__init__.py exports
+### SurrealDB Relationships (graph edges)
 
-**New workflow**:
-1. Create state machine in graphs/WORKFLOW.py using StateGraph
-2. Import domain models and provision_langchain_model()
-3. Define nodes as async functions taking State, returning dict
-4. Compile with graph.compile()
-5. Invoke from API endpoint or Streamlit page
+| Edge Type | From | To | Usage |
+|-----------|------|------|-------|
+| `reference` | Source | Module | Source belongs to module |
+| `artifact` | Module | Note | Note belongs to module |
+| `refers_to` | ChatSession | Module or Source | Chat scoped to module/source |
+| `course_membership` | User | Course | Enrollment with role (student/instructor/ta) |
 
-**New AI model type**:
-1. Add field to ModelConfig dataclass in `ai/models.py`
-2. Add environment variable (e.g., `DEFAULT_VISION_MODEL`)
-3. Add AIFactory.create_* method in Esperanto (if new capability)
-4. Handle in ModelManager.get_default_model() with fallback logic
-5. Document env var in `.env.example`
+### Fire-and-Forget Embedding Pattern
 
-## Key Dependencies
+Embedding is NOT automatic on `save()`. Instead:
+1. `Note.save()` → calls `super().save()` then `submit_command("embed_note", id)`
+2. `Source.vectorize()` → submits `embed_source` command, returns command_id
+3. `Source.add_insight()` → submits `embed_insight` command
+4. Commands processed asynchronously by the worker via surreal-commands
 
-- **surrealdb**: AsyncSurreal client, RecordID type
-- **pydantic**: Validation, field_validator
-- **langgraph**: StateGraph, Send, SqliteSaver, async/sync bridging
-- **langchain_core**: Messages, OutputParser, RunnableConfig
-- **esperanto**: Multi-provider AI model abstraction (OpenAI, Anthropic, Google, Groq, Ollama, etc.)
-- **content-core**: File/URL content extraction
-- **ai_prompter**: Jinja2 template rendering for prompts
-- **surreal_commands**: Async job queue for embeddings, podcast generation
-- **loguru**: Structured logging throughout
-- **tiktoken**: GPT token encoding for context window estimation
+### Search Functions (module.py)
 
-## Codebase Statistics
+- `text_search(keyword, results, source=True, note=True)` — Full-text via `fn::text_search()` SurrealQL function
+- `vector_search(keyword, results, source=True, note=True, minimum_score=0.2)` — Generates embedding for query, calls `fn::vector_search()`
 
-- **Modules**: 6 core layers + support services
-- **Async operations**: Database, AI provisioning, graph execution, embedding, job tracking
-- **Supported AI providers**: 8+ (OpenAI, Anthropic, Google, Groq, Ollama, Mistral, DeepSeek, xAI, OpenRouter)
-- **Domain models**: Notebook, Source, Note, SourceInsight, SourceEmbedding, ChatSession, Asset, Transformation, ContentSettings, EpisodeProfile, SpeakerProfile, PodcastEpisode
-- **Graph workflows**: 6 (source, chat, source_chat, ask, transformation, prompt)
+---
+
+## LangGraph Workflows (graphs/)
+
+All workflows in `backpack/graphs/`. Common patterns:
+- State defined as TypedDict with reducers
+- Nodes are sync functions (async ops use `asyncio.new_event_loop()` workaround)
+- Model provisioning via `provision_langchain_model()` from config
+- Prompt templating via `ai_prompter.Prompter` with Jinja2
+- Checkpointing via shared SqliteSaver at `LANGGRAPH_CHECKPOINT_FILE`
+- Extended thinking content cleaned via `clean_thinking_content()`
+
+| Workflow | File | Purpose | Key Pattern |
+|----------|------|---------|-------------|
+| Chat | `chat.py` | Module-scoped conversation | SqliteSaver checkpointing, thread_id = session ID |
+| Source Chat | `source_chat.py` | Source-scoped conversation | ContextBuilder with insights, tracks context_indicators |
+| Ask | `ask.py` | Search + synthesis | Structured output for strategy, parallel `Send()` fan-out |
+| Source | `source.py` | Content ingestion | Extract → save → fan-out transformations → embed |
+| Transformation | `transformation.py` | Apply transformation prompt | Token-aware chunking (90k max), recursive merge |
+| Prompt | `prompt.py` | Generic prompt chain | Async node, optional output parser |
+| Tutor | `tutor.py` | Socratic tutoring | Interrupt-based dialogue, goal progression |
+| Tools | `tools.py` | Shared tool definitions | `get_current_timestamp()` |
+
+### Tutor Workflow (tutor.py) — Most Complex
+
+9-node state machine with interrupt-based human-in-the-loop:
+
+```
+initialize_session → select_next_goal → generate_starter_questions
+    → present_question [INTERRUPT] → evaluate_and_route
+        → socratic_response [INTERRUPT] → (loop back to evaluate)
+        → advance_to_next_question → (loop or mark_goal_complete)
+    → mark_goal_complete → (select_next_goal or generate_summary) → END
+```
+
+**State** (`TutorState`): messages, module context, learning goals, goal_progress, current_goal_id, current_question, understanding_trajectory, latest_evaluation.
+
+**Models** (`tutor_models.py`): `StarterQuestion`, `GeneratedQuestions`, `EvaluationResult`, `GoalSelection`, `UnderstandingPoint`, `GoalProgress`, `SessionSummary`.
+
+**Interrupt pattern**: `interrupt()` pauses graph, returns data in `__interrupt__`. API renders to client. Student responds via `Command(resume=answer)`. Graph resumes from pause point.
+
+### Async/Sync Bridging
+
+LangGraph nodes are sync, but many operations (DB, AI) are async:
+```python
+new_loop = asyncio.new_event_loop()
+try:
+    asyncio.set_event_loop(new_loop)
+    result = new_loop.run_until_complete(async_operation())
+finally:
+    new_loop.close()
+```
+This is fragile — be careful adding new async calls in graph nodes.
+
+---
+
+## AI Provisioning (ai/)
+
+### ModelConfig (ai/models.py)
+
+Reads defaults from environment variables in `provider/model-name` format:
+
+| Config Field | Env Var | Default |
+|-------------|---------|---------|
+| `default_chat_model` | `DEFAULT_CHAT_MODEL` | `openai/gpt-4o` |
+| `large_context_model` | `LARGE_CONTEXT_MODEL` | `anthropic/claude-sonnet-4-20250514` |
+| `default_embedding_model` | `DEFAULT_EMBEDDING_MODEL` | `openai/text-embedding-3-small` |
+| `default_transformation_model` | `DEFAULT_TRANSFORMATION_MODEL` | Falls back to chat |
+| `default_tts_model` | `DEFAULT_TTS_MODEL` | `openai/tts-1` |
+| `default_stt_model` | `DEFAULT_STT_MODEL` | `openai/whisper-1` |
+| `default_tools_model` | `DEFAULT_TOOLS_MODEL` | Falls back to chat |
+
+### ModelManager (ai/models.py)
+
+Factory for model provisioning via Esperanto:
+- `get_model(spec, model_type)` — Get model by provider/name spec
+- `get_default_model(model_type)` — Get default with fallback chain
+- `get_embedding_model()`, `get_speech_to_text()`, `get_text_to_speech()`
+- `refresh_config()` — Force reload from environment
+- Global singleton: `model_manager`
+
+### provision_langchain_model() (ai/provision.py)
+
+Smart model selection for LangGraph:
+- If tokens > 105,000 → use `large_context_model`
+- Elif `model_id` specified → use that model
+- Else → use default for type
+- Returns LangChain-compatible model via `.to_langchain()`
+
+---
+
+## Database (database/)
+
+### Repository Functions (repository.py)
+
+All async, each opens/closes its own connection (no pooling):
+
+| Function | Purpose |
+|----------|---------|
+| `repo_query(query, vars)` | Execute SurrealQL with parameters |
+| `repo_create(table, data)` | Insert with auto-timestamps |
+| `repo_insert(table, data_list)` | Bulk insert |
+| `repo_upsert(table, id, data)` | Create-or-update with MERGE |
+| `repo_update(table, id, data)` | Update with auto-timestamp |
+| `repo_delete(record_id)` | Delete by RecordID |
+| `repo_relate(source, relationship, target)` | Create graph edge |
+
+Helpers: `parse_record_ids(obj)` recursively converts RecordID to string. `ensure_record_id(value)` coerces to RecordID.
+
+### Migrations (async_migrate.py)
+
+`AsyncMigrationManager` loads hard-coded migration files from `backpack/database/migrations/` (currently 1-17 registered, 18 exists on disk). Runs on API startup via lifespan. Version tracked in `_sbl_migrations` table. Adding a new migration requires both creating the `.surrealql` file AND adding the `AsyncMigration.from_file()` line in `async_migrate.py` — files are not auto-discovered.
+
+---
+
+## Utilities (utils/)
+
+| Module | Key Functions |
+|--------|---------------|
+| `context_builder.py` | `ContextBuilder` — assembles context from sources/notes/insights with token budgeting |
+| `chunking.py` | `chunk_text()` — content-type aware splitting (HTML/Markdown/plain), 1500 char chunks |
+| `embedding.py` | `generate_embedding()` — chunk → embed → mean pool for long text |
+| `text_utils.py` | `clean_thinking_content()` — strip `<think>` tags; `remove_non_printable()` |
+| `token_utils.py` | `token_count()` — tiktoken `o200k_base` encoding (fallback: words * 1.3) |
+| `version_utils.py` | `get_version_from_github()`, `compare_versions()` |
+
+---
+
+## Quirks & Gotchas
+
+1. **Embedding is not automatic on Source.save()** — must call `vectorize()` explicitly; Note.save() does auto-embed
+2. **Async loop workaround in graph nodes** — fragile `asyncio.new_event_loop()` pattern; don't nest
+3. **105k token threshold is hard-coded** — not configurable; triggers large_context_model upgrade
+4. **No connection pooling** — each `repo_*` call opens/closes connection; fine for HTTP, slow for bulk
+5. **Polymorphic get() needs subclass imported** — `ObjectModel.get("source:xxx")` fails if Source not imported
+6. **Hard-coded migration list** — adding migration requires updating `async_migrate.py` code
+7. **Profile snapshots** — podcast episode/speaker profiles stored as dicts, not references; updates don't affect past episodes
+8. **SqliteSaver shared** — all LangGraph workflows use same checkpoint file
+9. **Config cached** — `ModelManager` caches `ModelConfig`; call `refresh_config()` after env changes
+10. **Tutor interrupt flow** — graph pauses at `interrupt()`, API must handle `Command(resume=...)` to continue
