@@ -1,190 +1,229 @@
 # Prompts Module
 
-Jinja2 prompt templates for multi-provider AI workflows in Open Notebook.
+Jinja2 prompt templates for all AI workflows in Backpack. Loaded at runtime via `ai_prompter.Prompter`.
 
-## Purpose
+## Template Inventory
 
-Centralized prompt repository using `ai_prompter` library to:
-1. Separate prompt engineering from Python application logic
-2. Provide reusable Jinja2 templates with variable injection
-3. Support multi-stage prompt chains (orchestrated by LangGraph workflows)
-4. Ensure consistency across similar workflows (chat, search, content generation)
+17 templates across 7 workflow directories:
 
-## Architecture Overview
+| Directory | Templates | Used By | Purpose |
+|-----------|-----------|---------|---------|
+| `ask/` | 3 | `graphs/ask.py` | Multi-stage search synthesis |
+| `chat/` | 1 | `graphs/chat.py` | General conversational agent |
+| `source_chat/` | 1 | `graphs/source_chat.py` | Source-focused conversation |
+| `module/` | 3 | `graphs/module.py` | Generate module name, overview, learning goals |
+| `tutor/` | 6 | `graphs/tutor.py` | Socratic tutoring (questions, evaluation, responses) |
+| `transformation/` | 1 | `graphs/transformation.py` | Merge chunked transformation results |
+| `podcast/` | 2 | `podcast_creator` library (external) | Podcast outline and transcript generation |
 
-**Template Organization by Workflow**:
-- **`ask/`**: Multi-stage search synthesis (entry → query_process → final_answer)
-- **`chat/`**: Conversational agent with notebook context (system prompt only)
-- **`source_chat/`**: Source-focused chat with insight injection (system prompt only)
-- **`podcast/`**: Podcast generation pipeline (outline → transcript)
+---
 
-**Rendering Pattern** (all workflows):
+## How Templates Are Loaded
+
 ```python
 from ai_prompter import Prompter
 
-# Load template + render with variables
-system_prompt = Prompter(prompt_template="ask/entry", parser=parser).render(
-    data=state
-)
+# Basic rendering
+prompt = Prompter(prompt_template="chat/system").render(data=state_dict)
 
-# Then invoke LLM
-model = await provision_langchain_model(system_prompt, ...)
-response = await model.ainvoke(system_prompt)
+# With PydanticOutputParser (auto-injects {{ format_instructions }})
+parser = PydanticOutputParser(pydantic_object=Strategy)
+prompt = Prompter(prompt_template="ask/entry", parser=parser).render(data=state_dict)
 ```
 
-See detailed workflow integration in `open_notebook/graphs/CLAUDE.md` for how each template fits into chat.py, ask.py, source_chat.py.
+**Path syntax**: Forward slashes, no `.jinja` extension. `"ask/entry"` → `prompts/ask/entry.jinja`
 
-## Prompt Engineering Patterns
+**Variable injection**: All keys in `data=dict` become template variables. `data={"question": "..."}` → `{{ question }}` in template.
 
-### 1. Multi-Stage Chain (Ask Workflow)
+---
 
-Three-template chain for intelligent search:
+## Template Reference
 
-```
-entry.jinja (user question → search strategy)
-    ↓
-query_process.jinja (run each search, generate sub-answer)
-    ↓ (multiple parallel)
-final_answer.jinja (synthesize all results into final response)
-```
+### ask/ — Search Synthesis Pipeline
 
-**Key pattern**: `entry.jinja` generates JSON-structured reasoning (via PydanticOutputParser). Each `query_process.jinja` invocation receives one search term + retrieved results. `final_answer.jinja` combines all answers with proper source citation.
+Three-stage chain: strategy → parallel search → synthesis.
 
-### 2. Conditional Variable Injection (Podcast Workflow)
+#### `ask/entry.jinja`
+**Variables**: `question`
+**Parser**: `PydanticOutputParser(Strategy)` — auto-injects `{{ format_instructions }}`
+**Output**: JSON with `reasoning` + list of `Search` objects (term + instructions)
+**Node**: `call_model_with_messages`
 
-Templates accept optional variables for context assembly:
+#### `ask/query_process.jinja`
+**Variables**: `question`, `term`, `instructions`, `results` (list of content items), `ids` (available IDs)
+**Output**: Text sub-answer with `[document_id]` citations
+**Node**: `process_search` (parallel via Send())
 
+#### `ask/final_answer.jinja`
+**Variables**: `question`, `strategy`, `answers` (concatenated sub-answers)
+**Output**: Text with `[source:id]` / `[note:id]` / `[insight:id]` citations
+**Node**: `write_final_answer`
+
+**Citation pattern**: All three templates heavily emphasize "Do not make up document IDs" — repeated multiple times with examples. IDs must include type prefix (e.g., `[source:abc123]`).
+
+---
+
+### chat/ — Conversational Agent
+
+#### `chat/system.jinja`
+**Variables**: `notebook` (optional module context), `context` (optional user-selected context)
+**Output**: System prompt text
+**Node**: `call_model_with_messages`
+
+Uses conditional blocks for optional context injection. Persona: "cognitive study assistant."
+
+---
+
+### source_chat/ — Source-Focused Chat
+
+#### `source_chat/system.jinja`
+**Variables**: `source` (dict: `id`, `title`, `topics`), `context` (optional source content/insights)
+**Output**: System prompt text
+**Node**: `call_model_with_source_context`
+
+Uses `{{ source.topics | join(", ") }}` for list formatting. Persona: "specialized research assistant focused on a specific source."
+
+---
+
+### module/ — Module Content Generation
+
+#### `module/name.jinja`
+**Variables**: `sources` (list of dicts with `title`, `content`)
+**Output**: Single title, under 5 words
+**Node**: `generate_module_name`
+
+#### `module/overview.jinja`
+**Variables**: `name`, `description` (optional), `sources` (list), `notes` (list, optional — content truncated to 200 chars)
+**Output**: 3–4 sentence summary (hard limit: 4 sentences)
+**Node**: `generate_overview`
+
+#### `module/learning_goals.jinja`
+**Variables**: `name`, `description` (optional), `sources` (list), `notes` (list, optional)
+**Output**: JSON with 3–5 learning goals, each with `description` (action verb), `takeaways`, `competencies`
+**Node**: `generate_learning_goals`
+
+---
+
+### tutor/ — Socratic Tutoring System
+
+6 templates powering the interrupt-based tutoring workflow.
+
+#### `tutor/system.jinja`
+**Variables**: `module_name` (optional), `current_goal` (dict: `description`, `mastery_criteria`)
+**Output**: System prompt defining Socratic tutor persona
+**Used as context** for all other tutor nodes
+
+#### `tutor/generate_questions.jinja`
+**Variables**: `goal` (dict: `description`, `mastery_criteria`), `module_name` (optional), `context_chunks` (list: `id`, `content`)
+**Output**: JSON — `reasoning` + `questions` array (each: `question_text`, `target_concepts`, `expected_depth`)
+**Node**: `generate_starter_questions`
+**Parsing**: Manual via `extract_json_from_response()` (strips markdown code fences)
+
+Expected depths: `"recall"`, `"understand"`, `"apply"`, `"analyze"` — questions progress in difficulty.
+
+#### `tutor/evaluate_understanding.jinja`
+**Variables**: `goal` (dict), `question` (dict: `question_text`, `target_concepts`, `expected_depth`), `student_response`, `context_chunks` (optional)
+**Output**: JSON — `score` (0.0–1.0), `notes`, `misconceptions` (array), `breakthroughs` (array)
+**Node**: `evaluate_and_route`
+**Parsing**: Manual via `extract_json_from_response()`
+
+Score thresholds: 0.7+ = resolved (can advance), <0.3 = significant misconceptions, 0.85+ = excellent.
+
+#### `tutor/socratic_response.jinja`
+**Variables**: `goal`, `current_question` (dict: `question_text`), `student_response`, `understanding_score` (float), `misconceptions` (list), `breakthroughs` (list), `context_chunks` (optional)
+**Output**: Text — one paragraph max, ends with focused follow-up question
+**Node**: `socratic_response`
+
+Key rules: acknowledge what's RIGHT first, ask guiding questions (never give direct answers), cite materials as `[source_id]`.
+
+#### `tutor/select_next_goal.jinja`
+**Variables**: `completed_goals` (list), `remaining_goals` (list: `id`, `description`)
+**Output**: JSON — `selected_goal_id`, `reasoning`
+**Status**: **UNUSED** — exists on disk but `select_next_goal()` in tutor.py uses hardcoded order-based selection instead. TODO in code to implement embedding-based similarity.
+
+#### `tutor/summary.jinja`
+**Variables**: `module_name`, `summary` (dict with stats: `total_duration_seconds`, `goals_completed`, `total_goals`, `total_questions`, `total_exchanges`, `average_initial_understanding`, `average_final_understanding`, `understanding_improvement`, `goal_summaries`, `key_misconceptions`, `key_breakthroughs`)
+**Output**: 2–3 paragraph narrative (positive tone, shown to student)
+**Node**: `generate_summary`
+
+Uses Jinja2 math: `{{ (value * 100) | round(1) }}%`, `{{ (seconds / 60) | round(1) }} minutes`.
+
+---
+
+### transformation/ — Chunked Content Merging
+
+#### `transformation/merge.jinja`
+**Variables**: `num_parts`, `title` (transformation name), `prompt` (original instructions)
+**Output**: Consolidated text from multiple chunk results
+**Used by**: `_build_merge_prompt()` in `graphs/transformation.py`
+
+Called when source exceeds 90k tokens — chunks are transformed in parallel, then this template merges partial results into a unified output.
+
+---
+
+### podcast/ — Podcast Generation
+
+**Note**: These templates are called by the external `podcast_creator` library, not directly by LangGraph graphs.
+
+#### `podcast/outline.jinja`
+**Variables**: `briefing`, `context` (string OR list — conditional handling), `speakers` (list: `name`, `backstory`, `personality`), `num_segments`, `format_instructions`
+**Output**: JSON with `segments` array (each: `name`, `description`, `size`)
+
+#### `podcast/transcript.jinja`
+**Variables**: `briefing`, `context`, `speakers`, `outline`, `transcript` (existing so far), `is_final` (bool), `segment`, `speaker_names`, `turns` (min exchanges), `format_instructions`
+**Output**: JSON with `transcript` array (each: `speaker`, `dialogue`)
+
+Both include extended thinking support: reasoning in `<think>` tags, final JSON outside.
+
+---
+
+## Patterns for Writing New Templates
+
+### Conditional Context Injection
 ```jinja
-{% if notebook %}
-# PROJECT INFORMATION
-{{ notebook }}
-{% endif %}
-
 {% if context %}
 # CONTEXT
 {{ context }}
 {% endif %}
 ```
+`{% if var %}` is False for `None`, `""`, `0`, `[]`, `{}`. True for any non-empty value.
 
-Enabled by Jinja2's conditional blocks. Critical for podcast outline (handles list or string context) and source_chat (injects variable notebook/insight data).
-
-### 3. Repeated Emphasis on Citation Format (Ask & Chat)
-
-All response-generating templates emphasize source citation rules:
-- Document ID syntax: `[source:id]`, `[note:id]`, `[insight:id]`
-- "Do not make up document IDs" repeated multiple times
-- Example citations provided inline
-
-**Rationale**: LLMs naturally hallucinate citations without explicit guidance; repetition + examples reduce hallucination.
-
-### 4. Format Instructions Delegation
-
-Templates accept external `{{ format_instructions }}` variable:
-
+### List Iteration
 ```jinja
-# OUTPUT FORMATTING
-{{ format_instructions }}
+{% for source in sources %}
+### {{ source.title or 'Untitled Source' }}
+{{ source.content }}
+{% endfor %}
 ```
 
-Allows caller to inject JSON schema, XML format, or other output constraints without modifying template. Decouples prompt from output format evolution.
+### Structured JSON Output
+For templates expecting JSON responses, two approaches exist:
+1. **PydanticOutputParser**: Pass `parser=` to Prompter, template uses `{{ format_instructions }}`
+2. **Manual extraction**: Template describes JSON format inline, code uses `extract_json_from_response()` to strip markdown fences
 
-### 5. JSON Output with Extended Thinking Support
-
-Podcast templates include extended thinking pattern:
-
-```jinja
-IMPORTANT OUTPUT FORMAT:
-- If you use extended thinking with <think> tags, put ALL your reasoning inside <think></think> tags
-- Put the final JSON output OUTSIDE and AFTER any <think> tags
+### Citation Format
+All user-facing response templates use:
 ```
-
-Guides models with extended thinking capability to separate reasoning from output (cleaner parsing downstream).
-
-## File Catalog
-
-**`ask/` - Search Synthesis Pipeline**:
-- **entry.jinja**: Analyzes user question, generates search strategy with JSON output (term + instructions per search)
-- **query_process.jinja**: Accepts one search term + retrieved results, generates sub-answer with citations
-- **final_answer.jinja**: Combines all sub-answers into coherent final response, enforces source citation
-
-**`chat/` - Conversational Agent**:
-- **system.jinja**: Single system prompt for general chat. Uses conditional blocks for optional notebook context. Emphasizes citation format.
-
-**`source_chat/` - Source-Focused Chat**:
-- **system.jinja**: Single system prompt for source-specific discussion. Injects source metadata (ID, title, topics) + selected context. Conditional blocks for optional notebook/context data.
-
-**`podcast/` - Podcast Generation**:
-- **outline.jinja**: Takes briefing + content + speaker profiles (list support via Jinja2 for-loop). Generates JSON outline with segments (name, description, size).
-- **transcript.jinja**: Takes outline + segment index + optional existing transcript. Generates JSON dialogue array (speaker name + dialogue). Iterates speakers with for-loop.
-
-## Key Dependencies
-
-- **ai_prompter**: Prompter class for Jinja2 template rendering with optional OutputParser binding
-- **Jinja2** (transitive via ai_prompter): Template syntax (if/for, filters, variable interpolation)
-- **No external AI calls**: Templates are pure text; LLM invocation happens in calling code (graphs/)
-
-## How to Add New Template
-
-1. **Create subdirectory** in `prompts/` matching workflow name (e.g., `prompts/new_workflow/`)
-2. **Define .jinja file(s)** with Jinja2 syntax:
-   - Use `{{ variable_name }}` for scalar injection
-   - Use `{% if condition %} ... {% endif %}` for optional sections
-   - Use `{% for item in list %} ... {% endfor %}` for iteration
-3. **Document template variables** as inline comments (follow existing templates)
-4. **Reference in calling code** (graphs/):
-   ```python
-   from ai_prompter import Prompter
-   prompt = Prompter(prompt_template="new_workflow/template_name").render(data=context_dict)
-   ```
-5. **If structured output needed**: Pass `parser=PydanticOutputParser(...)` to Prompter
-6. **Document in graphs/CLAUDE.md** how new template fits into workflow chain
-
-## Important Quirks & Gotchas
-
-1. **Template path syntax**: Uses forward slashes without `.jinja` extension in Prompter. `"ask/entry"` maps to `/prompts/ask/entry.jinja`
-2. **Variable key convention**: All data passed as `data=dict` arg to `.render()`. Template accesses variables directly (e.g., `{{ question }}`). Ensure dict keys match template variable names.
-3. **OutputParser binding**: When using PydanticOutputParser, Prompter auto-injects `{{ format_instructions }}` into template. If template doesn't have this placeholder, parser is ignored.
-4. **Jinja2 whitespace sensitivity**: Template indentation doesn't affect output, but raw newlines do. Use explicit `\n` or trim filters if output formatting matters.
-5. **Conditional blocks are loose**: Jinja2 if-condition evaluates any truthy value (non-empty string, list, dict). `{% if variable %}` is False for empty string/"" but True for any non-empty content.
-6. **For-loop list assumption**: Templates using `{% for item in list %}` don't validate list type. If caller passes string instead of list, iteration happens character-by-character (bug risk).
-7. **No template composition/inheritance**: Templates are flat (no `{% extends %}` or `{% include %}`). Each workflow keeps templates independent to avoid coupling.
-8. **Citation ID format is caller's responsibility**: Templates emphasize citation rules but don't validate. If caller returns wrong ID format, template can't catch it upstream.
-9. **Parser extraction happens post-render**: OutputParser.parse() is called AFTER `.render()` returns string. If template has syntax errors, render fails before parsing logic runs.
-10. **Template cache**: Prompter likely caches loaded templates. File edits require app restart if using cached instance.
-
-## Testing Patterns
-
-**Manual render test**:
-```python
-from ai_prompter import Prompter
-
-prompt = Prompter(prompt_template="ask/entry").render(
-    data={"question": "What is RAG?"}
-)
-print(prompt)  # Inspect Jinja2 output before sending to LLM
+[document_id]  →  e.g., [source:abc123], [note:xyz789], [insight:pqr456]
 ```
+Always include type prefix. Repeat "do not make up IDs" for LLM compliance.
 
-**With parser**:
-```python
-from pydantic import BaseModel
-from langchain_core.output_parsers.pydantic import PydanticOutputParser
+---
 
-class Strategy(BaseModel):
-    reasoning: str
-    searches: list
+## Adding a New Template
 
-parser = PydanticOutputParser(pydantic_object=Strategy)
-prompt = Prompter(prompt_template="ask/entry", parser=parser).render(
-    data={"question": "..."}
-)
-# prompt now includes {{ format_instructions }} substitution
-```
+1. Create `prompts/workflow_name/template.jinja`
+2. Use `{{ variable }}` for injection, `{% if %}` for optional sections, `{% for %}` for lists
+3. Reference in graph code: `Prompter(prompt_template="workflow_name/template").render(data=state)`
+4. If structured output: pass `parser=PydanticOutputParser(...)` to Prompter
+5. Document variables and output format in this file
+6. Update `graphs/CLAUDE.md` prompt template reference table
 
-**Integration test** (invoke full graph):
-See `open_notebook/graphs/ask.py` for how entry.jinja is invoked inside ask_graph workflow.
+## Quirks
 
-## Reference Documentation
-
-- **Jinja2 syntax guide**: See existing templates for for-loop, if-conditional, variable interpolation patterns
-- **Graph integration**: `open_notebook/graphs/CLAUDE.md` documents which template is used in which workflow
-- **Sub-directory CLAUDE.md files**: `ask/CLAUDE.md`, `chat/CLAUDE.md`, `podcast/CLAUDE.md` (if created) provide template-specific implementation notes
+- **Template path has no extension**: `"ask/entry"` not `"ask/entry.jinja"`
+- **No template inheritance**: All templates are flat (no `{% extends %}` or `{% include %}`)
+- **select_next_goal.jinja is unused**: Code uses order-based selection; template exists for future embedding-based approach
+- **Podcast templates called externally**: By `podcast_creator` library, not LangGraph — different invocation pattern
+- **Hot reload**: Template changes picked up on next `Prompter().render()` call (no app restart needed for prompt edits)
+- **For-loop type safety**: Templates don't validate input types — passing a string where a list is expected iterates character-by-character
