@@ -50,14 +50,21 @@ Tutor session
 
 ### What the prompt does (`prompts/module/learning_goals.jinja`)
 
-The LLM acts as an instructional designer. It reads all module sources and notes, identifies the lecture's narrative arc, then generates 3–5 learning goals. Each goal has:
+The LLM acts as an instructional designer. It reads all module sources and notes, classifies them, then generates 2–4 learning goals. Each goal has:
 
 | Field | Purpose | Used by tutor |
 |-------|---------|---------------|
 | `description` | Action-verb goal statement | Goal header, session messages |
-| `anchor_examples` | Named lecture examples grounding this goal | Seeds `generate_anchor_problem` |
-| `takeaways` | Dense prose "answer key" (2–4 paragraphs, NOT bullets) | `explain` and `macro_hint` modes |
-| `competencies` | 3–5 sequential, testable rubric criteria | Scored each exchange by `evaluate_understanding` |
+| `anchor_examples` | Named lecture examples grounding this goal (notes source origin) | Seeds `generate_anchor_problem` |
+| `takeaways` | Dense prose "answer key" (2–4 paragraphs, NOT bullets) | `explain_competency` and `macro_hint` modes |
+| `competencies` | 2–4 sequential, testable rubric criteria | Scored each exchange by `evaluate_understanding` |
+
+### Prompt steps (in order)
+
+1. **Step 0 — Source triage**: LLM classifies every source as *primary* (lecture slides, transcripts, chapters) or *supplementary* (readings, papers, optional material) based on title keywords and content structure.
+2. **Step 1 — Narrative arc**: Identifies the sequence of ideas from **primary sources only** — so goal structure is driven by the lecture, not whichever reading has the most tokens.
+3. **Step 2 — Coverage check**: Before generating goals, LLM must verify every source (primary and supplementary) will appear in at least one goal's `anchor_examples` or `takeaways`. Gaps get folded into existing goals or trigger a new goal.
+4. **Step 3 — Goal generation**: Produces 2–4 goals. `anchor_examples` notes which source each example comes from.
 
 ### Critical constraint on competencies
 Competencies must be **sequential** — each building on the previous — so they map onto steps of a single worked problem:
@@ -111,35 +118,55 @@ mark_goal_complete
 
 | Mode | Who it's for | When | Length | LLM call? |
 |------|-------------|------|--------|-----------|
-| `open` | Student | First turn on each goal | 2-3 sentences | No — delivers `opening_framing` |
-| `probe` | Evaluator (to get more signal) | Response too thin/ambiguous to score | 1 sentence | No — delivers `probe_question` |
-| `nudge` | Student | Weakest competency ≥ 0.55 | 1-2 sentences | Yes |
-| `socratic` | Student | Clear gap, productive angle exists | 2-3 sentences | Yes |
-| `macro_hint` | Student | Probe space exhausted on factual recall gap | 2 sentences | Yes |
-| `explain` | Student | `give_up` or safety-net trigger | 2-3 paragraphs | Yes |
+| `open` | Student | First turn on each goal (brain dump) | 2-3 sentences | No — delivers `opening_framing` |
+| `probe` | Evaluator (to get more signal) | Response too thin/ambiguous to score **active competency** | 1 sentence | No — delivers `probe_question` |
+| `nudge` | Student | Active competency score ≥ 0.55 | 1-2 sentences | Yes |
+| `socratic` | Student | Clear gap on active competency, productive angle exists | 2-3 sentences | Yes |
+| `macro_hint` | Student | Probe space exhausted on factual recall gap in active competency | 2 sentences | Yes |
+| `explain_competency` | Student | Stuck on **this one competency** — explain just it, then advance | 1 paragraph | Yes |
 
-**Probe vs. nudge distinction**: `probe` is for the evaluator's benefit ("I need more signal to score this"). It can incidentally hint — that's fine. `nudge` is a deliberate small push for the student.
+**Probe must be specific**: probe_question should name what to demonstrate ("Can you write out the PMF?"), not ask generically ("say more"). `nudge` is a deliberate small push.
+
+**`explain` mode removed**: Replaced by `explain_competency` which is scoped to one competency. After explaining, the tutor advances to the next pending competency — students always get to demonstrate remaining competencies.
+
+### Per-competency lifecycle
+
+Each competency progresses through: `pending` → `active` → `mastered` (score ≥ 0.65) or `explained`
+
+- **`pending`**: Not yet focused on. Default assumption is student understands — no score assigned.
+- **`active`**: Currently being probed. Evaluator scores this in depth.
+- **`mastered`**: Score ≥ 0.65 achieved through probing or spontaneous demonstration. Stagnation at score ≥ 0.65 also triggers mastery (not explain).
+- **`explained`**: Student couldn't demonstrate — tutor explained it and advanced.
+
+**Fast-track**: When a competency is activated, if it already has incidental evidence (score ≥ 0.5 from prior exchanges), it opens in `nudge` mode instead of `socratic`.
+
+**hint_count**: Each `macro_hint` on a competency increments its `hint_count`. The evaluator applies a recall-vs-conceptual scoring penalty: recall hints (forgot formula but used it expertly) → mild penalty; conceptual hints (needed the relationship explained) → larger penalty.
+
+Goal completes when all competencies are `mastered` or `explained`.
+
+**Incidental scoring (upside-only)**: If a student spontaneously demonstrates a `pending` competency well (score ≥ 0.5), it gets recorded. If they don't mention it, it stays `pending` — omission is not evidence of a gap.
 
 ### Evaluator meta-decision (`suggested_next_action`)
 
-Before scoring competencies, the evaluator assesses the conversation history and sets:
+Before scoring, the evaluator decides for the **active competency**:
 
 | Value | When | Key heuristic |
 |-------|------|---------------|
-| `"probe"` | Response too vague to score, and a new angle exists | Has a genuinely different framing not yet tried? |
-| `"macro_hint"` | Same factual gap probed 2+ times from different angles, no progress | Recall gap (formula/definition) vs. reasoning gap |
-| `"give_up"` | Student can't reason about concept at all | Would more probing ever help? |
+| `"probe"` | Response too vague to score active competency, specific new angle exists | Must be specific: name what to demonstrate |
+| `"macro_hint"` | Same factual gap on active competency probed 2+ times, no progress | Recall gap vs. reasoning gap |
+| `"explain_competency"` | Student can't reason about this specific competency at all | Would more probing ever help on THIS one? |
+| `"advance"` | Active competency clearly mastered | Explicitly move to next |
 | `"continue"` | Normal flow | Default — use score-based routing |
 
-**Probe space exhaustion heuristic**: First "I don't know" → probe a different angle. After 2+ different angles with no progress → probe space exhausted → `macro_hint` or `give_up`.
+**Context gap vs. knowledge gap**: If student says "I don't remember the scenario" — that's a context gap, not a knowledge gap. Restate the scenario; don't use `macro_hint` or `explain_competency`.
 
 ### Exit criteria (how a goal ends)
 
-A goal completes via `mark_goal_complete` in three ways:
+A goal completes via `mark_goal_complete` when:
 
-1. **Mastery** — `is_resolved: true` from evaluator (all competencies ≥ 0.7)
-2. **Explain acknowledged** — after `explain` mode, next evaluation immediately routes to `mark_goal_complete` (the `tutor_mode == "explain"` check in `evaluate_and_update_model`)
-3. **Safety net** — `exchanges_on_goal ≥ 6` OR `turns_since_last_progress ≥ 3` → forces `explain` mode → then (2)
+1. **All competencies mastered** — every competency reaches score ≥ 0.65
+2. **All competencies addressed** — each is either `mastered` or `explained` (after `explain_competency` advances through them all)
+3. **Safety net** — `total_exchanges_on_goal ≥ 12` → forces `explain_competency` on remaining competencies → complete
 
 The session ends when `check_more_goals()` finds no unfinished goals → `generate_summary`.
 
@@ -147,10 +174,11 @@ The session ends when `check_more_goals()` finds no unfinished goals → `genera
 
 | Constant | Value | Location |
 |----------|-------|----------|
-| `NUDGE_THRESHOLD` | 0.55 | `tutor.py` line ~46 |
-| `MAX_EXCHANGES_BEFORE_EXPLAIN` | 6 | `tutor.py` line ~45 |
-| Stagnation | 3 turns no improvement | `evaluate_and_update_model` routing |
-| Mastery threshold | 0.7 per competency | `evaluate_and_update_model` + eval prompt |
+| `NUDGE_THRESHOLD` | 0.55 | `tutor.py` |
+| `MASTERY_THRESHOLD` | 0.65 | `tutor.py` |
+| `MAX_ENCOUNTERS_PER_COMPETENCY` | 3 | `tutor.py` (focused exchanges before per-competency explain) |
+| `MAX_TOTAL_EXCHANGES_PER_GOAL` | 12 | `tutor.py` (safety net) |
+| Per-competency stagnation | encounters ≥ 3 AND turns_since_progress ≥ 2 | `evaluate_and_update_model` routing — but if score ≥ 0.65, masters instead of explaining |
 
 ---
 
@@ -177,11 +205,16 @@ goal_contexts: Dict[str, List]      # Pre-fetched vector search results per goal
 # Per-goal state (reset by select_next_goal)
 anchor_problem: Optional[str]       # Multi-step scenario for current goal
 opening_framing: Optional[str]      # Natural intro line ("Let's work through...")
-exchanges_on_goal: int              # Resets to 0 each new goal
-tutor_mode: str                     # "open"|"probe"|"nudge"|"socratic"|"macro_hint"|"explain"
+exchanges_on_goal: int              # Resets to 0 each new goal (kept for backward compat)
+total_exchanges_on_goal: int        # Same counter used for safety-net limit
+tutor_mode: str                     # "open"|"probe"|"nudge"|"socratic"|"macro_hint"|"explain_competency"
 probe_question: Optional[str]       # Set by evaluator when probe action chosen
 
-# Student model (per goal, accumulates within goal)
+# Per-competency lifecycle tracking (reset by select_next_goal)
+competency_statuses: List[Dict]     # [{competency, status, score, evidence, gap, hypotheses, encounters, turns_since_progress}]
+active_competency_index: int        # -1 = brain-dump/open mode; 0..N-1 = focused on that competency
+
+# Student model (per goal, derived from competency_statuses for backward compat)
 student_model: Dict[str, Dict]      # See structure below
 
 # Conversation
@@ -238,7 +271,7 @@ understanding_trajectory: List      # Timestamped score snapshots across all goa
 | `backpack/graphs/tutor.py` | Graph nodes, routing logic, state machine | Adding nodes, changing routing thresholds, fixing bugs in evaluate/route logic |
 | `backpack/graphs/tutor_models.py` | Pydantic models for LLM structured outputs | Adding fields to EvaluationResult, CompetencyScore, etc. |
 | `backpack/graphs/module.py` | Module content generation graph | Changing how goals/names/overviews are generated from sources |
-| `api/routers/tutor.py` | REST API endpoints for tutor sessions | Adding/changing API fields, session creation, trajectory endpoint |
+| `api/routers/tutor.py` | REST API endpoints for tutor sessions | Adding/changing API fields, session creation, trajectory endpoint, debug endpoint |
 | `backpack/domain/module.py` | Module/LearningGoal domain models + DB | Adding fields to LearningGoal that persist to DB |
 
 ### Tests
@@ -269,9 +302,13 @@ understanding_trajectory: List      # Timestamped score snapshots across all goa
 - If adding new action types, also update `EvaluationResult.suggested_next_action` Literal in `tutor_models.py` and add routing branch in `evaluate_and_update_model`
 
 ### Change competency scoring thresholds
-- `NUDGE_THRESHOLD` and `MAX_EXCHANGES_BEFORE_EXPLAIN` are at the top of `tutor.py`
-- Mastery threshold (0.7) is in `evaluate_and_update_model` (Python) and mentioned in `evaluate_understanding.jinja` (must match)
-- Stagnation turns (3) is in the routing block of `evaluate_and_update_model`
+- `NUDGE_THRESHOLD`, `MASTERY_THRESHOLD`, `MAX_ENCOUNTERS_PER_COMPETENCY`, `MAX_TOTAL_EXCHANGES_PER_GOAL` are constants at the top of `tutor.py`
+- Mastery threshold (0.65) is in Python constants and referenced in `evaluate_understanding.jinja` (must match)
+- Stagnation: encounters ≥ 3 AND turns_since_progress ≥ 2 → explain (but score ≥ 0.65 overrides to mastery)
+
+### Export session data
+- `GET /tutor/sessions/{id}/export` returns full conversation, per-goal competency lifecycle snapshots, trajectory, student model
+- Competency lifecycle is preserved per completed goal in `goal_progress[goal_id]["competency_statuses"]`
 
 ### Change learning goal structure (add a field)
 1. Add field to `GeneratedLearningGoal` in `backpack/graphs/module.py`
@@ -284,7 +321,21 @@ understanding_trajectory: List      # Timestamped score snapshots across all goa
 
 ## Part 6: Debugging
 
-All evaluation decisions are logged. Run with `LOGURU_LEVEL=DEBUG` to see per-competency detail:
+### In-app debug panel
+
+Click the **bug icon** (🐛) in the try-tutor page header to open a live debug panel alongside the chat. It calls `GET /tutor/sessions/{id}/debug` after each exchange and displays:
+
+- **Tutor mode badge** — color-coded (open=slate, probe=yellow, nudge=orange, socratic=blue, macro_hint=red, explain=green)
+- **Exchange count** and stagnation turns
+- **Evaluator rationale** (`action_rationale`) and notes (`evaluation_notes`) from the last eval
+- **Per-competency cards** — score bar, gap text, hypotheses with confidence badges, collapsible evidence log (last 3 entries); active probe target highlighted with a target icon
+- **Confirmed knowledge** list
+
+Relevant files: `frontend/src/components/tutor/TutorDebugPanel.tsx`, `api/routers/tutor.py` (`DebugStateResponse` + `get_debug_state`), `frontend/src/lib/hooks/use-tutor.ts` (`latestDebugInfo`).
+
+### Log-level debugging
+
+All evaluation decisions are also logged. Run with `LOGURU_LEVEL=DEBUG` to see per-competency detail:
 
 ```
 INFO  tutor_turn in mode=socratic for goal=goal:abc123
@@ -305,3 +356,7 @@ INFO  Macro hint triggered: Probed Poisson PMF from 3 angles...
 |---------|-------------|
 | v1 | 10→7 nodes. Replaced question list with one anchor problem per goal. Added student model with evidence accumulation and hypotheses. |
 | v2 | Evaluator-driven routing via `suggested_next_action`. Added `macro_hint` mode. Fixed probe loop (probe space exhaustion heuristic). Opening framing no longer assumes lecture recall. Strengthened nudge/socratic acknowledgment. Added per-competency debug logging. |
+| v3 | Improved learning goal generation prompt: added source triage step (AI classifies primary vs supplementary), scoped narrative arc to primary sources, added coverage check step to ensure every source appears in at least one goal. Goal count expanded to 3–6. `anchor_examples` now notes source origin. |
+| v4 | Added in-app debug panel to try-tutor page. New `GET /tutor/sessions/{id}/debug` endpoint exposes tutor mode, exchanges, student model (competency scores, evidence, hypotheses, gap, active probe target), and evaluator rationale. Frontend: `TutorDebugPanel.tsx` component, `latestDebugInfo` in `use-tutor.ts`, bug-icon toggle button in page header. |
+| v5 | Per-competency flow redesign. Each competency now has a lifecycle (pending→active→mastered/explained). Tutor walks through competencies sequentially; evaluator focuses on the active one and records incidental positive evidence for others (upside-only). Replaced `explain` (per-goal) with `explain_competency` (per-competency): explains just the stuck competency then advances to the next. Removed `give_up` action. Added `advance` action. `student_model` now derived from `competency_statuses` for backward compat. Debug panel shows lifecycle badges (pending/active/mastered/explained). Exchange limits changed: 3 encounters per competency + 12 total per goal safety net (was 6 flat). Added independently-testable clarification to `learning_goals.jinja`. |
+| v6 | Probing quality overhaul: evaluator now drafts a model answer (diff) before scoring — gap descriptions are concrete and actionable. Tutor prompts explicitly tell the student what to demonstrate. Prior evidence acknowledged when activating competency with incidental score. Fast-track: competencies with score ≥ 0.5 open in nudge mode. hint_count tracking per competency + LLM-judged recall-vs-conceptual scoring penalty for macro_hints. MASTERY_THRESHOLD lowered 0.7→0.65. Stagnation at score ≥ 0.65 now masters instead of explaining (scoring bug fix). Consistency rule: positive evaluator notes must match score ≥ 0.65. Explicit surrender: "I don't know" gets one scaffolded probe before explain. Goal/competency count reduced: 3-6→2-4 goals, 3-5→2-4 competencies. competency_statuses snapshot preserved in goal_progress on goal completion. New `GET /tutor/sessions/{id}/export` endpoint returns full conversation + lifecycle data. |

@@ -9,6 +9,7 @@ import { tutorApi } from '@/lib/api/tutor'
 import {
   TutorSessionResponse,
   TutorResponsePayload,
+  TutorDebugInfo,
 } from '@/lib/types/api'
 
 interface Message {
@@ -32,6 +33,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
   const [currentGoal, setCurrentGoal] = useState<string | null>(null)
   const [goalsCompleted, setGoalsCompleted] = useState(0)
   const [goalsRemaining, setGoalsRemaining] = useState(0)
+  const [latestDebugInfo, setLatestDebugInfo] = useState<TutorDebugInfo | null>(null)
 
   // Create session mutation
   const createSessionMutation = useMutation({
@@ -75,6 +77,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     setCurrentGoal(null)
     setGoalsCompleted(0)
     setGoalsRemaining(0)
+    setLatestDebugInfo(null)
   }, [])
 
   // Send response to tutor
@@ -106,6 +109,9 @@ export function useTutor({ moduleId }: UseTutorParams) {
       }
       setMessages(prev => [...prev, tutorMessage])
 
+      // Fire-and-forget: fetch debug state after each exchange
+      tutorApi.getDebugState(sessionId).then(setLatestDebugInfo).catch(() => {})
+
       // Update session state
       setSessionPhase(response.phase)
       setCurrentGoal(response.current_goal_description)
@@ -133,6 +139,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     goalsCompleted,
     goalsRemaining,
     isSessionComplete: sessionPhase === 'session_complete',
+    latestDebugInfo,
 
     // Actions
     initializeSession,

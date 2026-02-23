@@ -4,13 +4,14 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { TutorChat } from '@/components/tutor/TutorChat'
+import { TutorDebugPanel } from '@/components/tutor/TutorDebugPanel'
 import { useTutor } from '@/lib/hooks/use-tutor'
 import { useModule } from '@/lib/hooks/use-modules'
 import { modulesApi } from '@/lib/api/modules'
 import { useModuleDraftStore } from '@/lib/stores/module-draft-store'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, CheckCircle2, Trash2, RotateCcw } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Trash2, RotateCcw, Bug } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { toast } from 'sonner'
 import {
@@ -37,6 +38,7 @@ export default function TryTutorPage() {
   const [isPublishing, setIsPublishing] = useState(false)
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
+  const [showDebug, setShowDebug] = useState(false)
   const {
     messages,
     isSending,
@@ -45,6 +47,7 @@ export default function TryTutorPage() {
     goalsCompleted,
     goalsRemaining,
     isSessionComplete,
+    latestDebugInfo,
     initializeSession,
     sendMessage,
     resetSession,
@@ -161,6 +164,14 @@ export default function TryTutorPage() {
                 {t.tutor.tryAgain}
               </Button>
               <Button
+                variant={showDebug ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowDebug(v => !v)}
+                title="Toggle agent debug panel"
+              >
+                <Bug className="h-4 w-4" />
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowDiscardDialog(true)}
@@ -185,8 +196,8 @@ export default function TryTutorPage() {
           </p>
         </div>
 
-        {/* Chat Area */}
-        <div className="flex-1 p-6 min-h-0">
+        {/* Chat + Debug Area */}
+        <div className="flex-1 p-6 min-h-0 flex gap-4">
           <TutorChat
             messages={messages}
             isSending={isSending}
@@ -197,7 +208,13 @@ export default function TryTutorPage() {
             goalsRemaining={goalsRemaining}
             isSessionComplete={isSessionComplete}
             moduleName={module.name}
+            className="flex-1 min-w-0"
           />
+          {showDebug && (
+            <div className="w-80 flex-shrink-0 min-h-0">
+              <TutorDebugPanel debugInfo={latestDebugInfo} currentGoal={currentGoal} />
+            </div>
+          )}
         </div>
       </div>
 

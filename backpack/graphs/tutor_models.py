@@ -96,14 +96,29 @@ class EvaluationResult(BaseModel):
         default_factory=list,
         description="Concepts the student demonstrated correctly",
     )
-    suggested_next_action: Literal["probe", "macro_hint", "give_up", "continue"] = Field(
+    # Active competency: focused, detailed evaluation
+    active_competency_score: Optional["CompetencyScore"] = Field(
+        default=None,
+        description="Detailed evaluation of the currently active competency being probed",
+    )
+    # Incidental observations: upside-only, for competencies the student spontaneously demonstrated
+    incidental_observations: List["CompetencyScore"] = Field(
+        default_factory=list,
+        description=(
+            "Brief positive-only scores for non-active competencies the student happened to demonstrate. "
+            "Only include if evidence is clearly positive (score >= 0.5). "
+            "Never include to record a gap or absence — omission is not evidence."
+        ),
+    )
+    suggested_next_action: Literal["probe", "macro_hint", "explain_competency", "advance", "continue"] = Field(
         default="continue",
         description=(
             "Evaluator's recommendation for what the tutor should do next. "
-            "'probe': need more signal to score. "
-            "'macro_hint': probe space exhausted on a factual gap — give the fact directly. "
-            "'give_up': student can't reason about the concept at all — explain and move on. "
-            "'continue': normal flow, use score-based routing."
+            "'probe': need more signal on the ACTIVE competency. "
+            "'macro_hint': factual gap on active competency probed 2+ times — give the fact. "
+            "'explain_competency': student can't reason about this specific competency — explain it and advance. "
+            "'advance': active competency is clearly mastered (>= 0.7) — move to next. "
+            "'continue': normal Socratic flow on the active competency."
         ),
     )
     action_rationale: Optional[str] = Field(

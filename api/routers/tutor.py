@@ -444,6 +444,62 @@ async def get_trajectory(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class DebugStateResponse(BaseModel):
+    """Debug state for inspecting tutor agent internals during a session."""
+    session_id: str
+    tutor_mode: Optional[str] = Field(None, description="Current tutor mode (open/probe/nudge/socratic/macro_hint/explain_competency)")
+    exchanges_on_goal: int = Field(0, description="Number of exchanges on current goal")
+    student_model: Optional[Dict[str, Any]] = Field(None, description="Full student model for current goal")
+    evaluation_notes: Optional[str] = Field(None, description="Evaluator notes from last exchange")
+    action_rationale: Optional[str] = Field(None, description="Evaluator rationale for chosen action")
+    latest_understanding_score: Optional[float] = Field(None, description="Overall understanding score (0-1)")
+    competency_scores: Optional[Dict[str, float]] = Field(None, description="Per-competency scores")
+    # Per-competency lifecycle tracking
+    competency_statuses: Optional[List[Dict[str, Any]]] = Field(None, description="Per-competency lifecycle status (pending/active/mastered/explained)")
+    active_competency_index: Optional[int] = Field(None, description="Index of currently active competency (-1 = brain-dump)")
+
+
+@router.get("/tutor/sessions/{session_id}/debug", response_model=DebugStateResponse)
+async def get_debug_state(session_id: str):
+    """Get the current internal agent state for debugging.
+
+    Returns tutor mode, student model (competency assessments, hypotheses, evidence),
+    and the latest evaluation output. Useful for inspecting agent behavior during a session.
+    """
+    logger.info(f"Getting debug state for session: {session_id}")
+
+    try:
+        config = {"configurable": {"thread_id": session_id}}
+        state = tutor_graph.get_state(config=RunnableConfig(**config))
+
+        if not state or not state.values:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        sv = state.values
+        current_goal_id, _ = get_current_goal_info(sv)
+        latest_eval = sv.get("latest_evaluation") or {}
+        student_model = sv.get("student_model", {})
+
+        return DebugStateResponse(
+            session_id=session_id,
+            tutor_mode=sv.get("tutor_mode"),
+            exchanges_on_goal=sv.get("exchanges_on_goal", 0),
+            student_model=student_model.get(current_goal_id) if current_goal_id else None,
+            evaluation_notes=latest_eval.get("evaluation_notes"),
+            action_rationale=latest_eval.get("action_rationale"),
+            latest_understanding_score=latest_eval.get("score"),
+            competency_scores=latest_eval.get("competency_score_dict"),
+            competency_statuses=sv.get("competency_statuses"),
+            active_competency_index=sv.get("active_competency_index"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting debug state: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/tutor/sessions/{session_id}/summary", response_model=SessionSummaryResponse)
 async def get_summary(session_id: str):
     """Get the session summary (only available when session is complete).
@@ -545,4 +601,90 @@ async def get_summary(session_id: str):
         raise
     except Exception as e:
         logger.error(f"Error getting summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SessionExportResponse(BaseModel):
+    """Full export of session data including conversation, competency lifecycle, and trajectories."""
+    session_id: str
+    module_id: str
+    module_name: str
+    phase: str
+    session_started_at: Optional[str] = None
+    messages: List[Dict[str, Any]] = Field(default_factory=list, description="Full conversation [{role, content}]")
+    learning_goals: List[Dict[str, Any]] = Field(default_factory=list)
+    goal_progress: Dict[str, Any] = Field(default_factory=dict, description="Per-goal data including competency_statuses snapshots for completed goals")
+    understanding_trajectory: List[Dict[str, Any]] = Field(default_factory=list, description="All evaluation points across the session")
+    student_model: Dict[str, Any] = Field(default_factory=dict, description="Per-goal competency assessments and hypotheses")
+    current_state: Optional[Dict[str, Any]] = Field(None, description="Live competency_statuses and active_competency_index if session in progress")
+
+
+@router.get("/tutor/sessions/{session_id}/export", response_model=SessionExportResponse)
+async def export_session(session_id: str):
+    """Export full session data for post-session analysis.
+
+    Returns the complete conversation history, per-goal competency lifecycle snapshots
+    (including scores, evidence, hypotheses, and hint counts), the full understanding
+    trajectory, and the student model. Available during and after the session.
+    """
+    logger.info(f"Exporting session data: {session_id}")
+
+    try:
+        config = {"configurable": {"thread_id": session_id}}
+        state = tutor_graph.get_state(config=RunnableConfig(**config))
+
+        if not state or not state.values:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        sv = state.values
+
+        # Convert LangChain messages to plain dicts
+        raw_messages = sv.get("messages", [])
+        messages = []
+        for msg in raw_messages:
+            if hasattr(msg, "type"):
+                role = "tutor" if msg.type == "ai" else "student"
+            else:
+                role = "unknown"
+            content = msg.content if hasattr(msg, "content") else str(msg)
+            messages.append({"role": role, "content": content})
+
+        # Determine in-progress state (competency_statuses is non-empty if goal active)
+        current_competency_statuses = sv.get("competency_statuses", [])
+        current_state = None
+        if current_competency_statuses:
+            current_state = {
+                "competency_statuses": current_competency_statuses,
+                "active_competency_index": sv.get("active_competency_index", -1),
+                "tutor_mode": sv.get("tutor_mode"),
+                "current_goal_id": sv.get("current_goal_id"),
+            }
+
+        # Determine phase
+        completed, remaining = count_goals(sv)
+        if remaining == 0 and completed > 0:
+            phase = "complete"
+        elif completed == 0 and remaining > 0:
+            phase = "in_progress"
+        else:
+            phase = "in_progress"
+
+        return SessionExportResponse(
+            session_id=session_id,
+            module_id=sv.get("module_id", ""),
+            module_name=sv.get("module_name", ""),
+            phase=phase,
+            session_started_at=sv.get("session_started_at"),
+            messages=messages,
+            learning_goals=sv.get("learning_goals", []),
+            goal_progress=sv.get("goal_progress", {}),
+            understanding_trajectory=sv.get("understanding_trajectory", []),
+            student_model=sv.get("student_model", {}),
+            current_state=current_state,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
