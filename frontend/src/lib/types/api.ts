@@ -495,6 +495,7 @@ export interface TutorDebugInfo {
   student_model: TutorStudentModel | null
   evaluation_notes: string | null
   action_rationale: string | null
+  evaluator_guidance: string | null
   latest_understanding_score: number | null
   competency_scores: Record<string, number> | null
   competency_statuses: CompetencyStatusInfo[] | null

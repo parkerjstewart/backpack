@@ -39,14 +39,93 @@ from backpack.graphs.tutor_models import (
     EvaluationResult,
     GeneratedAnchorProblem,
     ModuleExamples,
+    TangentEvaluationResult,
 )
 from backpack.utils import clean_thinking_content
 from backpack.utils.context_builder import ContextBuilder
 
-MAX_ENCOUNTERS_PER_COMPETENCY = 3   # focused exchanges on one competency before explain
-MAX_TOTAL_EXCHANGES_PER_GOAL = 12   # safety net per goal (up from 6 to accommodate per-competency flow)
-NUDGE_THRESHOLD = 0.55  # active competency score >= this → nudge instead of full Socratic
+MAX_ENCOUNTERS_PER_COMPETENCY = 10  # high safety-net only; stagnation driven by turns_since_progress
+MAX_NO_PROGRESS_TURNS = 3           # turns with no score improvement → force explain
+MAX_TOTAL_EXCHANGES_PER_GOAL = 12   # safety net per goal
+MAX_TANGENT_TURNS = 3               # consecutive tangent turns before reconnecting to problem
+NUDGE_THRESHOLD = 0.55  # active competency score >= this → nudge instead of guide
 MASTERY_THRESHOLD = 0.65
+
+
+# ============================================================================
+# Behavioral Profiles
+# ============================================================================
+
+BEHAVIORAL_PROFILES: dict[str, str] = {
+    "guide": (
+        "You are guiding the student through the problem. This is a collaborative "
+        "conversation — you can ask questions, give partial information, clarify "
+        "concepts, provide context, or scaffold their thinking. Your goal is to help "
+        "the student demonstrate and build understanding.\n"
+        "- Respond naturally — sometimes that means asking, sometimes telling, "
+        "  sometimes both in the same response\n"
+        "- If giving information, give enough to unblock them, then check understanding\n"
+        "- If asking a question, make it specific and clear about what you need "
+        "  demonstrated\n"
+        "- Follow the evaluator's suggested focus if provided\n"
+        "- If prior evidence exists, build on it — don't re-test demonstrated understanding\n"
+        "- Keep it conversational — 2-4 sentences typical, but shorter or longer as the "
+        "  exchange naturally calls for"
+    ),
+    "nudge": (
+        "The student is close — they almost have it. Give a brief, targeted push.\n"
+        "- 1-2 sentences — short reaction + one specific question or prompt\n"
+        "- Name the specific concept or formula they're missing\n"
+        "- Don't re-explain — they're almost there"
+    ),
+    "give_fact": (
+        "The student is stuck on a specific fact you've already probed from multiple "
+        "angles. Give it to them directly.\n"
+        "- State the fact matter-of-factly, then re-engage with the problem\n"
+        "- Don't ask them to recall it again — just give it and move on\n"
+        "- Check: is this a context gap (forgot the scenario) or a knowledge gap "
+        "  (forgot the formula)? If context gap, restate the scenario instead.\n"
+        "- 2-3 sentences typical"
+    ),
+    "explain": (
+        "The student is genuinely stuck on this concept. Explain it clearly and "
+        "thoroughly.\n"
+        "- Take the space you need — comprehensive is more important than brief\n"
+        "- Use Key Takeaways as your answer key, but explain conversationally\n"
+        "- Address the student's specific confusion, not just the general concept\n"
+        "- Walk through the reasoning step by step if that helps\n"
+        "- End with: \"Does that help? Any questions about this, or should we move on?\"\n"
+        "- Don't quiz them on this concept again after explaining\n"
+        "- Stay conversational — \"here's how I think about it...\" not \"the answer is...\""
+    ),
+    "transition": (
+        "The student just demonstrated mastery. Bridge to the next topic naturally.\n"
+        "- Briefly celebrate what they got right — be specific about what they demonstrated\n"
+        "- If there's a minor gap worth noting, clarify it briefly\n"
+        "- Bridge to the next topic through the problem, a conceptual connection, or "
+        "  a follow-up to what they just said\n"
+        "- Don't name the competency rubric — the student shouldn't feel like they're "
+        "  moving to a new test item\n"
+        "- 2-3 sentences typical"
+    ),
+    "tangent": (
+        "The student is asking about something that doesn't help score the active "
+        "competency. Help them directly — this is a teaching moment, not an assessment.\n"
+        "- Answer their question directly and completely\n"
+        "- Reconnect to the main problem naturally after answering\n"
+        "- Don't assess or quiz — just help\n"
+        "- 2-4 sentences typical, but take more space if the topic needs it"
+    ),
+    "opening": (
+        "This is the opening turn. Introduce the problem and invite the student's "
+        "initial thinking.\n"
+        "- Present the anchor problem scenario naturally\n"
+        "- Invite them to share what they know or how they'd approach it\n"
+        "- Casual, welcoming — don't quiz immediately\n"
+        "- Use the opening_framing as inspiration but generate your own natural intro\n"
+        "- 2-3 sentences typical"
+    ),
+}
 
 
 def _parse_competency_names(text: str) -> List[str]:
@@ -119,15 +198,23 @@ class TutorState(TypedDict):
     competency_statuses: List[Dict[str, Any]]
     active_competency_index: int  # -1 = brain-dump/open mode; 0..N-1 = focused on that competency
 
-    # Conversation mode — drives tutor_turn behavior
-    # "open" | "nudge" | "socratic" | "macro_hint" | "explain_competency" | "transition"
+    # Conversation mode — descriptive label for debug/logging; no longer selects prompt behavior
+    # "opening" | "guide" | "nudge" | "give_fact" | "explain" | "transition" | "tangent"
     tutor_mode: str
 
     # Previous competency info for transition mode (set when advancing between competencies)
     transitioning_from_competency: Optional[Dict[str, Any]]
 
-    # Evaluator's suggested focus question; passed to socratic mode as guidance (not delivered verbatim)
+    # Evaluator's suggested focus question; kept for backward compat, secondary to evaluator_guidance
     probe_question: Optional[str]
+
+    # Natural-language recommendation from evaluator, passed to tutor prompt
+    evaluator_guidance: Optional[str]
+
+    # Tangent tracking
+    tangent_turns: int       # consecutive turns in tangent (reset on return to main problem)
+    tangent_topic: Optional[str]  # what the tangent is about
+    is_tangent: bool         # whether the previous turn was a tangent exchange
 
     latest_evaluation: Optional[Dict[str, Any]]
     module_context: Optional[Dict[str, Any]]
@@ -302,8 +389,12 @@ def initialize_session(state: TutorState, config: RunnableConfig) -> dict:
         "total_exchanges_on_goal": 0,
         "competency_statuses": [],
         "active_competency_index": -1,
-        "tutor_mode": "open",
+        "tutor_mode": "opening",
         "probe_question": None,
+        "evaluator_guidance": None,
+        "tangent_turns": 0,
+        "tangent_topic": None,
+        "is_tangent": False,
         "student_model": {},
         "module_examples": module_examples,
         "messages": [
@@ -368,8 +459,12 @@ def select_next_goal(state: TutorState, config: RunnableConfig) -> dict:
         "total_exchanges_on_goal": 0,
         "competency_statuses": competency_statuses,
         "active_competency_index": -1,  # -1 = open/brain-dump mode
-        "tutor_mode": "open",
+        "tutor_mode": "opening",
         "probe_question": None,
+        "evaluator_guidance": None,
+        "tangent_turns": 0,
+        "tangent_topic": None,
+        "is_tangent": False,
         "messages": [AIMessage(content=f"Alright, let's talk about **{next_goal['description']}**.")],
     }
 
@@ -437,8 +532,12 @@ def generate_anchor_problem(state: TutorState, config: RunnableConfig) -> dict:
         "goal_progress": goal_progress,
         "exchanges_on_goal": 0,
         "total_exchanges_on_goal": 0,
-        "tutor_mode": "open",
+        "tutor_mode": "opening",
         "probe_question": None,
+        "evaluator_guidance": None,
+        "tangent_turns": 0,
+        "tangent_topic": None,
+        "is_tangent": False,
     }
 
 
@@ -447,82 +546,116 @@ def generate_anchor_problem(state: TutorState, config: RunnableConfig) -> dict:
 # ============================================================================
 
 
+def _build_demonstrated_knowledge(state: TutorState) -> str:
+    """Build a summary of what the student has already demonstrated.
+
+    Assembled from competency statuses with evidence and confirmed_knowledge from
+    the latest evaluation. Passed to the tutor prompt to prevent re-testing.
+    """
+    lines = []
+    current_goal_id = state.get("current_goal_id")
+
+    # Add mastered competency names
+    for comp in state.get("competency_statuses", []):
+        if comp.get("status") == "mastered":
+            lines.append(f"- Mastered: {comp['competency']}")
+
+    # Add evidence from any competency that has been scored
+    for comp in state.get("competency_statuses", []):
+        evidence = comp.get("evidence", [])
+        if evidence and comp.get("status") != "mastered":
+            for ev in evidence[-2:]:  # last 2 evidence entries per competency
+                if ev:
+                    lines.append(f"- {ev}")
+
+    # Add confirmed_knowledge from latest evaluation
+    latest_eval = state.get("latest_evaluation") or {}
+    for item in latest_eval.get("confirmed_knowledge", []):
+        if item and f"- {item}" not in lines:
+            lines.append(f"- {item}")
+
+    # Add from student_model confirmed_knowledge (goal-level)
+    if current_goal_id:
+        student_model = state.get("student_model", {})
+        goal_model = student_model.get(current_goal_id, {})
+        for item in goal_model.get("confirmed_knowledge", []):
+            if item and f"- {item}" not in lines:
+                lines.append(f"- {item}")
+
+    return "\n".join(lines) if lines else ""
+
+
 def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     """Generate a tutor message and wait for student response.
 
-    Modes:
-      open               — First exchange: deliver opening_framing directly (no LLM call)
-      nudge              — Short 1-2 sentence push toward specific gap
-      socratic           — 2-3 sentence bridging question (may include evaluator's suggested_focus)
-      macro_hint         — Give the missing fact directly, then re-engage
-      explain_competency — Explain one stuck competency, then advance
-      transition         — Celebrate mastery, clarify minor gaps, bridge to next competency
+    Uses a unified prompt with behavioral profile + evaluator guidance.
+    Profile is selected by the router (stored in tutor_mode) and maps to
+    BEHAVIORAL_PROFILES dict. Evaluator guidance (evaluator_guidance) provides
+    the specific context within whatever profile is active.
     """
-    tutor_mode = state.get("tutor_mode", "open")
+    tutor_mode = state.get("tutor_mode", "opening")
     current_goal_id = state.get("current_goal_id")
     logger.info(f"tutor_turn in mode={tutor_mode} for goal={current_goal_id}")
 
-    # --- Modes that don't need an LLM call ---
-    if tutor_mode == "open":
-        message = state.get("opening_framing") or state.get("anchor_problem") or ""
+    current_goal = _get_current_goal(state)
+    competency_statuses = state.get("competency_statuses", [])
+    active_idx = state.get("active_competency_index", -1)
 
-    else:
-        # nudge / socratic / macro_hint / explain_competency / transition — call the LLM
-        current_goal = _get_current_goal(state)
-        competency_statuses = state.get("competency_statuses", [])
-        active_idx = state.get("active_competency_index", -1)
+    active_competency = (
+        competency_statuses[active_idx]
+        if 0 <= active_idx < len(competency_statuses)
+        else None
+    )
 
-        active_competency = (
-            competency_statuses[active_idx]
-            if 0 <= active_idx < len(competency_statuses)
-            else None
+    # Find the name of the next pending competency (for transition framing)
+    next_pending_competency = None
+    if 0 <= active_idx < len(competency_statuses):
+        for i in range(active_idx + 1, len(competency_statuses)):
+            if competency_statuses[i]["status"] == "pending":
+                next_pending_competency = competency_statuses[i]["competency"]
+                break
+
+    # Select behavioral profile
+    behavioral_profile = BEHAVIORAL_PROFILES.get(tutor_mode, BEHAVIORAL_PROFILES["guide"])
+
+    # Build demonstrated_knowledge summary
+    demonstrated_knowledge = _build_demonstrated_knowledge(state)
+
+    # For the opening turn, include opening_framing as a hint in the profile
+    if tutor_mode == "opening":
+        opening_framing = state.get("opening_framing", "")
+        if opening_framing:
+            behavioral_profile = BEHAVIORAL_PROFILES["opening"] + f"\n\nOpening framing hint (adapt this naturally): {opening_framing}"
+
+    prompt_data = {
+        "goal": current_goal or {},
+        "anchor_problem": state.get("anchor_problem", ""),
+        "behavioral_profile": behavioral_profile,
+        "evaluator_guidance": state.get("evaluator_guidance") or "",
+        "demonstrated_knowledge": demonstrated_knowledge,
+        "exchanges_on_goal": state.get("exchanges_on_goal", 0),
+        "conversation": _get_recent_messages(state, n=8),
+        "active_competency": active_competency,
+        "next_pending_competency": next_pending_competency,
+        "module_examples": state.get("module_examples", [])[:8],
+        "context_chunks": state.get("goal_contexts", {}).get(current_goal_id, [])[:3],
+    }
+
+    system_prompt = Prompter(prompt_template="tutor/tutor_turn").render(data=prompt_data)
+
+    def _provision():
+        return provision_langchain_model(
+            system_prompt,
+            config.get("configurable", {}).get("model_id") or state.get("model_override"),
+            "chat",
+            max_tokens=800,
         )
 
-        # Find the name of the next pending competency (for transition framing)
-        next_pending_competency = None
-        if 0 <= active_idx < len(competency_statuses):
-            for i in range(active_idx + 1, len(competency_statuses)):
-                if competency_statuses[i]["status"] == "pending":
-                    next_pending_competency = competency_statuses[i]["competency"]
-                    break
-
-        prompt_data = {
-            "goal": current_goal or {},
-            "anchor_problem": state.get("anchor_problem", ""),
-            "tutor_mode": tutor_mode,
-            "exchanges_on_goal": state.get("exchanges_on_goal", 0),
-            "conversation": _get_recent_messages(state, n=8),
-            "active_competency": active_competency,
-            "next_pending_competency": next_pending_competency,
-            "module_examples": state.get("module_examples", [])[:8],
-            "context_chunks": state.get("goal_contexts", {}).get(current_goal_id, [])[:3],
-        }
-
-        # Transition mode: pass previous competency info for the bridge message
-        if tutor_mode == "transition":
-            prompt_data["previous_competency"] = state.get("transitioning_from_competency", {})
-
-        # Socratic mode: pass evaluator's suggested focus (from probe_question) if available
-        if tutor_mode == "socratic":
-            suggested_focus = state.get("probe_question")
-            if suggested_focus:
-                prompt_data["suggested_focus"] = suggested_focus
-
-        system_prompt = Prompter(prompt_template="tutor/tutor_turn").render(data=prompt_data)
-
-        def _provision():
-            return provision_langchain_model(
-                system_prompt,
-                config.get("configurable", {}).get("model_id") or state.get("model_override"),
-                "chat",
-                max_tokens=800,
-            )
-
-        model = _run_model(_provision)
-        ai_msg = model.invoke(system_prompt)
-        message = clean_thinking_content(
-            ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
-        )
+    model = _run_model(_provision)
+    ai_msg = model.invoke(system_prompt)
+    message = clean_thinking_content(
+        ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
+    )
 
     if not message:
         message = "What are your thoughts on this?"
@@ -584,30 +717,105 @@ def evaluate_and_update_model(
         logger.warning("No student message found; routing back to tutor_turn")
         return Command(goto="tutor_turn", update={"tutor_mode": "socratic"})
 
-    # ---- If the previous turn was explain_competency, advance to next ----
-    if tutor_mode == "explain_competency":
-        logger.info("Explain-competency turn acknowledged — advancing to next competency")
-        if active_idx >= 0 and active_idx < len(competency_statuses):
-            competency_statuses[active_idx]["status"] = "explained"
-        next_idx = _find_next_active_index(competency_statuses, start=max(0, active_idx + 1))
-        if next_idx == -1:
-            logger.info("All competencies addressed — marking goal complete")
-            return Command(
-                goto="mark_goal_complete",
-                update={"competency_statuses": competency_statuses, "active_competency_index": -1},
-            )
-        competency_statuses[next_idx]["status"] = "active"
-        logger.info(f"Advancing to competency [{next_idx}]: {competency_statuses[next_idx]['competency']}")
-        next_mode = "nudge" if competency_statuses[next_idx].get("score", 0.0) >= 0.5 else "socratic"
-        return Command(
-            goto="tutor_turn",
-            update={
-                "competency_statuses": competency_statuses,
-                "active_competency_index": next_idx,
-                "tutor_mode": next_mode,
-                "probe_question": None,
-            },
+    is_tangent = state.get("is_tangent", False)
+    tangent_turns = state.get("tangent_turns", 0)
+
+    # ---- If the previous turn was a tangent exchange, use lightweight tangent evaluator ----
+    if is_tangent:
+        logger.info(f"Evaluating tangent exchange (turn {tangent_turns})")
+        tangent_topic = state.get("tangent_topic", "")
+        pending_competencies = [
+            {"competency": c["competency"], "score": c.get("score", 0.0), "evidence": c.get("evidence", [])}
+            for c in competency_statuses
+            if c["status"] == "pending"
+        ]
+
+        tangent_prompt_data = {
+            "goal": current_goal or {},
+            "anchor_problem": state.get("anchor_problem", ""),
+            "student_response": student_message,
+            "tangent_topic": tangent_topic,
+            "tangent_turns": tangent_turns,
+            "conversation": _get_recent_messages(state, n=6),
+            "pending_competencies": pending_competencies,
+        }
+        tangent_prompt = Prompter(prompt_template="tutor/evaluate_tangent").render(
+            data=tangent_prompt_data
         )
+
+        def _provision_tangent():
+            return provision_langchain_model(
+                tangent_prompt,
+                config.get("configurable", {}).get("model_id") or state.get("model_override"),
+                "tools",
+                max_tokens=800,
+            )
+
+        tangent_model = _run_model(_provision_tangent)
+        try:
+            tangent_result: TangentEvaluationResult = tangent_model.with_structured_output(
+                TangentEvaluationResult
+            ).invoke(tangent_prompt)
+        except Exception as e:
+            logger.error(f"Failed to parse tangent evaluation: {e}")
+            tangent_result = TangentEvaluationResult(
+                resolved=True, tutor_guidance="Return to the main problem and continue the discussion."
+            )
+
+        # Apply incidental observations (upside-only)
+        for obs in tangent_result.incidental_observations:
+            if obs.score >= 0.5:
+                for comp in competency_statuses:
+                    if comp["competency"] == obs.competency and comp["status"] == "pending":
+                        evidence_list = list(comp.get("evidence", []))
+                        if obs.evidence:
+                            evidence_list.append(obs.evidence)
+                        comp["score"] = max(comp.get("score", 0.0), obs.score)
+                        comp["evidence"] = evidence_list
+                        if obs.score >= MASTERY_THRESHOLD:
+                            comp["status"] = "mastered"
+
+        new_tangent_turns = 0 if tangent_result.resolved else tangent_turns + 1
+
+        if tangent_result.resolved:
+            # Return to normal flow — run full evaluator next exchange
+            logger.info("Tangent resolved — returning to main competency flow")
+            # Pick appropriate profile for re-entry
+            if 0 <= active_idx < len(competency_statuses):
+                re_entry_score = competency_statuses[active_idx].get("score", 0.0)
+                re_entry_mode = "nudge" if re_entry_score >= NUDGE_THRESHOLD else "guide"
+            else:
+                re_entry_mode = "guide"
+            return Command(
+                goto="tutor_turn",
+                update={
+                    "competency_statuses": competency_statuses,
+                    "is_tangent": False,
+                    "tangent_turns": 0,
+                    "tangent_topic": None,
+                    "tutor_mode": re_entry_mode,
+                    "evaluator_guidance": tangent_result.tutor_guidance or "Return to the main problem.",
+                    "probe_question": None,
+                },
+            )
+        else:
+            # Continue tangent or force reconnect at limit
+            if new_tangent_turns >= MAX_TANGENT_TURNS:
+                tutor_guidance = "Gently reconnect the student to the main problem. They've been on a tangent for a while — acknowledge their question is resolved and steer back."
+            else:
+                tutor_guidance = tangent_result.tutor_guidance or "Continue helping with the tangent."
+            logger.info(f"Tangent continuing (turn {new_tangent_turns})")
+            return Command(
+                goto="tutor_turn",
+                update={
+                    "competency_statuses": competency_statuses,
+                    "is_tangent": True,
+                    "tangent_turns": new_tangent_turns,
+                    "tutor_mode": "tangent",
+                    "evaluator_guidance": tutor_guidance,
+                    "probe_question": None,
+                },
+            )
 
     # ---- Build evaluation prompt ----
     active_competency_dict = (
@@ -665,6 +873,8 @@ def evaluate_and_update_model(
         probe_question = result.probe_question
         suggested_action = result.suggested_next_action
         action_rationale = result.action_rationale or ""
+        tutor_guidance = result.tutor_guidance or ""
+        tangent_topic_from_eval = result.tangent_topic
 
         evaluation = {
             "score": overall,
@@ -681,6 +891,7 @@ def evaluate_and_update_model(
             "confirmed_knowledge": result.confirmed_knowledge,
             "suggested_next_action": suggested_action,
             "action_rationale": action_rationale,
+            "tutor_guidance": tutor_guidance,
         }
     except Exception as e:
         logger.error(f"Failed to parse evaluation: {e}")
@@ -691,6 +902,7 @@ def evaluate_and_update_model(
             "is_resolved": False, "needs_more_info": False, "probe_question": None,
             "hypothesized_gaps": [], "confirmed_knowledge": [],
             "suggested_next_action": "continue", "action_rationale": "",
+            "tutor_guidance": "",
         }
         result = None
         overall = 0.5
@@ -698,6 +910,8 @@ def evaluate_and_update_model(
         probe_question = None
         suggested_action = "continue"
         action_rationale = ""
+        tutor_guidance = ""
+        tangent_topic_from_eval = None
 
     # ---- Update competency statuses ----
     # Brain-dump mode (active_idx == -1): score any competencies the student touched
@@ -845,6 +1059,10 @@ def evaluate_and_update_model(
         "total_exchanges_on_goal": total_exchanges,
         "competency_statuses": competency_statuses,
         "active_competency_index": active_idx,
+        "evaluator_guidance": tutor_guidance,
+        "is_tangent": False,  # will be overridden for tangent action
+        "tangent_turns": 0,
+        "tangent_topic": None,
     }
 
     # ---- Check if all competencies are resolved ----
@@ -853,12 +1071,32 @@ def evaluate_and_update_model(
         logger.info("All competencies addressed — marking goal complete")
         return Command(goto="mark_goal_complete", update=state_updates)
 
-    # ---- Safety net: absolute exchange limit ----
-    if total_exchanges >= MAX_TOTAL_EXCHANGES_PER_GOAL:
-        logger.info(f"Safety net: reached {total_exchanges} total exchanges — switching to explain_competency")
+    # ---- Tangent detected by evaluator ----
+    if suggested_action == "tangent":
+        logger.info(f"Tangent detected: {tangent_topic_from_eval or 'off-topic'}")
         return Command(
             goto="tutor_turn",
-            update={**state_updates, "tutor_mode": "explain_competency", "probe_question": None},
+            update={
+                **state_updates,
+                "tutor_mode": "tangent",
+                "is_tangent": True,
+                "tangent_turns": 1,
+                "tangent_topic": tangent_topic_from_eval or "",
+                "probe_question": None,
+            },
+        )
+
+    # ---- Safety net: absolute exchange limit ----
+    if total_exchanges >= MAX_TOTAL_EXCHANGES_PER_GOAL:
+        logger.info(f"Safety net: reached {total_exchanges} total exchanges — switching to explain")
+        safety_guidance = (
+            tutor_guidance or
+            "We've spent a lot of time on this — let me just walk you through it. "
+            "Explain the current concept clearly and then move on."
+        )
+        return Command(
+            goto="tutor_turn",
+            update={**state_updates, "tutor_mode": "explain", "evaluator_guidance": safety_guidance, "probe_question": None},
         )
 
     # ---- Check if active competency was mastered this turn ----
@@ -924,7 +1162,7 @@ def evaluate_and_update_model(
         logger.info(f"Explain competency: {action_rationale}")
         return Command(
             goto="tutor_turn",
-            update={**state_updates, "tutor_mode": "explain_competency", "probe_question": None},
+            update={**state_updates, "tutor_mode": "explain", "probe_question": None},
         )
 
     if suggested_action == "macro_hint":
@@ -934,24 +1172,21 @@ def evaluate_and_update_model(
             competency_statuses[active_idx]["hint_count"] = competency_statuses[active_idx].get("hint_count", 0) + 1
         return Command(
             goto="tutor_turn",
-            update={**state_updates, "competency_statuses": competency_statuses, "tutor_mode": "macro_hint", "probe_question": None},
+            update={**state_updates, "competency_statuses": competency_statuses, "tutor_mode": "give_fact", "probe_question": None},
         )
 
     if suggested_action == "probe" or needs_more_info:
-        # Route to socratic with suggested_focus — LLM acknowledges student's response
-        # before asking the probe question (avoids rigid verbatim re-delivery)
-        logger.info(f"Probe → socratic with suggested focus: {action_rationale or 'thin response'}")
+        logger.info(f"Probe → guide with evaluator guidance: {action_rationale or 'thin response'}")
         return Command(
             goto="tutor_turn",
-            update={**state_updates, "tutor_mode": "socratic", "probe_question": probe_question},
+            update={**state_updates, "tutor_mode": "guide", "probe_question": probe_question},
         )
 
     # ---- Per-competency stagnation check ----
     if 0 <= active_idx < len(competency_statuses):
         active_comp = competency_statuses[active_idx]
-        encounters = active_comp.get("encounters", 0)
         stagnation = active_comp.get("turns_since_progress", 0)
-        if encounters >= MAX_ENCOUNTERS_PER_COMPETENCY and stagnation >= 2:
+        if stagnation >= MAX_NO_PROGRESS_TURNS:
             # If score is already good enough, master instead of explaining
             if active_comp.get("score", 0.0) >= MASTERY_THRESHOLD:
                 active_comp["status"] = "mastered"
@@ -980,26 +1215,31 @@ def evaluate_and_update_model(
                     },
                 )
             logger.info(
-                f"Per-competency stagnation: {encounters} encounters, {stagnation} turns no progress — explaining"
+                f"Per-competency stagnation: {stagnation} turns no progress — explaining"
+            )
+            stagnation_guidance = (
+                tutor_guidance or
+                f"Student has been stuck on this competency for {stagnation} turns without progress. "
+                "Explain the concept clearly and move on."
             )
             return Command(
                 goto="tutor_turn",
-                update={**state_updates, "tutor_mode": "explain_competency", "probe_question": None},
+                update={**state_updates, "tutor_mode": "explain", "evaluator_guidance": stagnation_guidance, "probe_question": None},
             )
 
-        # Score-based mode selection for active competency
+        # ---- Score-based profile selection ----
         active_score = active_comp.get("score", 0.0)
-        if active_score >= NUDGE_THRESHOLD:
+        if suggested_action == "continue" and active_score >= NUDGE_THRESHOLD:
             logger.info(f"Student is close on active competency (score={active_score:.2f}) — nudging")
             return Command(
                 goto="tutor_turn",
                 update={**state_updates, "tutor_mode": "nudge", "probe_question": None},
             )
 
-    logger.info("Continuing Socratic dialogue on active competency")
+    logger.info("Continuing collaborative dialogue on active competency")
     return Command(
         goto="tutor_turn",
-        update={**state_updates, "tutor_mode": "socratic", "probe_question": None},
+        update={**state_updates, "tutor_mode": "guide", "probe_question": None},
     )
 
 
@@ -1059,8 +1299,12 @@ def mark_goal_complete(state: TutorState, config: RunnableConfig) -> dict:
         "total_exchanges_on_goal": 0,
         "competency_statuses": [],
         "active_competency_index": -1,
-        "tutor_mode": "open",
+        "tutor_mode": "opening",
         "probe_question": None,
+        "evaluator_guidance": None,
+        "tangent_turns": 0,
+        "tangent_topic": None,
+        "is_tangent": False,
         "messages": [AIMessage(content=completion_msg)],
     }
 

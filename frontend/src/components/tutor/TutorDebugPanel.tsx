@@ -17,12 +17,18 @@ interface TutorDebugPanelProps {
 }
 
 const MODE_COLORS: Record<string, string> = {
-  open: 'bg-slate-100 text-slate-700 border-slate-300',
+  opening: 'bg-slate-100 text-slate-700 border-slate-300',
+  guide: 'bg-blue-100 text-blue-800 border-blue-300',
   nudge: 'bg-orange-100 text-orange-800 border-orange-300',
+  give_fact: 'bg-red-100 text-red-800 border-red-300',
+  explain: 'bg-green-100 text-green-800 border-green-300',
+  transition: 'bg-purple-100 text-purple-800 border-purple-300',
+  tangent: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  // legacy names for backward compatibility
+  open: 'bg-slate-100 text-slate-700 border-slate-300',
   socratic: 'bg-blue-100 text-blue-800 border-blue-300',
   macro_hint: 'bg-red-100 text-red-800 border-red-300',
   explain_competency: 'bg-green-100 text-green-800 border-green-300',
-  transition: 'bg-purple-100 text-purple-800 border-purple-300',
 }
 
 const LIFECYCLE_STYLES: Record<CompetencyLifecycleStatus, { badge: string; border: string; icon: React.ReactNode }> = {
@@ -201,7 +207,7 @@ export function TutorDebugPanel({ debugInfo, currentGoal }: TutorDebugPanelProps
     )
   }
 
-  const { tutor_mode, exchanges_on_goal, student_model, evaluation_notes, action_rationale, competency_statuses, goal_score, competencies_mastered, competencies_total } = debugInfo
+  const { tutor_mode, exchanges_on_goal, student_model, evaluation_notes, action_rationale, evaluator_guidance, competency_statuses, goal_score, competencies_mastered, competencies_total } = debugInfo
   const modeClass = tutor_mode ? (MODE_COLORS[tutor_mode] ?? MODE_COLORS.open) : ''
   const activeTarget = student_model?.active_probe_target ?? null
   const confirmedKnowledge = student_model?.confirmed_knowledge ?? []
@@ -258,11 +264,14 @@ export function TutorDebugPanel({ debugInfo, currentGoal }: TutorDebugPanelProps
           </section>
         )}
 
-        {(evaluation_notes || action_rationale) && (
+        {(evaluation_notes || action_rationale || evaluator_guidance) && (
           <section className="space-y-1">
             <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Evaluator
             </h3>
+            {evaluator_guidance && (
+              <p className="text-xs text-foreground font-medium leading-snug border-l-2 border-blue-400 pl-2">{evaluator_guidance}</p>
+            )}
             {action_rationale && (
               <p className="text-xs text-foreground/80 italic leading-snug">{action_rationale}</p>
             )}

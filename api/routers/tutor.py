@@ -447,11 +447,12 @@ async def get_trajectory(session_id: str):
 class DebugStateResponse(BaseModel):
     """Debug state for inspecting tutor agent internals during a session."""
     session_id: str
-    tutor_mode: Optional[str] = Field(None, description="Current tutor mode (open/nudge/socratic/macro_hint/explain_competency/transition)")
+    tutor_mode: Optional[str] = Field(None, description="Current behavioral profile (opening/guide/nudge/give_fact/explain/transition/tangent)")
     exchanges_on_goal: int = Field(0, description="Number of exchanges on current goal")
     student_model: Optional[Dict[str, Any]] = Field(None, description="Full student model for current goal")
     evaluation_notes: Optional[str] = Field(None, description="Evaluator notes from last exchange")
     action_rationale: Optional[str] = Field(None, description="Evaluator rationale for chosen action")
+    evaluator_guidance: Optional[str] = Field(None, description="Natural-language tutor guidance from evaluator")
     latest_understanding_score: Optional[float] = Field(None, description="Overall understanding score (0-1)")
     competency_scores: Optional[Dict[str, float]] = Field(None, description="Per-competency scores")
     # Per-competency lifecycle tracking
@@ -499,8 +500,9 @@ async def get_debug_state(session_id: str):
             tutor_mode=sv.get("tutor_mode"),
             exchanges_on_goal=sv.get("exchanges_on_goal", 0),
             student_model=student_model.get(current_goal_id) if current_goal_id else None,
-            evaluation_notes=latest_eval.get("evaluation_notes"),
+            evaluation_notes=latest_eval.get("notes"),
             action_rationale=latest_eval.get("action_rationale"),
+            evaluator_guidance=sv.get("evaluator_guidance"),
             latest_understanding_score=latest_eval.get("score"),
             competency_scores=latest_eval.get("competency_score_dict"),
             competency_statuses=sv.get("competency_statuses"),

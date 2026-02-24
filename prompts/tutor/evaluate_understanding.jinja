@@ -98,8 +98,11 @@ Look at the last 4–6 exchanges specifically around the **active competency**. 
 | `"explain_competency"` | Student can't reason about THIS specific competency at all even after multiple scaffolded exchanges, OR student is clearly disengaged/frustrated ("I have absolutely no idea", "I give up") |
 | `"advance"` | Active competency is clearly mastered (score >= 0.65) — explicitly move to next |
 | `"continue"` | Normal flow — student is engaging and there's still productive Socratic ground to cover on the active competency |
+| `"tangent"` | Student is asking about a prerequisite, sub-topic, or math mechanic that is **outside the scope of scoring the active competency**. Use when their question/response provides no useful signal for the current competency assessment — e.g., asking how to differentiate log(k!) while the competency is about setting up the likelihood function. |
 
 When in doubt, prefer `"continue"`. Use `"probe"` only when you genuinely can't score the active competency.
+
+**Tangent vs. in-scope help**: In-scope clarifications that still let you assess the active competency → use `"continue"` or `"probe"`. Only use `"tangent"` when the student's focus is genuinely off-topic for assessment purposes (e.g., they're asking about a calculus mechanic while the competency is about probability setup).
 
 **Student explicitly asks for help** ("give me the formula", "I don't remember X", "if you tell me Y I can do Z", "can you remind me"):
 This is a **scaffolding opportunity** — use `"continue"` or `"probe"` with a helpful `probe_question` that restates context or gives a stepping stone. The tutor will respond to their request before asking the follow-up question. Do NOT jump to `"macro_hint"` just because the student asked — they're being collaborative, not stuck.
@@ -113,6 +116,24 @@ Only use `"explain_competency"` when: the student demonstrates they fundamentall
 **When using `"probe"`, write a specific `probe_question`** that names the concept, formula, or connection you need demonstrated. The student should understand exactly what you're asking for. BAD: "Can you say more about that?" GOOD: "Can you write out what the Poisson PMF looks like for one observation?"
 
 **Probe diversity check**: If you want to use `"probe"`, look at the last 2–3 tutor questions in the conversation. If your intended probe_question covers the same angle as a recent question, use `"continue"` instead — repeated identical probes are worse than moving forward.
+
+## Step 1.5: Write tutor_guidance
+
+After deciding the action, write a `tutor_guidance` — a natural-language recommendation addressed directly to the tutor. This is specific and actionable, like a note from a teaching assistant to the lead tutor.
+
+The guidance should tell the tutor:
+- What the student actually did/said this turn (in plain English)
+- What to address in the response (the key gap, question, or insight)
+- How to respond given the action (give a fact, ask a specific question, explain a concept, celebrate and bridge, etc.)
+
+Examples of good `tutor_guidance`:
+- "Student set up the log-likelihood correctly but is asking about how to differentiate log(k!). This is a calculus mechanic — just tell them it drops out as a constant. Then ask them to try the derivative."
+- "Student has been stuck on Poisson PMF for 3 turns. They understand the concept but can't write the formula. Give them the formula and move on to the derivative."
+- "Student just nailed the likelihood setup AND spontaneously mentioned the log trick. Acknowledge both and bridge to taking the derivative."
+- "Student is confused about what you're asking ('I don't know what you want me to do'). Clarify: they have the log-likelihood, the next step is to differentiate w.r.t. lambda."
+- "Student is asking about log factorial differentiation — this is off-topic for the current competency. Help them directly: log(k!) is a constant w.r.t. lambda so its derivative is 0. Then reconnect to the main likelihood setup."
+
+When `suggested_next_action` is `"tangent"`, also set `tangent_topic` to a brief description of what the tangent is about.
 
 ## Step 2: Score the ACTIVE competency in detail
 
@@ -178,6 +199,8 @@ Before finalizing your output, verify internal consistency:
 {
   "suggested_next_action": "continue",
   "action_rationale": "Student demonstrated solid conceptual understanding — still need to probe the likelihood setup specifically",
+  "tutor_guidance": "Student correctly explained MLE concept. They're engaged and on track. Ask them to now write out the Poisson PMF for a single observation to test the likelihood setup competency.",
+  "tangent_topic": null,
   "needs_more_info": false,
   "probe_question": null,
   "overall_score": 0.65,

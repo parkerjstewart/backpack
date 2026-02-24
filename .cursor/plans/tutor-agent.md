@@ -90,52 +90,72 @@ initialize_session          Load module, goals, context. Extract worked examples
                             definitions from all sources → module_examples list.
   ↓
 select_next_goal            Pick lowest-order unfinished goal. Reset per-goal state:
-                            anchor_problem=None, exchanges_on_goal=0, tutor_mode="open"
+                            anchor_problem=None, exchanges_on_goal=0, tutor_mode="opening"
   ↓
 generate_anchor_problem     ONE multi-step scenario per goal (maps to all competencies).
                             NOT answerable in one response — designed for 3-6 exchanges.
                             Produces: anchor_problem + opening_framing
   ↓
 tutor_turn [INTERRUPT]  ←──────────────────────────────────────────────────────────┐
-  Delivers message, calls interrupt(), waits for student response                  │
+  Unified LLM call: evaluator_guidance + behavioral_profile → natural response     │
   ↓                                                                                │
 evaluate_and_update_model   Score competencies, update student model, decide route │
+  │  (if is_tangent: use evaluate_tangent.jinja instead of full evaluator)        │
   │                                                                                │
-  ├─ advance / score ≥ 0.65 → mark_goal_complete or transition mode ──────────────┘
-  ├─ explain_competency ───────────────────────────────────────────────────────────┘
-  ├─ macro_hint ───────────────────────────────────────────────────────────────────┘
-  ├─ probe → socratic mode (with suggested_focus) ─────────────────────────────────┘
-  ├─ safety net (≥12 total) or stagnation (≥3 enc + ≥2 turns no progress) → explain_competency ┘
-  ├─ active score ≥ 0.55 → nudge mode ────────────────────────────────────────────┘
-  └─ otherwise → socratic mode ────────────────────────────────────────────────────┘
+  ├─ tangent → tangent profile, increment tangent_turns ───────────────────────────┘
+  ├─ advance / score ≥ 0.65 → mark_goal_complete or transition profile ───────────┘
+  ├─ explain_competency → explain profile ─────────────────────────────────────────┘
+  ├─ macro_hint → give_fact profile ──────────────────────────────────────────────┘
+  ├─ probe → guide profile (with evaluator_guidance providing focus) ──────────────┘
+  ├─ safety net (≥12 total) or stagnation (≥3 turns no progress) → explain profile ┘
+  ├─ continue + score ≥ 0.55 → nudge profile ──────────────────────────────────────┘
+  └─ otherwise → guide profile ────────────────────────────────────────────────────┘
 
 mark_goal_complete
   ├─ more goals → select_next_goal
   └─ all done → generate_summary → END
 ```
 
-### Tutor modes
+### Architecture: Unified Tutor Prompt
 
-| Mode | Who it's for | When | Length | LLM call? |
-|------|-------------|------|--------|-----------|
-| `open` | Student | First turn on each goal (brain dump) | 2-3 sentences | No — delivers `opening_framing` |
-| `nudge` | Student | Active competency score ≥ 0.55 | 1-2 sentences | Yes |
-| `socratic` | Student | Gap exists OR evaluator needs more signal — also handles student requests for help via scaffolding | 2-3 sentences | Yes |
-| `macro_hint` | Student | 2+ scaffolded exchanges on same factual gap, still stuck — give the fact directly | 2 sentences | Yes |
-| `explain_competency` | Student | Stuck on **this one competency** — explain just it, then advance | 1 paragraph | Yes |
-| `transition` | Student | Active competency mastered — celebrate, clarify minor gaps, bridge to next | 2-3 sentences | Yes |
+The tutor no longer switches between mode-specific prompt blocks. Every turn runs through `tutor_turn.jinja` with three layers of instruction:
 
-**`probe` mode removed**: Probe is now an evaluator action that routes to `socratic` mode. The evaluator's `probe_question` becomes a `suggested_focus` for the LLM — the tutor responds to what the student said and uses the suggested question as guidance, not a verbatim script.
+1. **`evaluator_guidance`** — specific, contextual recommendation from the evaluator (what to do)
+2. **`behavioral_profile`** — mode-specific structural guardrails selected by the router (how to do it)
+3. **General guidelines** — always apply (baseline behavior)
 
-**Scaffolding in socratic**: When the student asks for help ("I don't know", "give me X"), socratic mode gives a stepping stone (restate context, prior step, related formula) then asks a question. `macro_hint` is reserved for after 2+ scaffolded exchanges with no progress.
+The evaluator's guidance tells the LLM *what* to address; the behavioral profile tells it *how* to structure the response. Both are in the same unified prompt — no mode block switching.
 
-**Routing priority**: `advance` → `explain_competency` → `macro_hint` → `probe/needs_more_info` → stagnation check → score-based. `needs_more_info` no longer overrides explicit `macro_hint`/`explain_competency` recommendations.
+### Behavioral Profiles (tutor_mode)
 
-**`nudge` is a deliberate small push**: Score ≥ 0.55 on active competency.
+`tutor_mode` is stored in state and used as a debug/logging label AND to select the behavioral profile string passed to the prompt.
 
-**`explain` mode removed**: Replaced by `explain_competency` which is scoped to one competency. After explaining, the tutor advances to the next pending competency — students always get to demonstrate remaining competencies.
+| Profile | When selected | Key behavior |
+|---------|--------------|--------------|
+| `opening` | First turn on a goal | Present anchor problem naturally, invite initial thinking |
+| `guide` | Default — `continue` or `probe` action | Collaborative back-and-forth; can ask, tell, or do both |
+| `nudge` | `continue` + active score ≥ 0.55 | Short 1-2 sentence push toward specific gap |
+| `give_fact` | `macro_hint` action | Give the missing fact directly, then re-engage |
+| `explain` | `explain_competency` action or stagnation | Comprehensive explanation; use Key Takeaways |
+| `transition` | Competency mastered → advancing | Celebrate, clarify minor gaps, bridge naturally |
+| `tangent` | `tangent` action | Help directly with off-topic question; reconnect after |
 
-**Competency names stay internal**: Socratic/nudge/transition prompts NEVER quote the competency rubric text to the student. The competency is the agent's internal assessment target — questions should feel natural, framed through the problem, a conceptual question, or a follow-up to what the student said.
+**Routing priority**: `tangent` → `advance` → safety net → mastery check → `explain_competency` → `macro_hint` → `probe/needs_more_info` → stagnation → score-based (`nudge` vs `guide`).
+
+**Evaluator guidance** (`evaluator_guidance` in state): Natural-language recommendation from evaluator, passed directly to the tutor prompt. Specific and actionable. The profile provides structural guardrails; the guidance provides specific context within that structure.
+
+**Competency names stay internal**: All profiles NEVER quote the competency rubric text to the student. The competency is the agent's internal assessment target — questions should feel natural, framed through the problem.
+
+### Tangent Handling
+
+When the evaluator returns `"tangent"`:
+- Router sets `is_tangent=True`, `tangent_turns=1`, `tutor_mode="tangent"`
+- On the next exchange: lightweight `evaluate_tangent.jinja` runs instead of full evaluator
+- Tangent evaluator checks: resolved? incidental evidence? guidance for tutor
+- If `resolved=True`: return to normal flow with appropriate profile
+- If not resolved and `tangent_turns < MAX_TANGENT_TURNS (3)`: continue tangent
+- At limit: `evaluator_guidance` instructs tutor to gently reconnect
+- Tangent turns don't increment `encounters` or `turns_since_progress` on active competency
 
 ### Per-competency lifecycle
 
@@ -154,19 +174,27 @@ Goal completes when all competencies are `mastered` or `explained`.
 
 **Incidental scoring (upside-only, mandatory scan)**: Every exchange, the evaluator performs a mandatory scan of ALL pending competencies, explicitly checking whether the student's response provides positive evidence (score ≥ 0.5). Pending competency names and current scores are passed to the evaluator prompt. If evidence is found, it's recorded; if not, omission is not evidence of a gap.
 
-### Evaluator meta-decision (`suggested_next_action`)
+### Evaluator output
 
-Before scoring, the evaluator decides for the **active competency**:
+The evaluator produces two key outputs per exchange:
 
-| Value | When | Key heuristic |
-|-------|------|---------------|
+1. **`suggested_next_action`** — structural routing decision
+2. **`tutor_guidance`** — natural-language recommendation addressed to the tutor
+
+| Action | When | Key heuristic |
+|--------|------|---------------|
 | `"probe"` | Response too vague to score active competency, specific new angle exists | Must be specific: name what to demonstrate |
 | `"macro_hint"` | Same factual gap on active competency probed 2+ times, no progress | Recall gap vs. reasoning gap |
 | `"explain_competency"` | Student can't reason about this specific competency at all | Would more probing ever help on THIS one? |
 | `"advance"` | Active competency clearly mastered | Explicitly move to next |
 | `"continue"` | Normal flow | Default — use score-based routing |
+| `"tangent"` | Student's response/question is off-topic for assessing the active competency | Distinguish from in-scope help requests |
+
+`tutor_guidance` is specific and actionable — like a note from a teaching assistant to the lead tutor. It tells the tutor what the student did, what to address, and how to respond.
 
 **Context gap vs. knowledge gap**: If student says "I don't remember the scenario" — that's a context gap, not a knowledge gap. Restate the scenario; don't use `macro_hint` or `explain_competency`.
+
+**Post-explain flow**: After the tutor explains a concept (explain profile), the evaluator runs normally on the next student response. If the student has follow-up questions, the conversation continues on that competency — the evaluator's guidance will say "address their question." The router advances only when the evaluator says the student is ready (action: `continue`/`advance` with no further questions).
 
 ### Exit criteria (how a goal ends)
 
@@ -184,9 +212,11 @@ The session ends when `check_more_goals()` finds no unfinished goals → `genera
 |----------|-------|----------|
 | `NUDGE_THRESHOLD` | 0.55 | `tutor.py` |
 | `MASTERY_THRESHOLD` | 0.65 | `tutor.py` |
-| `MAX_ENCOUNTERS_PER_COMPETENCY` | 3 | `tutor.py` (focused exchanges before per-competency explain) |
-| `MAX_TOTAL_EXCHANGES_PER_GOAL` | 12 | `tutor.py` (safety net) |
-| Per-competency stagnation | encounters ≥ 3 AND turns_since_progress ≥ 2 | `evaluate_and_update_model` routing — but if score ≥ 0.65, masters instead of explaining |
+| `MAX_NO_PROGRESS_TURNS` | 3 | `tutor.py` (turns with no score improvement → force explain) |
+| `MAX_TOTAL_EXCHANGES_PER_GOAL` | 12 | `tutor.py` (safety net per goal) |
+| `MAX_TANGENT_TURNS` | 3 | `tutor.py` (consecutive tangent turns before forced reconnect) |
+| `MAX_ENCOUNTERS_PER_COMPETENCY` | 10 | `tutor.py` (high safety net only — stagnation driven by turns_since_progress) |
+| Per-competency stagnation | `turns_since_progress >= MAX_NO_PROGRESS_TURNS` | `evaluate_and_update_model` — if score ≥ 0.65, masters instead of explaining |
 
 ---
 
@@ -215,9 +245,15 @@ anchor_problem: Optional[str]       # Multi-step scenario for current goal
 opening_framing: Optional[str]      # Natural intro line ("Let's work through...")
 exchanges_on_goal: int              # Resets to 0 each new goal (kept for backward compat)
 total_exchanges_on_goal: int        # Same counter used for safety-net limit
-tutor_mode: str                     # "open"|"nudge"|"socratic"|"macro_hint"|"explain_competency"|"transition"
-probe_question: Optional[str]       # Evaluator's suggested focus; routed to socratic mode as guidance (not delivered verbatim)
+tutor_mode: str                     # "opening"|"guide"|"nudge"|"give_fact"|"explain"|"transition"|"tangent"
+probe_question: Optional[str]       # Backward compat; secondary to evaluator_guidance
+evaluator_guidance: Optional[str]   # Natural-language recommendation from evaluator → tutor prompt
 transitioning_from_competency: Optional[Dict]  # Previous competency info for transition mode {competency, score, gap, evidence, hypotheses}
+
+# Tangent tracking (reset by select_next_goal)
+tangent_turns: int                  # Consecutive turns in tangent exchange (reset on return)
+tangent_topic: Optional[str]        # What the tangent is about
+is_tangent: bool                    # Whether previous turn was a tangent (drives evaluator selection)
 
 # Per-competency lifecycle tracking (reset by select_next_goal)
 competency_statuses: List[Dict]     # [{competency, status, score, evidence, gap, hypotheses, encounters, turns_since_progress}]
@@ -268,8 +304,9 @@ understanding_trajectory: List      # Timestamped score snapshots across all goa
 |------|-------------|--------------|
 | `prompts/module/learning_goals.jinja` | Generates learning goals from module sources | Changing goal structure, competency format, or takeaway style |
 | `prompts/tutor/generate_anchor_problem.jinja` | Designs one multi-step anchor problem per goal | Changing anchor problem style, opening framing instructions |
-| `prompts/tutor/evaluate_understanding.jinja` | Scores competencies + makes probe/macro_hint/give_up decision | Changing scoring rubric, routing heuristics, `suggested_next_action` logic |
-| `prompts/tutor/tutor_turn.jinja` | Generates mode-specific tutor response | Adding/changing a mode, tweaking tone or length rules |
+| `prompts/tutor/evaluate_understanding.jinja` | Scores competencies + makes routing decision + writes `tutor_guidance` | Changing scoring rubric, routing heuristics, `suggested_next_action` logic, guidance format |
+| `prompts/tutor/evaluate_tangent.jinja` | Lightweight evaluator for tangent exchanges | Changing tangent resolution logic or incidental evidence rules |
+| `prompts/tutor/tutor_turn.jinja` | Unified tutor response prompt (all profiles) | Changing general guidelines, prompt structure, or context sections |
 | `prompts/tutor/summary.jinja` | End-of-session narrative | Changing summary format or content |
 | `prompts/tutor/extract_module_examples.jinja` | Extracts figures/examples/definitions from sources | Changing what gets extracted for anchor problem context |
 
@@ -335,8 +372,9 @@ understanding_trajectory: List      # Timestamped score snapshots across all goa
 Click the **bug icon** (🐛) in the try-tutor page header to open a live debug panel alongside the chat. It calls `GET /tutor/sessions/{id}/debug` after each exchange and displays:
 
 - **Goal progress** — overall score bar + "X/Y competencies mastered" counter
-- **Tutor mode badge** — color-coded (open=slate, nudge=orange, socratic=blue, macro_hint=red, explain_competency=green, transition=purple)
+- **Tutor mode badge** — color-coded (opening=slate, guide=blue, nudge=orange, give_fact=red, explain=green, transition=purple, tangent=yellow)
 - **Exchange count** and stagnation turns
+- **Evaluator guidance** (`evaluator_guidance`) — natural-language recommendation from evaluator, shown prominently with a blue left border
 - **Evaluator rationale** (`action_rationale`) and notes (`evaluation_notes`) from the last eval
 - **Per-competency cards** — score bar, gap text, hypotheses with confidence badges, collapsible evidence log (last 3 entries); active probe target highlighted with a target icon
 - **Confirmed knowledge** list
@@ -372,3 +410,4 @@ INFO  Macro hint triggered: Probed Poisson PMF from 3 angles...
 | v6 | Probing quality overhaul: evaluator now drafts a model answer (diff) before scoring — gap descriptions are concrete and actionable. Tutor prompts explicitly tell the student what to demonstrate. Prior evidence acknowledged when activating competency with incidental score. Fast-track: competencies with score ≥ 0.5 open in nudge mode. hint_count tracking per competency + LLM-judged recall-vs-conceptual scoring penalty for macro_hints. MASTERY_THRESHOLD lowered 0.7→0.65. Stagnation at score ≥ 0.65 now masters instead of explaining (scoring bug fix). Consistency rule: positive evaluator notes must match score ≥ 0.65. Explicit surrender: "I don't know" gets one scaffolded probe before explain. Goal/competency count reduced: 3-6→2-4 goals, 3-5→2-4 competencies. competency_statuses snapshot preserved in goal_progress on goal completion. New `GET /tutor/sessions/{id}/export` endpoint returns full conversation + lifecycle data. |
 | v6.1 | Free-flowing conversation overhaul. New `transition` tutor mode: on mastery advancement, celebrates what was demonstrated, clarifies minor remaining gaps, and naturally bridges to next topic (replaces abrupt socratic/nudge switch). Competency names kept internal — socratic/nudge/transition NEVER quote rubric text to student. Mandatory cross-competency evidence scan: evaluator now receives all pending competency names/scores and must explicitly check each for positive evidence every exchange (replaces opportunistic scan). Debug panel shows goal-level scoring: progress bar, mastered count, overall score. Session summary includes per-goal competency breakdown (mastered/explained/score). New state field: `transitioning_from_competency` carries previous competency context (evidence, gap, hypotheses) for smooth transitions. |
 | v6.2 | Flexible socratic mode + probe loop fix. Removed `probe` as a no-LLM mode — probe evaluator action now routes to `socratic` with evaluator's `probe_question` as `suggested_focus` (LLM responds to student's actual words, not a verbatim script). Socratic mode expanded with scaffolding guidance: when student asks for help, tutor gives a stepping stone (context, prior step, related formula) before asking a question. Fixed routing priority bug: `macro_hint` and `explain_competency` now checked before `needs_more_info`, so explicit evaluator escalation is respected. Evaluator updated: student requests for help are scaffolding opportunities (not macro_hint triggers); probe diversity check (repeated identical probes replaced by `continue`); strengthened consistency check (engaging student = not `explain_competency`). |
+| v7 | Autonomy redesign. Replaced rigid mode-specific prompt blocks with a unified tutor prompt: evaluator's `tutor_guidance` (what to do) + behavioral profile (how to do it) + general guidelines (always apply). Profiles: `opening`, `guide`, `nudge`, `give_fact`, `explain`, `transition`, `tangent`. Evaluator now produces `tutor_guidance` — natural-language recommendation for the tutor — in addition to `suggested_next_action`. Added tangent handling: new `"tangent"` evaluator action, lightweight `evaluate_tangent.jinja` for subsequent tangent turns, `is_tangent`/`tangent_turns`/`tangent_topic` state fields. Added `demonstrated_knowledge` section to tutor prompt (prevents re-testing). Removed explain auto-advance: after explaining, evaluator runs normally on next response (student can ask follow-ups before advancing). Fixed stagnation: now `turns_since_progress >= MAX_NO_PROGRESS_TURNS (3)` instead of encounters-based. Mode renames: `open`→`opening`, `socratic`→`guide`, `macro_hint`→`give_fact`, `explain_competency`→`explain`. Debug panel updated: new mode colors, `evaluator_guidance` shown prominently. |
