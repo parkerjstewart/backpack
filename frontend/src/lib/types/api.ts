@@ -499,4 +499,7 @@ export interface TutorDebugInfo {
   competency_scores: Record<string, number> | null
   competency_statuses: CompetencyStatusInfo[] | null
   active_competency_index: number | null
+  goal_score: number | null
+  competencies_mastered: number | null
+  competencies_total: number | null
 }

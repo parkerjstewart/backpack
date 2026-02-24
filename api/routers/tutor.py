@@ -447,7 +447,7 @@ async def get_trajectory(session_id: str):
 class DebugStateResponse(BaseModel):
     """Debug state for inspecting tutor agent internals during a session."""
     session_id: str
-    tutor_mode: Optional[str] = Field(None, description="Current tutor mode (open/probe/nudge/socratic/macro_hint/explain_competency)")
+    tutor_mode: Optional[str] = Field(None, description="Current tutor mode (open/probe/nudge/socratic/macro_hint/explain_competency/transition)")
     exchanges_on_goal: int = Field(0, description="Number of exchanges on current goal")
     student_model: Optional[Dict[str, Any]] = Field(None, description="Full student model for current goal")
     evaluation_notes: Optional[str] = Field(None, description="Evaluator notes from last exchange")
@@ -457,6 +457,10 @@ class DebugStateResponse(BaseModel):
     # Per-competency lifecycle tracking
     competency_statuses: Optional[List[Dict[str, Any]]] = Field(None, description="Per-competency lifecycle status (pending/active/mastered/explained)")
     active_competency_index: Optional[int] = Field(None, description="Index of currently active competency (-1 = brain-dump)")
+    # Goal-level scoring
+    goal_score: Optional[float] = Field(None, description="Average competency score for current goal (0-1)")
+    competencies_mastered: Optional[int] = Field(None, description="Number of mastered competencies for current goal")
+    competencies_total: Optional[int] = Field(None, description="Total number of competencies for current goal")
 
 
 @router.get("/tutor/sessions/{session_id}/debug", response_model=DebugStateResponse)
@@ -480,6 +484,16 @@ async def get_debug_state(session_id: str):
         latest_eval = sv.get("latest_evaluation") or {}
         student_model = sv.get("student_model", {})
 
+        # Compute goal-level scoring from competency statuses
+        statuses = sv.get("competency_statuses", [])
+        goal_score = None
+        competencies_mastered = None
+        competencies_total = None
+        if statuses:
+            goal_score = sum(c.get("score", 0) for c in statuses) / len(statuses)
+            competencies_mastered = sum(1 for c in statuses if c.get("status") == "mastered")
+            competencies_total = len(statuses)
+
         return DebugStateResponse(
             session_id=session_id,
             tutor_mode=sv.get("tutor_mode"),
@@ -491,6 +505,9 @@ async def get_debug_state(session_id: str):
             competency_scores=latest_eval.get("competency_score_dict"),
             competency_statuses=sv.get("competency_statuses"),
             active_competency_index=sv.get("active_competency_index"),
+            goal_score=goal_score,
+            competencies_mastered=competencies_mastered,
+            competencies_total=competencies_total,
         )
 
     except HTTPException:

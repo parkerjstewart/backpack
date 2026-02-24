@@ -120,8 +120,11 @@ class TutorState(TypedDict):
     active_competency_index: int  # -1 = brain-dump/open mode; 0..N-1 = focused on that competency
 
     # Conversation mode — drives tutor_turn behavior
-    # "open" | "nudge" | "probe" | "socratic" | "macro_hint" | "explain_competency"
+    # "open" | "nudge" | "probe" | "socratic" | "macro_hint" | "explain_competency" | "transition"
     tutor_mode: str
+
+    # Previous competency info for transition mode (set when advancing between competencies)
+    transitioning_from_competency: Optional[Dict[str, Any]]
 
     # Set by evaluate when needs_more_info=True; delivered directly by tutor_turn
     probe_question: Optional[str]
@@ -466,7 +469,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         message = state.get("probe_question") or "Can you say a bit more about that?"
 
     else:
-        # nudge / socratic / macro_hint / explain_competency — call the LLM
+        # nudge / socratic / macro_hint / explain_competency / transition — call the LLM
         current_goal = _get_current_goal(state)
         competency_statuses = state.get("competency_statuses", [])
         active_idx = state.get("active_competency_index", -1)
@@ -496,6 +499,10 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
             "module_examples": state.get("module_examples", [])[:8],
             "context_chunks": state.get("goal_contexts", {}).get(current_goal_id, [])[:3],
         }
+
+        # Transition mode: pass previous competency info for the bridge message
+        if tutor_mode == "transition":
+            prompt_data["previous_competency"] = state.get("transitioning_from_competency", {})
 
         system_prompt = Prompter(prompt_template="tutor/tutor_turn").render(data=prompt_data)
 
@@ -613,6 +620,13 @@ def evaluate_and_update_model(
     context_chunks = goal_contexts.get(current_goal_id, [])[:3]
     module_examples = state.get("module_examples", [])[:8]
 
+    # Pending competencies for mandatory cross-competency evidence scan
+    pending_competencies = [
+        {"competency": c["competency"], "score": c.get("score", 0.0), "evidence": c.get("evidence", [])}
+        for c in competency_statuses
+        if c["status"] == "pending"
+    ]
+
     prompt_data = {
         "goal": current_goal or {},
         "anchor_problem": state.get("anchor_problem", ""),
@@ -622,6 +636,7 @@ def evaluate_and_update_model(
         "prior_evidence": prior_evidence_by_comp,
         "conversation": _get_recent_messages(state, n=6),
         "active_competency": active_competency_dict,
+        "pending_competencies": pending_competencies,
     }
 
     system_prompt = Prompter(prompt_template="tutor/evaluate_understanding").render(
@@ -853,37 +868,51 @@ def evaluate_and_update_model(
                 return Command(goto="mark_goal_complete", update={**state_updates, "competency_statuses": competency_statuses})
             competency_statuses[next_idx]["status"] = "active"
             logger.info(f"Competency mastered — advancing to [{next_idx}]: {competency_statuses[next_idx]['competency']}")
-            next_mode = "nudge" if competency_statuses[next_idx].get("score", 0.0) >= 0.5 else "socratic"
+            prev_comp = active_comp
             return Command(
                 goto="tutor_turn",
                 update={
                     **state_updates,
                     "competency_statuses": competency_statuses,
                     "active_competency_index": next_idx,
-                    "tutor_mode": next_mode,
+                    "tutor_mode": "transition",
                     "probe_question": None,
+                    "transitioning_from_competency": {
+                        "competency": prev_comp["competency"],
+                        "score": prev_comp.get("score", 0.0),
+                        "gap": prev_comp.get("gap", ""),
+                        "evidence": prev_comp.get("evidence", []),
+                        "hypotheses": prev_comp.get("hypotheses", []),
+                    },
                 },
             )
 
     # ---- Evaluator-driven actions on active competency ----
     if suggested_action == "advance":
         # Evaluator signals mastery even if score isn't yet threshold — trust the evaluator
-        if 0 <= active_idx < len(competency_statuses):
-            competency_statuses[active_idx]["status"] = "mastered"
+        prev_comp = competency_statuses[active_idx] if 0 <= active_idx < len(competency_statuses) else None
+        if prev_comp:
+            prev_comp["status"] = "mastered"
         next_idx = _find_next_active_index(competency_statuses, start=active_idx + 1)
         if next_idx == -1:
             return Command(goto="mark_goal_complete", update={**state_updates, "competency_statuses": competency_statuses})
         competency_statuses[next_idx]["status"] = "active"
         logger.info(f"Evaluator advance — moving to [{next_idx}]: {competency_statuses[next_idx]['competency']}")
-        next_mode = "nudge" if competency_statuses[next_idx].get("score", 0.0) >= 0.5 else "socratic"
         return Command(
             goto="tutor_turn",
             update={
                 **state_updates,
                 "competency_statuses": competency_statuses,
                 "active_competency_index": next_idx,
-                "tutor_mode": next_mode,
+                "tutor_mode": "transition",
                 "probe_question": None,
+                "transitioning_from_competency": {
+                    "competency": prev_comp["competency"],
+                    "score": prev_comp.get("score", 0.0),
+                    "gap": prev_comp.get("gap", ""),
+                    "evidence": prev_comp.get("evidence", []),
+                    "hypotheses": prev_comp.get("hypotheses", []),
+                } if prev_comp else {},
             },
         )
 
@@ -927,15 +956,21 @@ def evaluate_and_update_model(
                 if next_idx == -1:
                     return Command(goto="mark_goal_complete", update={**state_updates, "competency_statuses": competency_statuses})
                 competency_statuses[next_idx]["status"] = "active"
-                next_mode = "nudge" if competency_statuses[next_idx].get("score", 0.0) >= 0.5 else "socratic"
                 return Command(
                     goto="tutor_turn",
                     update={
                         **state_updates,
                         "competency_statuses": competency_statuses,
                         "active_competency_index": next_idx,
-                        "tutor_mode": next_mode,
+                        "tutor_mode": "transition",
                         "probe_question": None,
+                        "transitioning_from_competency": {
+                            "competency": active_comp["competency"],
+                            "score": active_comp.get("score", 0.0),
+                            "gap": active_comp.get("gap", ""),
+                            "evidence": active_comp.get("evidence", []),
+                            "hypotheses": active_comp.get("hypotheses", []),
+                        },
                     },
                 )
             logger.info(
@@ -1070,6 +1105,13 @@ def generate_summary(state: TutorState, config: RunnableConfig) -> dict:
                 all_misconceptions.extend(t.get("misconceptions", []))
                 all_breakthroughs.extend(t.get("breakthroughs", []))
 
+        # Include per-competency breakdown from lifecycle snapshot
+        comp_statuses = progress.get("competency_statuses", [])
+        competency_results = [
+            {"name": c.get("competency", ""), "status": c.get("status", "pending"), "score": c.get("score", 0.0)}
+            for c in comp_statuses
+        ]
+
         goal_summaries.append({
             "goal_id": goal["id"],
             "description": goal["description"],
@@ -1077,6 +1119,7 @@ def generate_summary(state: TutorState, config: RunnableConfig) -> dict:
             "exchanges": exchanges,
             "initial_understanding": progress.get("initial_understanding"),
             "final_understanding": progress.get("final_understanding"),
+            "competencies": competency_results,
         })
 
     avg_initial = sum(initial_scores) / len(initial_scores) if initial_scores else 0
@@ -1120,6 +1163,22 @@ def generate_summary(state: TutorState, config: RunnableConfig) -> dict:
         ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
     )
 
+    # Build per-goal competency breakdown
+    goal_details = ""
+    for gs in goal_summaries:
+        competencies = gs.get("competencies", [])
+        if competencies:
+            goal_details += f"\n#### {gs['description']}\n"
+            for c in competencies:
+                score_pct = round(c["score"] * 100)
+                status_label = c["status"]
+                if status_label == "mastered":
+                    goal_details += f"- {c['name']}: mastered ({score_pct}%)\n"
+                elif status_label == "explained":
+                    goal_details += f"- {c['name']}: explained\n"
+                else:
+                    goal_details += f"- {c['name']}: {status_label} ({score_pct}%)\n"
+
     final_message = (
         f"## Session Complete!\n\n{narrative}\n\n"
         f"### Summary\n"
@@ -1128,6 +1187,8 @@ def generate_summary(state: TutorState, config: RunnableConfig) -> dict:
         f"- **Understanding Improvement**: {improvement:+.0%}\n"
         f"- **Duration**: {duration_seconds / 60:.1f} minutes\n"
     )
+    if goal_details:
+        final_message += f"\n### Per-Goal Results\n{goal_details}"
 
     return {"messages": [AIMessage(content=final_message)]}
 

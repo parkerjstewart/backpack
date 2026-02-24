@@ -124,10 +124,13 @@ mark_goal_complete
 | `socratic` | Student | Clear gap on active competency, productive angle exists | 2-3 sentences | Yes |
 | `macro_hint` | Student | Probe space exhausted on factual recall gap in active competency | 2 sentences | Yes |
 | `explain_competency` | Student | Stuck on **this one competency** — explain just it, then advance | 1 paragraph | Yes |
+| `transition` | Student | Active competency mastered — celebrate, clarify minor gaps, bridge to next | 2-3 sentences | Yes |
 
 **Probe must be specific**: probe_question should name what to demonstrate ("Can you write out the PMF?"), not ask generically ("say more"). `nudge` is a deliberate small push.
 
 **`explain` mode removed**: Replaced by `explain_competency` which is scoped to one competency. After explaining, the tutor advances to the next pending competency — students always get to demonstrate remaining competencies.
+
+**Competency names stay internal**: Socratic/nudge/transition prompts NEVER quote the competency rubric text to the student. The competency is the agent's internal assessment target — questions should feel natural, framed through the problem, a conceptual question, or a follow-up to what the student said.
 
 ### Per-competency lifecycle
 
@@ -138,13 +141,13 @@ Each competency progresses through: `pending` → `active` → `mastered` (score
 - **`mastered`**: Score ≥ 0.65 achieved through probing or spontaneous demonstration. Stagnation at score ≥ 0.65 also triggers mastery (not explain).
 - **`explained`**: Student couldn't demonstrate — tutor explained it and advanced.
 
-**Fast-track**: When a competency is activated, if it already has incidental evidence (score ≥ 0.5 from prior exchanges), it opens in `nudge` mode instead of `socratic`.
+**Transition on mastery**: When a competency is mastered and the agent advances to the next, it uses `transition` mode — celebrates mastery, clarifies any minor remaining gap, and naturally bridges to the next topic. Previous competency info (evidence, gap, hypotheses) is passed via `transitioning_from_competency` state field.
 
 **hint_count**: Each `macro_hint` on a competency increments its `hint_count`. The evaluator applies a recall-vs-conceptual scoring penalty: recall hints (forgot formula but used it expertly) → mild penalty; conceptual hints (needed the relationship explained) → larger penalty.
 
 Goal completes when all competencies are `mastered` or `explained`.
 
-**Incidental scoring (upside-only)**: If a student spontaneously demonstrates a `pending` competency well (score ≥ 0.5), it gets recorded. If they don't mention it, it stays `pending` — omission is not evidence of a gap.
+**Incidental scoring (upside-only, mandatory scan)**: Every exchange, the evaluator performs a mandatory scan of ALL pending competencies, explicitly checking whether the student's response provides positive evidence (score ≥ 0.5). Pending competency names and current scores are passed to the evaluator prompt. If evidence is found, it's recorded; if not, omission is not evidence of a gap.
 
 ### Evaluator meta-decision (`suggested_next_action`)
 
@@ -207,8 +210,9 @@ anchor_problem: Optional[str]       # Multi-step scenario for current goal
 opening_framing: Optional[str]      # Natural intro line ("Let's work through...")
 exchanges_on_goal: int              # Resets to 0 each new goal (kept for backward compat)
 total_exchanges_on_goal: int        # Same counter used for safety-net limit
-tutor_mode: str                     # "open"|"probe"|"nudge"|"socratic"|"macro_hint"|"explain_competency"
+tutor_mode: str                     # "open"|"probe"|"nudge"|"socratic"|"macro_hint"|"explain_competency"|"transition"
 probe_question: Optional[str]       # Set by evaluator when probe action chosen
+transitioning_from_competency: Optional[Dict]  # Previous competency info for transition mode {competency, score, gap, evidence, hypotheses}
 
 # Per-competency lifecycle tracking (reset by select_next_goal)
 competency_statuses: List[Dict]     # [{competency, status, score, evidence, gap, hypotheses, encounters, turns_since_progress}]
@@ -325,7 +329,8 @@ understanding_trajectory: List      # Timestamped score snapshots across all goa
 
 Click the **bug icon** (🐛) in the try-tutor page header to open a live debug panel alongside the chat. It calls `GET /tutor/sessions/{id}/debug` after each exchange and displays:
 
-- **Tutor mode badge** — color-coded (open=slate, probe=yellow, nudge=orange, socratic=blue, macro_hint=red, explain=green)
+- **Goal progress** — overall score bar + "X/Y competencies mastered" counter
+- **Tutor mode badge** — color-coded (open=slate, probe=yellow, nudge=orange, socratic=blue, macro_hint=red, explain=green, transition=purple)
 - **Exchange count** and stagnation turns
 - **Evaluator rationale** (`action_rationale`) and notes (`evaluation_notes`) from the last eval
 - **Per-competency cards** — score bar, gap text, hypotheses with confidence badges, collapsible evidence log (last 3 entries); active probe target highlighted with a target icon
@@ -360,3 +365,4 @@ INFO  Macro hint triggered: Probed Poisson PMF from 3 angles...
 | v4 | Added in-app debug panel to try-tutor page. New `GET /tutor/sessions/{id}/debug` endpoint exposes tutor mode, exchanges, student model (competency scores, evidence, hypotheses, gap, active probe target), and evaluator rationale. Frontend: `TutorDebugPanel.tsx` component, `latestDebugInfo` in `use-tutor.ts`, bug-icon toggle button in page header. |
 | v5 | Per-competency flow redesign. Each competency now has a lifecycle (pending→active→mastered/explained). Tutor walks through competencies sequentially; evaluator focuses on the active one and records incidental positive evidence for others (upside-only). Replaced `explain` (per-goal) with `explain_competency` (per-competency): explains just the stuck competency then advances to the next. Removed `give_up` action. Added `advance` action. `student_model` now derived from `competency_statuses` for backward compat. Debug panel shows lifecycle badges (pending/active/mastered/explained). Exchange limits changed: 3 encounters per competency + 12 total per goal safety net (was 6 flat). Added independently-testable clarification to `learning_goals.jinja`. |
 | v6 | Probing quality overhaul: evaluator now drafts a model answer (diff) before scoring — gap descriptions are concrete and actionable. Tutor prompts explicitly tell the student what to demonstrate. Prior evidence acknowledged when activating competency with incidental score. Fast-track: competencies with score ≥ 0.5 open in nudge mode. hint_count tracking per competency + LLM-judged recall-vs-conceptual scoring penalty for macro_hints. MASTERY_THRESHOLD lowered 0.7→0.65. Stagnation at score ≥ 0.65 now masters instead of explaining (scoring bug fix). Consistency rule: positive evaluator notes must match score ≥ 0.65. Explicit surrender: "I don't know" gets one scaffolded probe before explain. Goal/competency count reduced: 3-6→2-4 goals, 3-5→2-4 competencies. competency_statuses snapshot preserved in goal_progress on goal completion. New `GET /tutor/sessions/{id}/export` endpoint returns full conversation + lifecycle data. |
+| v6.1 | Free-flowing conversation overhaul. New `transition` tutor mode: on mastery advancement, celebrates what was demonstrated, clarifies minor remaining gaps, and naturally bridges to next topic (replaces abrupt socratic/nudge switch). Competency names kept internal — socratic/nudge/transition NEVER quote rubric text to student. Mandatory cross-competency evidence scan: evaluator now receives all pending competency names/scores and must explicitly check each for positive evidence every exchange (replaces opportunistic scan). Debug panel shows goal-level scoring: progress bar, mastered count, overall score. Session summary includes per-goal competency breakdown (mastered/explained/score). New state field: `transitioning_from_competency` carries previous competency context (evidence, gap, hypotheses) for smooth transitions. |

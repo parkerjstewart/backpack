@@ -23,6 +23,7 @@ const MODE_COLORS: Record<string, string> = {
   socratic: 'bg-blue-100 text-blue-800 border-blue-300',
   macro_hint: 'bg-red-100 text-red-800 border-red-300',
   explain_competency: 'bg-green-100 text-green-800 border-green-300',
+  transition: 'bg-purple-100 text-purple-800 border-purple-300',
 }
 
 const LIFECYCLE_STYLES: Record<CompetencyLifecycleStatus, { badge: string; border: string; icon: React.ReactNode }> = {
@@ -201,7 +202,7 @@ export function TutorDebugPanel({ debugInfo, currentGoal }: TutorDebugPanelProps
     )
   }
 
-  const { tutor_mode, exchanges_on_goal, student_model, evaluation_notes, action_rationale, competency_statuses } = debugInfo
+  const { tutor_mode, exchanges_on_goal, student_model, evaluation_notes, action_rationale, competency_statuses, goal_score, competencies_mastered, competencies_total } = debugInfo
   const modeClass = tutor_mode ? (MODE_COLORS[tutor_mode] ?? MODE_COLORS.open) : ''
   const activeTarget = student_model?.active_probe_target ?? null
   const confirmedKnowledge = student_model?.confirmed_knowledge ?? []
@@ -236,6 +237,28 @@ export function TutorDebugPanel({ debugInfo, currentGoal }: TutorDebugPanelProps
       </CardHeader>
 
       <CardContent className="flex-1 overflow-y-auto p-3 space-y-4 min-h-0">
+        {competencies_total != null && competencies_total > 0 && (
+          <section className="space-y-1.5">
+            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Goal Progress
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${scoreColor(goal_score ?? 0)}`}
+                  style={{ width: `${Math.round((goal_score ?? 0) * 100)}%` }}
+                />
+              </div>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {Math.round((goal_score ?? 0) * 100)}%
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {competencies_mastered ?? 0}/{competencies_total} competencies mastered
+            </p>
+          </section>
+        )}
+
         {(evaluation_notes || action_rationale) && (
           <section className="space-y-1">
             <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">

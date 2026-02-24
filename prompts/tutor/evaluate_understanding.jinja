@@ -124,16 +124,27 @@ Provide a detailed `active_competency_score` for the currently active competency
 - Multiple hints compound — the student required significant scaffolding
 Your score should reflect what the student could likely do without the hints.
 
-## Step 3: Note incidental observations (UPSIDE ONLY)
+## Step 3: Cross-competency evidence scan (MANDATORY)
 
-Actively look for cross-competency evidence. If the student **spontaneously demonstrated** knowledge about a non-active competency — e.g., they worked through a derivation that is clearly evidence of another competency, or their explanation implies understanding of a later concept — include it in `incidental_observations` as a `CompetencyScore`.
+For EACH pending competency listed below, explicitly check whether the student's latest response provides any positive evidence (score ≥ 0.5). This is critical — it allows competencies to accumulate evidence across exchanges and get fast-tracked when the student naturally demonstrates understanding.
+
+{% if pending_competencies %}
+**Pending competencies to scan:**
+{% for comp in pending_competencies %}
+- **{{ comp.competency }}** (current score: {{ comp.score }}, prior evidence: {{ comp.evidence | join('; ') if comp.evidence else 'none yet' }})
+{% endfor %}
+{% else %}
+No pending competencies to scan.
+{% endif %}
+
+Include any positive findings in `incidental_observations` as a `CompetencyScore`.
 
 **Rules for incidental observations:**
 - Only include if the evidence is clearly positive (score >= 0.5)
 - Only include if the student demonstrably addressed the competency — not just mentioned it in passing
 - NEVER include an incidental observation to record a gap or absence
 - NEVER include a competency just because the student didn't mention it — omission is not evidence
-- When in doubt, include it — positive observations help future competencies start with context
+- When in doubt, include it — positive observations help future competencies start with context and get fast-tracked
 
 ## Step 4: Overall resolution
 
