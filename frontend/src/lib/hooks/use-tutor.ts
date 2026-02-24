@@ -122,6 +122,22 @@ export function useTutor({ moduleId }: UseTutorParams) {
     }
   }, [sessionId, t])
 
+  const appendVoiceTurn = useCallback((studentText: string, tutorText: string) => {
+    const studentMessage: Message = {
+      id: `student-${Date.now()}`,
+      type: 'student',
+      content: studentText,
+      timestamp: new Date().toISOString(),
+    }
+    const tutorMessage: Message = {
+      id: `tutor-${Date.now()}-${Math.random()}`,
+      type: 'tutor',
+      content: tutorText,
+      timestamp: new Date().toISOString(),
+    }
+    setMessages(prev => [...prev, studentMessage, tutorMessage])
+  }, [])
+
   return {
     // State
     sessionId,
@@ -138,5 +154,6 @@ export function useTutor({ moduleId }: UseTutorParams) {
     initializeSession,
     sendMessage,
     resetSession,
+    appendVoiceTurn,
   }
 }

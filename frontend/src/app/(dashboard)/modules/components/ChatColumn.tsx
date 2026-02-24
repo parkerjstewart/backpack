@@ -113,6 +113,21 @@ export function ChatColumn({ moduleId, contextSelections }: ChatColumnProps) {
       loadingSessions={chat.loadingSessions}
       moduleContextStats={contextStats}
       moduleId={moduleId}
+      voiceEnabled
+      getVoiceContextPayload={async () => {
+        if (!chat.currentSessionId) {
+          return null;
+        }
+        const moduleContext = await chat.buildContextForVoice();
+        return {
+          surface: "module",
+          session_id: chat.currentSessionId,
+          module_id: moduleId,
+          model_override: chat.currentSession?.model_override ?? null,
+          module_context: moduleContext,
+        };
+      }}
+      onAppendVoiceTurn={chat.appendVoiceTurn}
     />
   );
 }

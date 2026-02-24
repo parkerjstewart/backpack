@@ -241,6 +241,44 @@ export interface SendModuleChatMessageRequest {
   model_override?: string
 }
 
+export interface ModuleChatStreamEvent {
+  type: 'user_message' | 'ai_message' | 'complete' | 'error'
+  content?: string
+  message?: string
+}
+
+export type VoiceSurface = 'tutor' | 'module'
+
+export interface VoiceContextPayload {
+  surface: VoiceSurface
+  session_id: string
+  module_id?: string
+  model_override?: string | null
+  module_context?: {
+    sources: Array<Record<string, unknown>>
+    notes: Array<Record<string, unknown>>
+  }
+}
+
+export interface VoiceClientEvent {
+  type: 'context' | 'start_turn' | 'audio_chunk' | 'end_turn' | 'cancel_turn'
+  payload?: Record<string, unknown>
+}
+
+export interface VoiceServerEvent {
+  type:
+    | 'ready'
+    | 'partial_transcript'
+    | 'final_transcript'
+    | 'assistant_thinking'
+    | 'assistant_text_delta'
+    | 'assistant_text_final'
+    | 'assistant_audio_chunk'
+    | 'assistant_audio_end'
+    | 'error'
+  payload: Record<string, unknown>
+}
+
 export interface BuildContextRequest {
   module_id: string
   context_config: {
