@@ -16,6 +16,15 @@ interface TutorDebugPanelProps {
   currentGoal: string | null
 }
 
+const ACTION_COLORS: Record<string, string> = {
+  advance: 'bg-green-100 text-green-800 border-green-300',
+  continue: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+  probe: 'bg-blue-100 text-blue-800 border-blue-300',
+  macro_hint: 'bg-red-100 text-red-800 border-red-300',
+  explain_competency: 'bg-amber-100 text-amber-800 border-amber-300',
+  tangent: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+}
+
 const MODE_COLORS: Record<string, string> = {
   opening: 'bg-slate-100 text-slate-700 border-slate-300',
   guide: 'bg-blue-100 text-blue-800 border-blue-300',
@@ -207,7 +216,7 @@ export function TutorDebugPanel({ debugInfo, currentGoal }: TutorDebugPanelProps
     )
   }
 
-  const { tutor_mode, exchanges_on_goal, student_model, evaluation_notes, action_rationale, evaluator_guidance, competency_statuses, goal_score, competencies_mastered, competencies_total } = debugInfo
+  const { tutor_mode, exchanges_on_goal, student_model, evaluation_notes, action_rationale, evaluator_guidance, competency_statuses, goal_score, competencies_mastered, competencies_total, evaluator_action } = debugInfo
   const modeClass = tutor_mode ? (MODE_COLORS[tutor_mode] ?? MODE_COLORS.open) : ''
   const activeTarget = student_model?.active_probe_target ?? null
   const confirmedKnowledge = student_model?.confirmed_knowledge ?? []
@@ -227,6 +236,13 @@ export function TutorDebugPanel({ debugInfo, currentGoal }: TutorDebugPanelProps
               className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-semibold ${modeClass}`}
             >
               {tutor_mode}
+            </span>
+          )}
+          {evaluator_action && (
+            <span
+              className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${ACTION_COLORS[evaluator_action] ?? 'bg-gray-100 text-gray-600 border-gray-300'}`}
+            >
+              → {evaluator_action}
             </span>
           )}
           <span className="text-xs text-muted-foreground">

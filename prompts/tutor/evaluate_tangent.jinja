@@ -82,6 +82,8 @@ If `resolved: true` → guide the tutor to smoothly return to the main problem.
 If `resolved: false` and tangent_turns < 3 → guide the tutor to continue helping with the tangent naturally.
 If `resolved: false` and tangent_turns >= 3 → guide the tutor to gently reconnect to the problem.
 
+In all reconnect scenarios: tell the tutor to invite the student back with a question ("shall we get back to X?" or "want to pick up where we left off?") — NOT by filling in the gap or stating the next step for the active competency. The tutor has the competency gap visible in its context; if the guidance reveals the answer, the tutor will give it away.
+
 # OUTPUT FORMAT
 
 ```json

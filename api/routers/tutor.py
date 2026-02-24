@@ -462,6 +462,7 @@ class DebugStateResponse(BaseModel):
     goal_score: Optional[float] = Field(None, description="Average competency score for current goal (0-1)")
     competencies_mastered: Optional[int] = Field(None, description="Number of mastered competencies for current goal")
     competencies_total: Optional[int] = Field(None, description="Total number of competencies for current goal")
+    evaluator_action: Optional[str] = Field(None, description="Last suggested_next_action from evaluator (advance/continue/probe/macro_hint/explain_competency/tangent)")
 
 
 @router.get("/tutor/sessions/{session_id}/debug", response_model=DebugStateResponse)
@@ -510,6 +511,7 @@ async def get_debug_state(session_id: str):
             goal_score=goal_score,
             competencies_mastered=competencies_mastered,
             competencies_total=competencies_total,
+            evaluator_action=latest_eval.get("suggested_next_action"),
         )
 
     except HTTPException:

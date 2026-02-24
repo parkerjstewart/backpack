@@ -47,7 +47,8 @@ from backpack.utils.context_builder import ContextBuilder
 MAX_ENCOUNTERS_PER_COMPETENCY = 10  # high safety-net only; stagnation driven by turns_since_progress
 MAX_NO_PROGRESS_TURNS = 3           # turns with no score improvement → force explain
 MAX_TOTAL_EXCHANGES_PER_GOAL = 12   # safety net per goal
-MAX_TANGENT_TURNS = 3               # consecutive tangent turns before reconnecting to problem
+MAX_TANGENT_TURNS = 3               # turns per tangent episode before force-reconnect
+MAX_TANGENT_EPISODES_PER_COMPETENCY = 2  # separate tangent episodes allowed per competency
 NUDGE_THRESHOLD = 0.55  # active competency score >= this → nudge instead of guide
 MASTERY_THRESHOLD = 0.65
 
@@ -58,19 +59,18 @@ MASTERY_THRESHOLD = 0.65
 
 BEHAVIORAL_PROFILES: dict[str, str] = {
     "guide": (
-        "You are guiding the student through the problem. This is a collaborative "
-        "conversation — you can ask questions, give partial information, clarify "
-        "concepts, provide context, or scaffold their thinking. Your goal is to help "
-        "the student demonstrate and build understanding.\n"
-        "- Respond naturally — sometimes that means asking, sometimes telling, "
-        "  sometimes both in the same response\n"
-        "- If giving information, give enough to unblock them, then check understanding\n"
-        "- If asking a question, make it specific and clear about what you need "
-        "  demonstrated\n"
-        "- Follow the evaluator's suggested focus if provided\n"
+        "You're guiding the student through the problem. Your goal is to help them "
+        "demonstrate and build understanding.\n"
+        "- When the student is engaging and progressing, prefer asking over telling — "
+        "  invite them to reason through the next step rather than giving it to them "
+        "  ('What would you try next?' instead of 'Now take the derivative.')\n"
+        "- Give information when: (a) the evaluator's guidance says to, (b) the student "
+        "  explicitly asked, (c) they're genuinely stuck after you've asked, or "
+        "  (d) a brief context reminder is needed\n"
+        "- Follow the evaluator's assessment closely — it tells you what the student needs\n"
+        "- If giving info, give enough to unblock, then follow with a question\n"
         "- If prior evidence exists, build on it — don't re-test demonstrated understanding\n"
-        "- Keep it conversational — 2-4 sentences typical, but shorter or longer as the "
-        "  exchange naturally calls for"
+        "- 2-4 sentences typical, shorter or longer as the exchange calls for"
     ),
     "nudge": (
         "The student is close — they almost have it. Give a brief, targeted push.\n"
@@ -99,21 +99,28 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Stay conversational — \"here's how I think about it...\" not \"the answer is...\""
     ),
     "transition": (
-        "The student just demonstrated mastery. Bridge to the next topic naturally.\n"
-        "- Briefly celebrate what they got right — be specific about what they demonstrated\n"
-        "- If there's a minor gap worth noting, clarify it briefly\n"
-        "- Bridge to the next topic through the problem, a conceptual connection, or "
-        "  a follow-up to what they just said\n"
-        "- Don't name the competency rubric — the student shouldn't feel like they're "
-        "  moving to a new test item\n"
+        "Look at the evaluator_guidance to determine how to frame this transition.\n"
+        "If the student mastered this competency: celebrate specifically what they demonstrated, "
+        "clarify any minor remaining gap, then bridge naturally to the next topic.\n"
+        "If the competency was explained to them (they didn't fully demonstrate it): briefly "
+        "summarize the key takeaway they should hold onto (1 sentence), then bridge to the next "
+        "topic — don't quiz them on it again or over-dwell.\n"
+        "In both cases:\n"
+        "- Bridge through the problem, a conceptual connection, or a follow-up to what they just said\n"
+        "- Don't name the competency rubric text\n"
         "- 2-3 sentences typical"
     ),
     "tangent": (
-        "The student is asking about something that doesn't help score the active "
-        "competency. Help them directly — this is a teaching moment, not an assessment.\n"
+        "The student asked a side question. Answer it directly and helpfully — "
+        "this is a teaching moment, not an assessment.\n"
         "- Answer their question directly and completely\n"
-        "- Reconnect to the main problem naturally after answering\n"
         "- Don't assess or quiz — just help\n"
+        "- Follow the evaluator's guidance on whether to reconnect. If the guidance "
+        "  doesn't mention coming back, just answer and let the conversation breathe — "
+        "  don't force a redirect after every side question\n"
+        "- IMPORTANT: When reconnecting, invite them back with a question — do NOT "
+        "  fill in the active competency gap for them "
+        "  ('Shall we pick back up where we left off?' not 'The Poisson PMF is...')\n"
         "- 2-4 sentences typical, but take more space if the topic needs it"
     ),
     "opening": (
@@ -722,6 +729,27 @@ def evaluate_and_update_model(
 
     # ---- If the previous turn was a tangent exchange, use lightweight tangent evaluator ----
     if is_tangent:
+        # Force-resolve if the previous response already included the reconnect message
+        if tangent_turns >= MAX_TANGENT_TURNS:
+            logger.info(f"Tangent force-resolve after {tangent_turns} turns — skipping evaluator")
+            if 0 <= active_idx < len(competency_statuses):
+                re_entry_score = competency_statuses[active_idx].get("score", 0.0)
+                re_entry_mode = "nudge" if re_entry_score >= NUDGE_THRESHOLD else "guide"
+            else:
+                re_entry_mode = "guide"
+            return Command(
+                goto="tutor_turn",
+                update={
+                    "competency_statuses": competency_statuses,
+                    "is_tangent": False,
+                    "tangent_turns": 0,
+                    "tangent_topic": None,
+                    "tutor_mode": re_entry_mode,
+                    "evaluator_guidance": "Student's tangent has been addressed. Pick up where you left off on the active competency — ask them a question to re-engage.",
+                    "probe_question": None,
+                },
+            )
+
         logger.info(f"Evaluating tangent exchange (turn {tangent_turns})")
         tangent_topic = state.get("tangent_topic", "")
         pending_competencies = [
@@ -799,9 +827,13 @@ def evaluate_and_update_model(
                 },
             )
         else:
-            # Continue tangent or force reconnect at limit
+            # Continue tangent; on the last allowed turn override guidance to guarantee reconnect
             if new_tangent_turns >= MAX_TANGENT_TURNS:
-                tutor_guidance = "Gently reconnect the student to the main problem. They've been on a tangent for a while — acknowledge their question is resolved and steer back."
+                tutor_guidance = (
+                    "This is the last tangent exchange. Answer any remaining part of the student's "
+                    "question, then reconnect to the main problem — invite them back with a question "
+                    "about where they left off. Do not give away the answer to the active competency."
+                )
             else:
                 tutor_guidance = tangent_result.tutor_guidance or "Continue helping with the tangent."
             logger.info(f"Tangent continuing (turn {new_tangent_turns})")
@@ -1073,11 +1105,38 @@ def evaluate_and_update_model(
 
     # ---- Tangent detected by evaluator ----
     if suggested_action == "tangent":
+        # Check per-competency tangent episode budget
+        tangent_budget_exhausted = False
+        if 0 <= active_idx < len(competency_statuses):
+            episodes = competency_statuses[active_idx].get("tangent_episodes", 0)
+            if episodes >= MAX_TANGENT_EPISODES_PER_COMPETENCY:
+                tangent_budget_exhausted = True
+                logger.info(f"Tangent budget exhausted ({episodes} episodes on this competency) — treating as continue")
+
+        if tangent_budget_exhausted:
+            inline_guidance = (
+                f"Student is asking about something off-topic ({tangent_topic_from_eval or 'a side question'}). "
+                "We've already addressed side questions on this topic — do NOT answer this one. "
+                "Briefly acknowledge their interest, then firmly redirect: say something like "
+                "'Let's come back to that later — right now let's focus on [the current problem].' "
+                "Then re-engage them with a question about the active competency."
+            )
+            return Command(
+                goto="tutor_turn",
+                update={**state_updates, "tutor_mode": "guide", "evaluator_guidance": inline_guidance, "probe_question": None},
+            )
+
+        # Budget available — enter tangent mode and increment episode counter
+        if 0 <= active_idx < len(competency_statuses):
+            competency_statuses[active_idx]["tangent_episodes"] = (
+                competency_statuses[active_idx].get("tangent_episodes", 0) + 1
+            )
         logger.info(f"Tangent detected: {tangent_topic_from_eval or 'off-topic'}")
         return Command(
             goto="tutor_turn",
             update={
                 **state_updates,
+                "competency_statuses": competency_statuses,
                 "tutor_mode": "tangent",
                 "is_tangent": True,
                 "tangent_turns": 1,
@@ -1111,6 +1170,10 @@ def evaluate_and_update_model(
             competency_statuses[next_idx]["status"] = "active"
             logger.info(f"Competency mastered — advancing to [{next_idx}]: {competency_statuses[next_idx]['competency']}")
             prev_comp = active_comp
+            transition_guidance = (
+                f"Student mastered '{prev_comp['competency']}'. "
+                "Celebrate what they demonstrated specifically, then bridge naturally to the next topic."
+            )
             return Command(
                 goto="tutor_turn",
                 update={
@@ -1119,9 +1182,11 @@ def evaluate_and_update_model(
                     "active_competency_index": next_idx,
                     "tutor_mode": "transition",
                     "probe_question": None,
+                    "evaluator_guidance": transition_guidance,
                     "transitioning_from_competency": {
                         "competency": prev_comp["competency"],
                         "score": prev_comp.get("score", 0.0),
+                        "status": prev_comp.get("status", "mastered"),
                         "gap": prev_comp.get("gap", ""),
                         "evidence": prev_comp.get("evidence", []),
                         "hypotheses": prev_comp.get("hypotheses", []),
@@ -1140,6 +1205,22 @@ def evaluate_and_update_model(
             return Command(goto="mark_goal_complete", update={**state_updates, "competency_statuses": competency_statuses})
         competency_statuses[next_idx]["status"] = "active"
         logger.info(f"Evaluator advance — moving to [{next_idx}]: {competency_statuses[next_idx]['competency']}")
+        if prev_comp:
+            prev_status = prev_comp.get("status", "mastered")
+            if prev_status == "mastered":
+                transition_guidance = (
+                    f"Student mastered '{prev_comp['competency']}'. "
+                    "Celebrate what they demonstrated specifically, then bridge naturally to the next topic."
+                )
+            else:
+                gap = prev_comp.get("gap", "")
+                transition_guidance = (
+                    f"Student didn't fully demonstrate '{prev_comp['competency']}' (it was explained to them). "
+                    f"Briefly summarize the key takeaway in 1 sentence, then bridge to the next topic without quizzing them on it."
+                    + (f" Gap: {gap}" if gap else "")
+                )
+        else:
+            transition_guidance = "Bridge naturally to the next topic."
         return Command(
             goto="tutor_turn",
             update={
@@ -1148,9 +1229,11 @@ def evaluate_and_update_model(
                 "active_competency_index": next_idx,
                 "tutor_mode": "transition",
                 "probe_question": None,
+                "evaluator_guidance": transition_guidance,
                 "transitioning_from_competency": {
                     "competency": prev_comp["competency"],
                     "score": prev_comp.get("score", 0.0),
+                    "status": prev_comp.get("status", "mastered"),
                     "gap": prev_comp.get("gap", ""),
                     "evidence": prev_comp.get("evidence", []),
                     "hypotheses": prev_comp.get("hypotheses", []),
@@ -1197,6 +1280,10 @@ def evaluate_and_update_model(
                 if next_idx == -1:
                     return Command(goto="mark_goal_complete", update={**state_updates, "competency_statuses": competency_statuses})
                 competency_statuses[next_idx]["status"] = "active"
+                stagnation_transition_guidance = (
+                    f"Student mastered '{active_comp['competency']}'. "
+                    "Celebrate what they demonstrated specifically, then bridge naturally to the next topic."
+                )
                 return Command(
                     goto="tutor_turn",
                     update={
@@ -1205,9 +1292,11 @@ def evaluate_and_update_model(
                         "active_competency_index": next_idx,
                         "tutor_mode": "transition",
                         "probe_question": None,
+                        "evaluator_guidance": stagnation_transition_guidance,
                         "transitioning_from_competency": {
                             "competency": active_comp["competency"],
                             "score": active_comp.get("score", 0.0),
+                            "status": active_comp.get("status", "mastered"),
                             "gap": active_comp.get("gap", ""),
                             "evidence": active_comp.get("evidence", []),
                             "hypotheses": active_comp.get("hypotheses", []),

@@ -503,4 +503,5 @@ export interface TutorDebugInfo {
   goal_score: number | null
   competencies_mastered: number | null
   competencies_total: number | null
+  evaluator_action: string | null
 }
