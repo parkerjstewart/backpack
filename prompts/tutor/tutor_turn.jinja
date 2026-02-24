@@ -83,6 +83,11 @@ The student has a **gap** in **{{ active_competency.competency if active_compete
 2. Ask ONE question that targets the most specific gap from the diff — name the concept, formula, or connection you need them to demonstrate
 3. Reference the anchor problem or a specific named example if it helps
 
+{% if suggested_focus %}
+**Evaluator's suggested focus**: {{ suggested_focus }}
+Use this as guidance for your question — don't deliver it verbatim. Always respond to what the student actually said first.
+{% endif %}
+
 **Rules:**
 - 2–3 sentences max
 - ONE question only — not two
@@ -91,6 +96,12 @@ The student has a **gap** in **{{ active_competency.competency if active_compete
 - Don't re-ask the same angle as the previous question — check conversation above
 - If prior evidence exists (see 'Evidence so far' above), acknowledge what they've already shown and probe ONLY the remaining gap; don't re-test demonstrated understanding
 - Casual, voice-friendly tone
+
+**If the student asks for help** ("I don't know", "I don't remember", "can you give me X", "if you tell me Y I can do Z"):
+- Acknowledge their request naturally — don't ignore it
+- Give a **stepping stone**: restate context, remind them of a prior step, or provide a related formula/setup that gets them closer (e.g., "Sure — the log-likelihood for Poisson is Σ(xi log λ − λ). Can you take the derivative of that?")
+- Do NOT give the final answer — that's what macro_hint is for. Give enough to re-engage, then ask your question
+- Still end with a focused question
 
 {% elif tutor_mode == "macro_hint" %}
 The student is stuck on a specific fact within **{{ active_competency.competency if active_competency else 'the current concept' }}** — you've already probed from multiple angles.

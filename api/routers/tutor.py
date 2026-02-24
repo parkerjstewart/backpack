@@ -447,7 +447,7 @@ async def get_trajectory(session_id: str):
 class DebugStateResponse(BaseModel):
     """Debug state for inspecting tutor agent internals during a session."""
     session_id: str
-    tutor_mode: Optional[str] = Field(None, description="Current tutor mode (open/probe/nudge/socratic/macro_hint/explain_competency/transition)")
+    tutor_mode: Optional[str] = Field(None, description="Current tutor mode (open/nudge/socratic/macro_hint/explain_competency/transition)")
     exchanges_on_goal: int = Field(0, description="Number of exchanges on current goal")
     student_model: Optional[Dict[str, Any]] = Field(None, description="Full student model for current goal")
     evaluation_notes: Optional[str] = Field(None, description="Evaluator notes from last exchange")

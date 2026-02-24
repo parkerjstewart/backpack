@@ -101,12 +101,12 @@ tutor_turn [INTERRUPT]  ←─────────────────�
   ↓                                                                                │
 evaluate_and_update_model   Score competencies, update student model, decide route │
   │                                                                                │
-  ├─ mastered ─────────────────────────────────────────────────────► mark_goal_complete
-  ├─ probe ────────────────────────────────────────────────────────────────────────┘
+  ├─ advance / score ≥ 0.65 → mark_goal_complete or transition mode ──────────────┘
+  ├─ explain_competency ───────────────────────────────────────────────────────────┘
   ├─ macro_hint ───────────────────────────────────────────────────────────────────┘
-  ├─ give_up → explain mode ───────────────────────────────────────────────────────┘
-  ├─ max_exchanges (6) or stagnation (3 turns) → explain mode ─────────────────────┘
-  ├─ weakest competency ≥ 0.55 → nudge mode ───────────────────────────────────────┘
+  ├─ probe → socratic mode (with suggested_focus) ─────────────────────────────────┘
+  ├─ safety net (≥12 total) or stagnation (≥3 enc + ≥2 turns no progress) → explain_competency ┘
+  ├─ active score ≥ 0.55 → nudge mode ────────────────────────────────────────────┘
   └─ otherwise → socratic mode ────────────────────────────────────────────────────┘
 
 mark_goal_complete
@@ -119,14 +119,19 @@ mark_goal_complete
 | Mode | Who it's for | When | Length | LLM call? |
 |------|-------------|------|--------|-----------|
 | `open` | Student | First turn on each goal (brain dump) | 2-3 sentences | No — delivers `opening_framing` |
-| `probe` | Evaluator (to get more signal) | Response too thin/ambiguous to score **active competency** | 1 sentence | No — delivers `probe_question` |
 | `nudge` | Student | Active competency score ≥ 0.55 | 1-2 sentences | Yes |
-| `socratic` | Student | Clear gap on active competency, productive angle exists | 2-3 sentences | Yes |
-| `macro_hint` | Student | Probe space exhausted on factual recall gap in active competency | 2 sentences | Yes |
+| `socratic` | Student | Gap exists OR evaluator needs more signal — also handles student requests for help via scaffolding | 2-3 sentences | Yes |
+| `macro_hint` | Student | 2+ scaffolded exchanges on same factual gap, still stuck — give the fact directly | 2 sentences | Yes |
 | `explain_competency` | Student | Stuck on **this one competency** — explain just it, then advance | 1 paragraph | Yes |
 | `transition` | Student | Active competency mastered — celebrate, clarify minor gaps, bridge to next | 2-3 sentences | Yes |
 
-**Probe must be specific**: probe_question should name what to demonstrate ("Can you write out the PMF?"), not ask generically ("say more"). `nudge` is a deliberate small push.
+**`probe` mode removed**: Probe is now an evaluator action that routes to `socratic` mode. The evaluator's `probe_question` becomes a `suggested_focus` for the LLM — the tutor responds to what the student said and uses the suggested question as guidance, not a verbatim script.
+
+**Scaffolding in socratic**: When the student asks for help ("I don't know", "give me X"), socratic mode gives a stepping stone (restate context, prior step, related formula) then asks a question. `macro_hint` is reserved for after 2+ scaffolded exchanges with no progress.
+
+**Routing priority**: `advance` → `explain_competency` → `macro_hint` → `probe/needs_more_info` → stagnation check → score-based. `needs_more_info` no longer overrides explicit `macro_hint`/`explain_competency` recommendations.
+
+**`nudge` is a deliberate small push**: Score ≥ 0.55 on active competency.
 
 **`explain` mode removed**: Replaced by `explain_competency` which is scoped to one competency. After explaining, the tutor advances to the next pending competency — students always get to demonstrate remaining competencies.
 
@@ -210,8 +215,8 @@ anchor_problem: Optional[str]       # Multi-step scenario for current goal
 opening_framing: Optional[str]      # Natural intro line ("Let's work through...")
 exchanges_on_goal: int              # Resets to 0 each new goal (kept for backward compat)
 total_exchanges_on_goal: int        # Same counter used for safety-net limit
-tutor_mode: str                     # "open"|"probe"|"nudge"|"socratic"|"macro_hint"|"explain_competency"|"transition"
-probe_question: Optional[str]       # Set by evaluator when probe action chosen
+tutor_mode: str                     # "open"|"nudge"|"socratic"|"macro_hint"|"explain_competency"|"transition"
+probe_question: Optional[str]       # Evaluator's suggested focus; routed to socratic mode as guidance (not delivered verbatim)
 transitioning_from_competency: Optional[Dict]  # Previous competency info for transition mode {competency, score, gap, evidence, hypotheses}
 
 # Per-competency lifecycle tracking (reset by select_next_goal)
@@ -298,11 +303,11 @@ understanding_trajectory: List      # Timestamped score snapshots across all goa
 1. Add the mode name to `TutorState` comment in `tutor.py`
 2. Add routing logic in `evaluate_and_update_model` (decide when to trigger it)
 3. Add the mode block in `prompts/tutor/tutor_turn.jinja`
-4. If the new mode should bypass LLM (like `probe`/`open`), add an `elif` before the `else` in `tutor_turn()` node
+4. If the new mode should bypass LLM (like `open`), add an `elif` before the `else` in `tutor_turn()` node
 5. Update the mode table in this doc
 
-### Change how the evaluator decides probe/macro_hint/give_up
-- Edit **Step 0** in `prompts/tutor/evaluate_understanding.jinja`
+### Change how the evaluator decides probe/macro_hint/explain_competency
+- Edit **Step 1** in `prompts/tutor/evaluate_understanding.jinja`
 - If adding new action types, also update `EvaluationResult.suggested_next_action` Literal in `tutor_models.py` and add routing branch in `evaluate_and_update_model`
 
 ### Change competency scoring thresholds
@@ -330,7 +335,7 @@ understanding_trajectory: List      # Timestamped score snapshots across all goa
 Click the **bug icon** (🐛) in the try-tutor page header to open a live debug panel alongside the chat. It calls `GET /tutor/sessions/{id}/debug` after each exchange and displays:
 
 - **Goal progress** — overall score bar + "X/Y competencies mastered" counter
-- **Tutor mode badge** — color-coded (open=slate, probe=yellow, nudge=orange, socratic=blue, macro_hint=red, explain=green, transition=purple)
+- **Tutor mode badge** — color-coded (open=slate, nudge=orange, socratic=blue, macro_hint=red, explain_competency=green, transition=purple)
 - **Exchange count** and stagnation turns
 - **Evaluator rationale** (`action_rationale`) and notes (`evaluation_notes`) from the last eval
 - **Per-competency cards** — score bar, gap text, hypotheses with confidence badges, collapsible evidence log (last 3 entries); active probe target highlighted with a target icon
@@ -366,3 +371,4 @@ INFO  Macro hint triggered: Probed Poisson PMF from 3 angles...
 | v5 | Per-competency flow redesign. Each competency now has a lifecycle (pending→active→mastered/explained). Tutor walks through competencies sequentially; evaluator focuses on the active one and records incidental positive evidence for others (upside-only). Replaced `explain` (per-goal) with `explain_competency` (per-competency): explains just the stuck competency then advances to the next. Removed `give_up` action. Added `advance` action. `student_model` now derived from `competency_statuses` for backward compat. Debug panel shows lifecycle badges (pending/active/mastered/explained). Exchange limits changed: 3 encounters per competency + 12 total per goal safety net (was 6 flat). Added independently-testable clarification to `learning_goals.jinja`. |
 | v6 | Probing quality overhaul: evaluator now drafts a model answer (diff) before scoring — gap descriptions are concrete and actionable. Tutor prompts explicitly tell the student what to demonstrate. Prior evidence acknowledged when activating competency with incidental score. Fast-track: competencies with score ≥ 0.5 open in nudge mode. hint_count tracking per competency + LLM-judged recall-vs-conceptual scoring penalty for macro_hints. MASTERY_THRESHOLD lowered 0.7→0.65. Stagnation at score ≥ 0.65 now masters instead of explaining (scoring bug fix). Consistency rule: positive evaluator notes must match score ≥ 0.65. Explicit surrender: "I don't know" gets one scaffolded probe before explain. Goal/competency count reduced: 3-6→2-4 goals, 3-5→2-4 competencies. competency_statuses snapshot preserved in goal_progress on goal completion. New `GET /tutor/sessions/{id}/export` endpoint returns full conversation + lifecycle data. |
 | v6.1 | Free-flowing conversation overhaul. New `transition` tutor mode: on mastery advancement, celebrates what was demonstrated, clarifies minor remaining gaps, and naturally bridges to next topic (replaces abrupt socratic/nudge switch). Competency names kept internal — socratic/nudge/transition NEVER quote rubric text to student. Mandatory cross-competency evidence scan: evaluator now receives all pending competency names/scores and must explicitly check each for positive evidence every exchange (replaces opportunistic scan). Debug panel shows goal-level scoring: progress bar, mastered count, overall score. Session summary includes per-goal competency breakdown (mastered/explained/score). New state field: `transitioning_from_competency` carries previous competency context (evidence, gap, hypotheses) for smooth transitions. |
+| v6.2 | Flexible socratic mode + probe loop fix. Removed `probe` as a no-LLM mode — probe evaluator action now routes to `socratic` with evaluator's `probe_question` as `suggested_focus` (LLM responds to student's actual words, not a verbatim script). Socratic mode expanded with scaffolding guidance: when student asks for help, tutor gives a stepping stone (context, prior step, related formula) before asking a question. Fixed routing priority bug: `macro_hint` and `explain_competency` now checked before `needs_more_info`, so explicit evaluator escalation is respected. Evaluator updated: student requests for help are scaffolding opportunities (not macro_hint triggers); probe diversity check (repeated identical probes replaced by `continue`); strengthened consistency check (engaging student = not `explain_competency`). |

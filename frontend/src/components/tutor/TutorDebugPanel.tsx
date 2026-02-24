@@ -18,7 +18,6 @@ interface TutorDebugPanelProps {
 
 const MODE_COLORS: Record<string, string> = {
   open: 'bg-slate-100 text-slate-700 border-slate-300',
-  probe: 'bg-yellow-100 text-yellow-800 border-yellow-300',
   nudge: 'bg-orange-100 text-orange-800 border-orange-300',
   socratic: 'bg-blue-100 text-blue-800 border-blue-300',
   macro_hint: 'bg-red-100 text-red-800 border-red-300',

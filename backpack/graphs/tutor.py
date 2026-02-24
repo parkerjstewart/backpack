@@ -120,13 +120,13 @@ class TutorState(TypedDict):
     active_competency_index: int  # -1 = brain-dump/open mode; 0..N-1 = focused on that competency
 
     # Conversation mode — drives tutor_turn behavior
-    # "open" | "nudge" | "probe" | "socratic" | "macro_hint" | "explain_competency" | "transition"
+    # "open" | "nudge" | "socratic" | "macro_hint" | "explain_competency" | "transition"
     tutor_mode: str
 
     # Previous competency info for transition mode (set when advancing between competencies)
     transitioning_from_competency: Optional[Dict[str, Any]]
 
-    # Set by evaluate when needs_more_info=True; delivered directly by tutor_turn
+    # Evaluator's suggested focus question; passed to socratic mode as guidance (not delivered verbatim)
     probe_question: Optional[str]
 
     latest_evaluation: Optional[Dict[str, Any]]
@@ -451,11 +451,12 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     """Generate a tutor message and wait for student response.
 
     Modes:
-      open     — First exchange: deliver the opening_framing directly (no LLM call)
-      probe    — Deliver probe_question directly (no LLM call)
-      nudge    — Short 1-sentence push ("can you say more about X?")
-      socratic — 2-3 sentence hypothesis-driven bridging question
-      explain  — 2-3 paragraph direct explanation from takeaways
+      open               — First exchange: deliver opening_framing directly (no LLM call)
+      nudge              — Short 1-2 sentence push toward specific gap
+      socratic           — 2-3 sentence bridging question (may include evaluator's suggested_focus)
+      macro_hint         — Give the missing fact directly, then re-engage
+      explain_competency — Explain one stuck competency, then advance
+      transition         — Celebrate mastery, clarify minor gaps, bridge to next competency
     """
     tutor_mode = state.get("tutor_mode", "open")
     current_goal_id = state.get("current_goal_id")
@@ -464,9 +465,6 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     # --- Modes that don't need an LLM call ---
     if tutor_mode == "open":
         message = state.get("opening_framing") or state.get("anchor_problem") or ""
-
-    elif tutor_mode == "probe":
-        message = state.get("probe_question") or "Can you say a bit more about that?"
 
     else:
         # nudge / socratic / macro_hint / explain_competency / transition — call the LLM
@@ -503,6 +501,12 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         # Transition mode: pass previous competency info for the bridge message
         if tutor_mode == "transition":
             prompt_data["previous_competency"] = state.get("transitioning_from_competency", {})
+
+        # Socratic mode: pass evaluator's suggested focus (from probe_question) if available
+        if tutor_mode == "socratic":
+            suggested_focus = state.get("probe_question")
+            if suggested_focus:
+                prompt_data["suggested_focus"] = suggested_focus
 
         system_prompt = Prompter(prompt_template="tutor/tutor_turn").render(data=prompt_data)
 
@@ -923,13 +927,6 @@ def evaluate_and_update_model(
             update={**state_updates, "tutor_mode": "explain_competency", "probe_question": None},
         )
 
-    if suggested_action == "probe" or needs_more_info:
-        logger.info(f"Probing for more info: {action_rationale or 'thin response'}")
-        return Command(
-            goto="tutor_turn",
-            update={**state_updates, "tutor_mode": "probe", "probe_question": probe_question},
-        )
-
     if suggested_action == "macro_hint":
         logger.info(f"Macro hint triggered: {action_rationale}")
         # Increment hint_count on active competency so evaluator can apply scoring penalty
@@ -938,6 +935,15 @@ def evaluate_and_update_model(
         return Command(
             goto="tutor_turn",
             update={**state_updates, "competency_statuses": competency_statuses, "tutor_mode": "macro_hint", "probe_question": None},
+        )
+
+    if suggested_action == "probe" or needs_more_info:
+        # Route to socratic with suggested_focus — LLM acknowledges student's response
+        # before asking the probe question (avoids rigid verbatim re-delivery)
+        logger.info(f"Probe → socratic with suggested focus: {action_rationale or 'thin response'}")
+        return Command(
+            goto="tutor_turn",
+            update={**state_updates, "tutor_mode": "socratic", "probe_question": probe_question},
         )
 
     # ---- Per-competency stagnation check ----

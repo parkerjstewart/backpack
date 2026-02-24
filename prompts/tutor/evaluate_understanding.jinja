@@ -93,17 +93,26 @@ Look at the last 4–6 exchanges specifically around the **active competency**. 
 
 | Action | When to use |
 |--------|-------------|
-| `"probe"` | Response is too vague/ambiguous to score the ACTIVE competency AND a specific new angle exists — OR student says "I don't know" for the first time on this competency (give one scaffolded probe before explaining). Be specific: name what you want them to demonstrate. |
-| `"macro_hint"` | Same factual gap on ACTIVE competency probed 2+ times from different angles with no progress — student can't recall a specific formula/definition; giving it will unblock them |
-| `"explain_competency"` | Student can't reason about THIS specific competency at all even with hints, OR student says "I don't know" a second consecutive time on this competency, OR student is clearly disengaged/frustrated ("I have absolutely no idea", "I give up") |
+| `"probe"` | Response is too vague/ambiguous to score the ACTIVE competency AND a specific new angle exists — OR student says "I don't know" for the first time on this competency. Be specific: name what you want them to demonstrate. |
+| `"macro_hint"` | Student has received scaffolding 2+ times on the same factual gap with no progress — the gap is a bare fact they genuinely cannot recall even with stepping stones |
+| `"explain_competency"` | Student can't reason about THIS specific competency at all even after multiple scaffolded exchanges, OR student is clearly disengaged/frustrated ("I have absolutely no idea", "I give up") |
 | `"advance"` | Active competency is clearly mastered (score >= 0.65) — explicitly move to next |
 | `"continue"` | Normal flow — student is engaging and there's still productive Socratic ground to cover on the active competency |
 
-When in doubt, prefer `"continue"`. Use `"probe"` only when you genuinely can't score the active competency or when "I don't know" is the first occurrence.
+When in doubt, prefer `"continue"`. Use `"probe"` only when you genuinely can't score the active competency.
+
+**Student explicitly asks for help** ("give me the formula", "I don't remember X", "if you tell me Y I can do Z", "can you remind me"):
+This is a **scaffolding opportunity** — use `"continue"` or `"probe"` with a helpful `probe_question` that restates context or gives a stepping stone. The tutor will respond to their request before asking the follow-up question. Do NOT jump to `"macro_hint"` just because the student asked — they're being collaborative, not stuck.
+
+Only use `"macro_hint"` when: the student has received stepping stones 2+ times on the same specific fact and still cannot progress. A single "I don't know" is NOT enough for macro_hint.
+
+Only use `"explain_competency"` when: the student demonstrates they fundamentally cannot reason about the concept even with scaffolding — not just because they forgot a formula.
 
 **Context gap vs. knowledge gap**: If the student says "I don't remember [the scenario details]" — that is a context gap, not a knowledge gap. Use `"probe"` or `"continue"` and restate context in the probe question; do NOT use `"macro_hint"` or `"explain_competency"`.
 
 **When using `"probe"`, write a specific `probe_question`** that names the concept, formula, or connection you need demonstrated. The student should understand exactly what you're asking for. BAD: "Can you say more about that?" GOOD: "Can you write out what the Poisson PMF looks like for one observation?"
+
+**Probe diversity check**: If you want to use `"probe"`, look at the last 2–3 tutor questions in the conversation. If your intended probe_question covers the same angle as a recent question, use `"continue"` instead — repeated identical probes are worse than moving forward.
 
 ## Step 2: Score the ACTIVE competency in detail
 
@@ -160,6 +169,8 @@ Before finalizing your output, verify internal consistency:
 - If your `notes` describe the student positively (words like "solid", "good", "great", "strong", "correct"), your score MUST be >= 0.65 and your `suggested_next_action` should be `"advance"` or `"continue"`, NOT `"explain_competency"`.
 - If your `active_competency_score.evidence` says the student demonstrated the competency well, the score MUST reflect that (>= 0.65).
 - Do NOT praise the student's answer in notes while recommending explain — that is contradictory and will cause the system to incorrectly mark the student as stuck.
+- If your `action_rationale` says the student is engaged, making progress, or being collaborative — do NOT recommend `"explain_competency"`. That mode is for genuine inability to reason, not for students who are engaging but need scaffolding.
+- If you are about to recommend `"probe"` and you cannot articulate a NEW angle (different from the last 2 questions the tutor already asked) — use `"continue"` instead. Repeating the same question is worse than continuing the conversation.
 
 # OUTPUT FORMAT
 
