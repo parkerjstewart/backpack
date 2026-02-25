@@ -1,12 +1,12 @@
-# Open Notebook - Root CLAUDE.md
+# Backpack - Root CLAUDE.md
 
-This file provides architectural guidance for contributors working on Open Notebook at the project level.
+This file provides architectural guidance for contributors working on Backpack at the project level.
 
 ## Project Overview
 
-**Open Notebook** is an open-source, privacy-focused alternative to Google's Notebook LM. It's an AI-powered research assistant enabling users to upload multi-modal content (PDFs, audio, video, web pages), generate intelligent notes, search semantically, chat with AI models, and produce professional podcasts—all with complete control over data and choice of AI providers.
+**Backpack** is an AI-powered learning platform built on top of [Open Notebook](https://github.com/lfnovo/open-notebook). It transforms a privacy-focused research assistant into a full educational platform where students engage in Socratic tutoring sessions grounded in course materials, and instructors manage courses, modules, and learning goals with visibility into student comprehension.
 
-**Key Values**: Privacy-first, multi-provider AI support, fully self-hosted option, open-source transparency.
+**Key Values**: Intelligent tutoring, structured learning goals, multi-provider AI, privacy-first, self-hosted.
 
 ---
 
@@ -17,7 +17,7 @@ This file provides architectural guidance for contributors working on Open Noteb
 │              Frontend (React/Next.js)                    │
 │              frontend/ @ port 3000                       │
 ├─────────────────────────────────────────────────────────┤
-│ - Notebooks, sources, notes, chat, podcasts, search UI  │
+│ - Courses, modules, sources, tutor, chat, search UI     │
 │ - Zustand state management, TanStack Query (React Query)│
 │ - Shadcn/ui component library with Tailwind CSS         │
 └────────────────────────┬────────────────────────────────┘
@@ -26,9 +26,9 @@ This file provides architectural guidance for contributors working on Open Noteb
 │              API (FastAPI)                              │
 │              api/ @ port 5055                           │
 ├─────────────────────────────────────────────────────────┤
-│ - REST endpoints for notebooks, sources, notes, chat    │
+│ - REST endpoints for courses, modules, tutor, chat      │
 │ - LangGraph workflow orchestration                      │
-│ - Job queue for async operations (podcasts)             │
+│ - Job queue for async operations (embeddings, podcasts) │
 │ - Multi-provider AI provisioning via Esperanto          │
 └────────────────────────┬────────────────────────────────┘
                          │ SurrealQL
@@ -36,17 +36,19 @@ This file provides architectural guidance for contributors working on Open Noteb
 │         Database (SurrealDB)                            │
 │         Graph database @ port 8000                      │
 ├─────────────────────────────────────────────────────────┤
-│ - Records: Notebook, Source, Note, ChatSession, etc.    │
-│ - Relationships: source-to-notebook, note-to-source     │
+│ - Records: Course, Module, LearningGoal, Source, etc.   │
+│ - Relationships: source-to-module, goal-to-module       │
 │ - Vector embeddings for semantic search                 │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Useful sources
+## Useful Sources
 
 User documentation is at @docs/
+
+---
 
 ## Tech Stack
 
@@ -58,13 +60,13 @@ User documentation is at @docs/
 - **Styling**: Tailwind CSS + Shadcn/ui
 - **Build Tool**: Webpack (via Next.js)
 
-### API Backend (`api/` + `open_notebook/`)
+### API Backend (`api/` + `backpack/`)
 - **Framework**: FastAPI 0.104+
 - **Language**: Python 3.11+
 - **Workflows**: LangGraph state machines
 - **Database**: SurrealDB async driver
 - **AI Providers**: Esperanto library (8+ providers: OpenAI, Anthropic, Google, Groq, Ollama, Mistral, DeepSeek, xAI)
-- **Job Queue**: Surreal-Commands for async jobs (podcasts)
+- **Job Queue**: Surreal-Commands for async jobs (embeddings, podcasts)
 - **Logging**: Loguru
 - **Validation**: Pydantic v2
 - **Testing**: Pytest
@@ -89,27 +91,63 @@ User documentation is at @docs/
 - FastAPI handles concurrent requests efficiently
 
 ### 2. LangGraph Workflows
+Located in `backpack/graphs/`:
 - **source.py**: Content ingestion (extract → embed → save)
 - **chat.py**: Conversational agent with message history
+- **source_chat.py**: Source-focused conversations
 - **ask.py**: Search + synthesis (retrieve relevant sources → LLM)
 - **transformation.py**: Custom transformations on sources
+- **tutor.py**: Socratic tutoring with interrupt-based dialogue
+- **tutor_models.py**: Pydantic models for tutoring state
+- **module.py**: Module-level workflows (overview generation)
+- **prompt.py**: Prompt construction utilities
+- **tools.py**: Shared tool definitions
 - All use `provision_langchain_model()` for smart model selection
 
-### 3. Multi-Provider AI
+### 3. Socratic Tutoring System
+The flagship feature — an interrupt-based LangGraph workflow:
+1. Initialize session, load module context and learning goals
+2. Generate targeted questions from source material
+3. Pause (interrupt) and wait for student response
+4. Evaluate understanding, update trajectory
+5. Provide Socratic follow-up or advance to next goal
+6. Generate session summary with progress statistics
+- State persisted via SqliteSaver checkpointing
+- Sessions are stateful across API requests
+
+### 4. Multi-Provider AI
 - **Esperanto library**: Unified interface to 8+ AI providers
 - **ModelConfig**: Environment-based configuration for default models (`provider/model-name` format)
 - **ModelManager**: Factory pattern with fallback logic
 - **Smart selection**: Detects large contexts (>105k tokens), auto-upgrades to large_context_model
 
-### 4. Database Schema
+### 5. Database Schema
 - **Automatic migrations**: AsyncMigrationManager runs on API startup
 - **SurrealDB graph model**: Records with relationships and embeddings
 - **Vector search**: Built-in semantic search across all content
 - **Transactions**: Repo functions handle ACID operations
 
-### 5. Authentication
-- **Current**: Simple password middleware (insecure, dev-only)
-- **Production**: Replace with OAuth/JWT (see CONFIGURATION.md)
+### 6. Authentication
+- **Current**: Bearer token middleware (`UserAuthMiddleware` in `api/auth.py`)
+- Validates `Bearer user:xxx` format from Authorization header
+
+---
+
+## Domain Model Hierarchy
+
+The primary organizational structure:
+
+```
+Course
+  └── Module
+        ├── LearningGoal (competencies + takeaways)
+        ├── Source (uploaded content)
+        │     ├── SourceInsight
+        │     └── SourceEmbedding
+        └── Note
+```
+
+Additional models: `User`, `CourseMembership`, `Invitation`, `ChatSession`, `Asset`, `Transformation`, `ContentSettings`
 
 ---
 
@@ -123,22 +161,22 @@ User documentation is at @docs/
 ### Frontend-Backend Communication
 - **Base API URL**: Configured in `.env.local` (default: http://localhost:5055)
 - **CORS enabled**: Configured in `api/main.py` (allow all origins in dev)
-- **Rate limiting**: Not built-in; add at proxy layer for production
 
 ### LangGraph Workflows
-- **Blocking operations**: Chat/podcast workflows may take minutes; no timeout
+- **Blocking operations**: Chat/tutor workflows may take time; no timeout
 - **State persistence**: Uses SQLite checkpoint storage in `/data/sqlite-db/`
 - **Model fallback**: If primary model fails, falls back to cheaper/smaller model
+- **Tutor interrupts**: The tutor graph pauses execution at interrupt points, waiting for student input via subsequent API calls
 
-### Podcast Generation
-- **Async job queue**: `podcast_service.py` submits jobs but doesn't wait
-- **Track status**: Use `/commands/{command_id}` endpoint to poll status
-- **TTS failures**: Fall back to silent audio if speech synthesis fails
+### Background Commands
+- **Location**: `commands/` directory at project root
+- **Handlers**: `embedding_commands.py`, `source_commands.py`, `podcast_commands.py`
+- **Pattern**: Fire-and-forget with job tracking via surreal-commands
+- **Track status**: Use `/commands/{command_id}` endpoint to poll
 
 ### Content Processing
 - **File extraction**: Uses content-core library; supports 50+ file types
 - **URL handling**: Extracts text + metadata from web pages
-- **Large files**: Content processing is sync; may block API briefly
 
 ---
 
@@ -146,29 +184,30 @@ User documentation is at @docs/
 
 See dedicated CLAUDE.md files for detailed guidance:
 
-- **[frontend/CLAUDE.md](frontend/CLAUDE.md)**: React/Next.js architecture, state management, API integration
+- **[frontend/src/CLAUDE.md](frontend/src/CLAUDE.md)**: React/Next.js architecture, state management, API integration
 - **[api/CLAUDE.md](api/CLAUDE.md)**: FastAPI structure, service pattern, endpoint development
-- **[open_notebook/CLAUDE.md](open_notebook/CLAUDE.md)**: Backend core, domain models, LangGraph workflows, AI provisioning
-- **[open_notebook/domain/CLAUDE.md](open_notebook/domain/CLAUDE.md)**: Data models, repository pattern, search functions
-- **[open_notebook/ai/CLAUDE.md](open_notebook/ai/CLAUDE.md)**: ModelManager, AI provider integration, Esperanto usage
-- **[open_notebook/graphs/CLAUDE.md](open_notebook/graphs/CLAUDE.md)**: LangGraph workflow design, state machines
-- **[open_notebook/database/CLAUDE.md](open_notebook/database/CLAUDE.md)**: SurrealDB operations, migrations, async patterns
+- **[backpack/CLAUDE.md](backpack/CLAUDE.md)**: Backend core, domain models, LangGraph workflows, AI provisioning
+- **[backpack/domain/CLAUDE.md](backpack/domain/CLAUDE.md)**: Data models, repository pattern, search functions
+- **[backpack/ai/CLAUDE.md](backpack/ai/CLAUDE.md)**: ModelManager, AI provider integration, Esperanto usage
+- **[backpack/graphs/CLAUDE.md](backpack/graphs/CLAUDE.md)**: LangGraph workflow design, state machines
+- **[backpack/database/CLAUDE.md](backpack/database/CLAUDE.md)**: SurrealDB operations, migrations, async patterns
+- **[commands/CLAUDE.md](commands/CLAUDE.md)**: Background command handlers
 
 ---
 
 ## Documentation Map
 
 - **[README.md](README.md)**: Project overview, features, quick start
+- **[README.dev.md](README.dev.md)**: Developer guide, workflows, Makefile commands
 - **[docs/index.md](docs/index.md)**: Complete user & deployment documentation
-- **[CONFIGURATION.md](CONFIGURATION.md)**: Environment variables, model configuration
-- **[CONTRIBUTING.md](CONTRIBUTING.md)**: Contribution guidelines
-- **[MAINTAINER_GUIDE.md](MAINTAINER_GUIDE.md)**: Release & maintenance procedures
+- **[CONFIGURATION.md](CONFIGURATION.md)**: Redirects to docs/5-CONFIGURATION/
+- **[CONTRIBUTING.md](CONTRIBUTING.md)**: Redirects to docs/7-DEVELOPMENT/contributing.md
 
 ---
 
 ## Testing Strategy
 
-- **Unit tests**: `tests/test_domain.py`, `test_models_api.py`
+- **Unit tests**: `tests/test_domain.py`, `tests/test_models_api.py`
 - **Graph tests**: `tests/test_graphs.py` (workflow integration)
 - **Utils tests**: `tests/test_utils.py`, `tests/test_chunking.py`, `tests/test_embedding.py`
 - **Run all**: `uv run pytest tests/`
@@ -186,7 +225,7 @@ See dedicated CLAUDE.md files for detailed guidance:
 5. Test via http://localhost:5055/docs
 
 ### Add a New LangGraph Workflow
-1. Create `open_notebook/graphs/workflow_name.py`
+1. Create `backpack/graphs/workflow_name.py`
 2. Define StateDict and node functions
 3. Build graph with `.add_node()` / `.add_edge()`
 4. Invoke in service: `graph.ainvoke({"input": ...}, config={"..."})`
@@ -198,22 +237,12 @@ See dedicated CLAUDE.md files for detailed guidance:
 3. Create `migrations/XXX_description_down.surql` (optional rollback)
 4. API auto-detects on startup; migration runs if newer than recorded version
 
-### Deploy to Production
-1. Review [CONFIGURATION.md](CONFIGURATION.md) for security settings
-2. Use `make docker-release` for multi-platform image
-3. Push to Docker Hub / GitHub Container Registry
-4. Deploy `docker compose --profile multi up`
-5. Verify migrations via API logs
+---
+
+## License
+
+MIT (see LICENSE)
 
 ---
 
-## Support & Community
-
-- **Documentation**: https://open-notebook.ai
-- **Discord**: https://discord.gg/37XJPXfz2w
-- **Issues**: https://github.com/lfnovo/open-notebook/issues
-- **License**: MIT (see LICENSE)
-
----
-
-**Last Updated**: January 2026 | **Project Version**: 1.2.4+
+**Last Updated**: February 2026 | **Project Version**: 1.6.0

@@ -1,113 +1,186 @@
 # API Module
 
-FastAPI-based REST backend exposing services for notebooks, sources, notes, chat, podcasts, and AI model management.
+FastAPI REST backend for Backpack. Exposes endpoints for courses, modules, sources, tutoring, chat, search, podcasts, and user management.
 
-## Purpose
+## Architecture
 
-FastAPI application serving three architectural layers: routes (HTTP endpoints), services (business logic), and models (request/response schemas). Integrates LangGraph workflows (chat, ask, source_chat), SurrealDB persistence, and AI providers via Esperanto.
+**Three layers:**
+1. **Routers** (`routers/`): HTTP endpoints — parse requests, call domain models or services, return responses
+2. **Services** (`*_service.py`): Business logic for complex operations (podcast generation, context building, command jobs)
+3. **Models** (`models.py`): Pydantic request/response schemas
 
-## Architecture Overview
+**Important:** Routers frequently call domain models directly (e.g., `Source.get()`, `Module.get()`, `ChatSession.get()`) rather than going through services. Services are used when there's meaningful orchestration logic beyond simple CRUD.
 
-**Three layers**:
-1. **Routes** (`routers/*`): HTTP endpoints mapping to services
-2. **Services** (`*_service.py`): Business logic orchestrating domain models, database, graphs, AI providers
-3. **Models** (`models.py`): Pydantic request/response schemas with validation
+## Startup Flow (main.py)
 
-**Startup flow**:
-- Load .env environment variables
-- Initialize CORS middleware + password auth middleware
-- Run database migrations via AsyncMigrationManager on lifespan startup
-- Register all routers
+1. Load `.env` environment variables
+2. Create FastAPI app with lifespan handler
+3. Lifespan startup: run `AsyncMigrationManager` for database schema migrations (fails fast if migrations fail)
+4. Register middleware: `UserAuthMiddleware` → `CORSMiddleware`
+5. Include all 27 routers with `/api` prefix
 
-**Key services**:
-- `chat_service.py`: Invokes chat graph with messages, context
-- `podcast_service.py`: Orchestrates outline + transcript generation
-- `sources_service.py`: Content ingestion, vectorization, metadata
-- `notes_service.py`: Note creation, linking to sources/insights
-- `transformations_service.py`: Applies transformations to content
-- `episode_profiles_service.py`: Manages podcast speaker/episode profiles
+**Auth-excluded paths:** `/`, `/health`, `/docs`, `/openapi.json`, `/redoc`, `/api/auth/status`, `/api/config`, `/api/users/login`, `/api/users/register`, `/api/users/avatars/*`
 
-## Component Catalog
+## Authentication (auth.py)
 
-### Main Application
-- **main.py**: FastAPI app initialization, CORS setup, auth middleware, lifespan event, router registration
-- **Lifespan handler**: Runs AsyncMigrationManager on startup (database schema migration)
-- **Auth middleware**: PasswordAuthMiddleware protects endpoints (password-based access control)
+`UserAuthMiddleware` validates `Authorization: Bearer user:xxx` format. Minimal validation — checks format, not credentials. Respects OPTIONS preflight.
 
-### Services (Business Logic)
-- **chat_service.py**: Invokes chat.py graph; handles message history via SqliteSaver
-- **podcast_service.py**: Generates outline (outline.jinja), then transcript (transcript.jinja) for episodes
-- **sources_service.py**: Ingests files/URLs (content_core), extracts text, vectorizes, saves to SurrealDB
-- **transformations_service.py**: Applies transformations via transformation.py graph
-- **episode_profiles_service.py**: CRUD for EpisodeProfile and SpeakerProfile models
-- **insights_service.py**: Generates and retrieves source insights
-- **notes_service.py**: Creates notes linked to sources/insights
+**Authorization helpers** (`routers/authz.py`):
+- `require_authenticated_user_id()` — extracts user ID from Authorization header
+- `require_teaching_role(user_id, course_id)` — checks user has teaching role in course
 
-### Models (Schemas)
-- **models.py**: Pydantic schemas for request/response validation
-- Request bodies: ChatRequest, CreateNoteRequest, PodcastGenerationRequest, etc.
-- Response bodies: ChatResponse, NoteResponse, PodcastResponse, etc.
-- Custom validators for enum fields, file paths, model references
+Used in modules, courses, and invitations routers for write operations.
 
-### Routers
-- **routers/chat.py**: POST /chat
-- **routers/source_chat.py**: POST /source/{source_id}/chat
-- **routers/podcasts.py**: POST /podcasts, GET /podcasts/{id}, etc.
-- **routers/notes.py**: POST /notes, GET /notes/{id}
-- **routers/sources.py**: POST /sources, GET /sources/{id}, DELETE /sources/{id}
-- **routers/models.py**: GET /models/providers (provider availability detection)
-- **routers/transformations.py**: POST /transformations
-- **routers/insights.py**: GET /sources/{source_id}/insights
-- **routers/auth.py**: POST /auth/password (password-based auth)
-- **routers/commands.py**: GET /commands/{command_id} (job status tracking)
+## Router Map
 
-## Common Patterns
+### Content Management
+| Router | Prefix | Key Endpoints |
+|--------|--------|---------------|
+| `modules.py` | `/api/modules` | CRUD modules, add/remove sources, generate overview + learning goals |
+| `sources.py` | `/api/sources` | CRUD sources (multipart upload, link, text), async/sync processing, retry, batch delete, download, insights |
+| `notes.py` | `/api/notes` | CRUD notes (human or AI type), auto-generates title for AI notes |
+| `insights.py` | `/api/insights` | Get/delete insights, save insight as note |
+| `transformations.py` | `/api/transformations` | CRUD transformations, execute on text, get/set default prompt |
 
-- **Service injection via FastAPI**: Routers import services directly; no DI framework
-- **Async/await throughout**: All DB queries, graph invocations, AI calls are async
-- **SurrealDB transactions**: Services use repo_query, repo_create, repo_upsert from database layer
-- **Error handling**: Services catch exceptions and return HTTP status codes (400 Bad Request, 404 Not Found, 500 Internal Server Error)
-- **Logging**: loguru logger in main.py; services expected to log key operations
-- **Response normalization**: All responses follow standard schema (data + metadata structure)
+### AI & Chat
+| Router | Prefix | Key Endpoints |
+|--------|--------|---------------|
+| `chat.py` | `/api/chat` | Sessions CRUD, execute message (sync), build context |
+| `source_chat.py` | `/api/sources/{id}/chat` | Source-scoped chat sessions, send message (**streaming SSE**) |
+| `search.py` | `/api/search` | Text/vector search, ask with streaming or non-streaming |
+| `tutor.py` | `/api/tutor` | Create session, respond (**streaming SSE**), get trajectory + summary |
 
-## Key Dependencies
+### Users & Courses
+| Router | Prefix | Key Endpoints |
+|--------|--------|---------------|
+| `users.py` | `/api/users` | Login, register, profile CRUD, avatar upload/download |
+| `courses.py` | `/api/courses` | CRUD courses, list/add members, student mastery data |
+| `invitations.py` | `/api/invitations` | Create invitation, get by token, accept |
 
-- `fastapi`: FastAPI app, routers, HTTPException
-- `pydantic`: Validation models with Field, field_validator
-- `open_notebook.graphs`: chat, ask, source_chat, source, transformation graphs
-- `open_notebook.database`: SurrealDB repository functions (repo_query, repo_create, repo_upsert)
-- `open_notebook.domain`: Notebook, Source, Note, SourceInsight models
-- `open_notebook.ai.provision`: provision_langchain_model() factory
-- `ai_prompter`: Prompter for template rendering
-- `content_core`: extract_content() for file/URL processing
-- `esperanto`: AI provider client library (LLM, embeddings, TTS)
-- `surreal_commands`: Job queue for async operations (podcast generation)
-- `loguru`: Structured logging
+### Infrastructure
+| Router | Prefix | Key Endpoints |
+|--------|--------|---------------|
+| `auth.py` | `/api/auth` | Auth status check |
+| `commands.py` | `/api/commands/jobs` | Submit/get/list/cancel background jobs, debug registry |
+| `config.py` | `/api/config` | Version info, update check, database health |
+| `models.py` | `/api/models` | Provider availability (scans env vars for API keys) |
+| `settings.py` | `/api/settings` | App settings (processing engine, embedding config, etc.) |
+| `embedding.py` | `/api/embedding` | Embed individual items |
+| `embedding_rebuild.py` | `/api/embeddings/rebuild` | Rebuild all embeddings, check progress |
+| `podcasts.py` | `/api/podcasts` | Submit podcast generation job, get/list episodes |
+| `episode_profiles.py` | `/api/episode-profiles` | CRUD episode profiles |
+| `speaker_profiles.py` | `/api/speaker-profiles` | CRUD speaker profiles |
 
-## Important Quirks & Gotchas
+## Key Patterns
 
-- **Migration auto-run**: Database schema migrations run on every API startup (via lifespan); no manual migration steps
-- **PasswordAuthMiddleware is basic**: Uses simple password check; production deployments should replace with OAuth/JWT
-- **No request rate limiting**: No built-in rate limiting; deployment must add via proxy/middleware
-- **Service state is stateless**: Services don't cache results; each request re-queries database/AI models
-- **Graph invocation is blocking**: chat/podcast workflows may take minutes; no timeout handling in services
-- **Command job fire-and-forget**: podcast_service.py submits jobs but doesn't wait (async job queue pattern)
-- **CORS open by default**: main.py CORS settings allow all origins (restrict before production)
-- **No OpenAPI security scheme**: API docs available without auth (disable before production)
-- **Services don't validate user permission**: All endpoints trust authentication layer; no per-notebook permission checks
+### 1. Async vs Sync Source Processing
+Sources can be processed either way. Async returns immediately with a `command_id`:
+```
+Async: Create source → add to modules → submit command job → return command_id
+Sync:  Create source → add to modules → execute command → return populated source
+```
+Frontend polls `GET /sources/{id}/status` for async progress.
 
-## How to Add New Endpoint
+### 2. Streaming Responses (SSE)
+Used in source_chat, search/ask, and tutor endpoints:
+- Async generator yields `f"data: {json.dumps(event)}\n\n"`
+- Returns `StreamingResponse(generator, media_type="text/plain")`
+- Events vary by endpoint (e.g., `user_message`, `ai_message`, `strategy`, `answer`, `complete`)
 
-1. Create router file in `routers/` (e.g., `routers/new_feature.py`)
-2. Import router into `main.py` and register: `app.include_router(new_feature.router, tags=["new_feature"])`
-3. Create service in `new_feature_service.py` with business logic
-4. Define request/response schemas in `models.py` (or create `new_feature_models.py`)
-5. Implement router functions calling service methods
-6. Test with `uv run uvicorn api.main:app --host 0.0.0.0 --port 5055`
+### 3. LangGraph Integration
+Each workflow is invoked differently:
+- **Chat**: `chat_graph.invoke()` with thread_id config — synchronous, returns updated messages
+- **Ask**: `ask_graph.astream()` — async streaming chunks (strategy → answer → final_answer)
+- **Source chat**: `source_chat_graph.invoke()` — synchronous, result streamed to client
+- **Tutor**: `tutor_graph` with interrupts — pauses for student input, resumed on next API call
+- **Modules**: `module_generation_graph.ainvoke()` — generates overview + learning goals
+- **Transformations**: `transformation_graph.ainvoke()` — runs transformation on text
 
-## Testing Patterns
+### 4. Context Building
+Configurable inclusion of sources and notes for AI calls:
+- Levels: `"insights"`, `"full content"`, `"not in"`
+- Token counting via `backpack.utils.token_count()` (fallback: len/4)
+- Default: all sources/notes with short context
+- Shared between chat and module context endpoints
 
-- **Interactive docs**: http://localhost:5055/docs (Swagger UI)
-- **Direct service tests**: Import service, call methods directly with test data
-- **Mock graphs**: Replace graph.ainvoke() with mock for testing service logic
-- **Database: Use test database** (separate SurrealDB instance or mock repo_query)
+### 5. Model Override Cascade
+For chat: `request.model_override > session.model_override > default model`
+
+### 6. Background Jobs via surreal-commands
+- `CommandService.submit_command_job()` queues work
+- `GET /commands/jobs/{job_id}` polls status
+- Used for: source processing, podcast generation, embedding rebuilds
+- Fire-and-forget — no blocking
+
+### 7. File Upload Handling
+Sources router uses `Depends(parse_source_form_data)` for multipart forms:
+- Generates unique filenames (appends counter on collision)
+- Cleans up files on error
+- Validates paths for downloads
+
+### 8. Multi-Module Sources
+`SourceCreate` accepts `modules` (list) or deprecated `module_id` (single). Validator normalizes to array. Sources relate to modules via `source.add_to_module()`.
+
+## Database Query Patterns
+
+**SurrealDB relationships used in routers:**
+- `reference`: source ↔ module
+- `refers_to`: chat_session ↔ source or module
+- `artifact`: module ↔ note
+
+**ID handling:** Routers accept IDs with or without prefix (e.g., `source:abc` or just `abc`).
+
+**FETCH pattern:** Queries use `FETCH command` to resolve command references inline for status.
+
+## Services
+
+| Service | Purpose |
+|---------|---------|
+| `chat_service.py` | HTTP client wrapper for chat endpoints (httpx, 600s read timeout) |
+| `sources_service.py` | Source operations with `SourceWithMetadata` and `SourceProcessingResult` wrappers |
+| `notes_service.py` | Note CRUD, converts API responses to domain objects |
+| `podcast_service.py` | Validates profiles, submits generation jobs, queries status |
+| `transformations_service.py` | Transformation CRUD via API client |
+| `command_service.py` | Generic job submission/status via surreal-commands |
+| `context_service.py` | Module context building |
+| `episode_profiles_service.py` | Episode profile CRUD |
+| `email_service.py` | Invitation emails |
+| `module_service.py` | Module operations |
+
+**client.py**: `APIClient` class using httpx. Timeout configurable via `API_CLIENT_TIMEOUT` env var (default 300s, bounds 30-3600s). Has methods for all API resources.
+
+## Models (models.py)
+
+Pydantic schemas organized by feature:
+- **Modules**: ModuleCreate, ModuleUpdate, ModuleResponse (includes source_count, note_count)
+- **Learning Goals**: LearningGoalCreate/Update/Response (auto-assigns order)
+- **Sources**: SourceCreate/Update/Response (multi-module, async processing, Asset model)
+- **Notes**: NoteCreate/Update/Response (types: "human" or "ai")
+- **Search**: SearchRequest/Response, AskRequest/Response
+- **Context**: ContextConfig, ContextRequest/Response (token counting)
+- **Insights**: SourceInsightResponse, CreateSourceInsightRequest, SaveAsNoteRequest
+- **Users/Courses**: UserLoginRequest, CourseCreate/Update, CourseMemberResponse
+- **Invitations**: CreateInvitationRequest, InvitationResponse
+- **Transformations**: TransformationCreate/Update/Response, Execute
+- **Embedding**: EmbedRequest/Response, RebuildRequest/Response
+
+## Quirks & Gotchas
+
+- **Migrations auto-run on every startup** — no manual migration steps needed
+- **CORS allows all origins** — must restrict for production
+- **No pagination on some endpoints** — notes and modules list endpoints return all results
+- **Chat graph is synchronous** — `chat_graph.invoke()` blocks until LLM responds (can be slow)
+- **Tutor uses graph interrupts** — session state persists across requests via SqliteSaver, graph pauses at interrupt points
+- **Source processing can be sync or async** — async is preferred for large files
+- **File cleanup on error** — uploaded files are deleted if processing fails
+- **Streaming has no server-side timeout** — SSE streams run until completion or client disconnect
+- **Session thread_id = session ID** — LangGraph thread_id is the SurrealDB session record ID directly
+
+## How to Add a New Endpoint
+
+1. Create router in `routers/feature.py` with `router = APIRouter()`
+2. Add request/response schemas to `models.py`
+3. Create service in `feature_service.py` if complex orchestration is needed (skip for simple CRUD)
+4. Register in `main.py`: `app.include_router(routers.feature.router, prefix="/api", tags=["feature"])`
+5. Add auth exclusions in `main.py` if endpoint should be public
+6. Test at http://localhost:5055/docs

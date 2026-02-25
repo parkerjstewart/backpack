@@ -389,10 +389,8 @@ make clean-cache
 
 ## Resources
 
-- **Documentation:** https://open-notebook.ai
 - **Issues:** https://github.com/parkerjstewart/backpack/issues
 - **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Maintainer Guide:** [MAINTAINER_GUIDE.md](MAINTAINER_GUIDE.md)
 
 ---
 
