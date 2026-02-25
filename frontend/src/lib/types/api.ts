@@ -490,3 +490,56 @@ export interface TutorSessionStateResponse {
   started_at: string | null
   elapsed_seconds: number | null
 }
+
+export interface CompetencyHypothesis {
+  text: string
+  confidence: 'high' | 'medium' | 'low'
+}
+
+export type CompetencyLifecycleStatus = 'pending' | 'active' | 'mastered' | 'explained'
+
+export interface CompetencyAssessment {
+  competency: string
+  score: number
+  evidence: string[]
+  hypotheses: CompetencyHypothesis[]
+  gap: string
+  attempts: number
+  status?: CompetencyLifecycleStatus
+}
+
+export interface CompetencyStatusInfo {
+  competency: string
+  status: CompetencyLifecycleStatus
+  score: number
+  evidence: string[]
+  gap: string
+  hypotheses: CompetencyHypothesis[]
+  encounters: number
+  turns_since_progress: number
+}
+
+export interface TutorStudentModel {
+  competency_assessments: CompetencyAssessment[]
+  active_probe_target: string | null
+  turns_since_last_progress: number
+  confirmed_knowledge: string[]
+}
+
+export interface TutorDebugInfo {
+  session_id: string
+  tutor_mode: string | null
+  exchanges_on_goal: number
+  student_model: TutorStudentModel | null
+  evaluation_notes: string | null
+  action_rationale: string | null
+  evaluator_guidance: string | null
+  latest_understanding_score: number | null
+  competency_scores: Record<string, number> | null
+  competency_statuses: CompetencyStatusInfo[] | null
+  active_competency_index: number | null
+  goal_score: number | null
+  competencies_mastered: number | null
+  competencies_total: number | null
+  evaluator_action: string | null
+}

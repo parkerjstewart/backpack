@@ -96,25 +96,78 @@ class EvaluationResult(BaseModel):
         default_factory=list,
         description="Concepts the student demonstrated correctly",
     )
-    suggested_next_action: Literal["probe", "macro_hint", "give_up", "continue"] = Field(
+    # Active competency: focused, detailed evaluation
+    active_competency_score: Optional["CompetencyScore"] = Field(
+        default=None,
+        description="Detailed evaluation of the currently active competency being probed",
+    )
+    # Incidental observations: upside-only, for competencies the student spontaneously demonstrated
+    incidental_observations: List["CompetencyScore"] = Field(
+        default_factory=list,
+        description=(
+            "Brief positive-only scores for non-active competencies the student happened to demonstrate. "
+            "Only include if evidence is clearly positive (score >= 0.5). "
+            "Never include to record a gap or absence — omission is not evidence."
+        ),
+    )
+    suggested_next_action: Literal["probe", "macro_hint", "explain_competency", "advance", "continue", "tangent"] = Field(
         default="continue",
         description=(
             "Evaluator's recommendation for what the tutor should do next. "
-            "'probe': need more signal to score. "
-            "'macro_hint': probe space exhausted on a factual gap — give the fact directly. "
-            "'give_up': student can't reason about the concept at all — explain and move on. "
-            "'continue': normal flow, use score-based routing."
+            "'probe': need more signal on the ACTIVE competency. "
+            "'macro_hint': factual gap on active competency probed 2+ times — give the fact. "
+            "'explain_competency': student can't reason about this specific competency — explain it and advance. "
+            "'advance': active competency is clearly mastered (>= 0.7) — move to next. "
+            "'continue': normal Socratic flow on the active competency. "
+            "'tangent': student is asking about something outside the active competency assessment scope."
         ),
     )
     action_rationale: Optional[str] = Field(
         default=None,
         description="Brief explanation of why this action was recommended based on conversation history",
     )
+    tutor_guidance: str = Field(
+        default="",
+        description=(
+            "Natural-language recommendation addressed to the tutor. "
+            "Specific and actionable — what to address and how, like a note from a teaching assistant. "
+            "Example: 'Student set up the log-likelihood correctly but is asking about differentiation of log(k!). "
+            "Just tell them it drops out as a constant. Then ask them to try the derivative.'"
+        ),
+    )
+    tangent_topic: Optional[str] = Field(
+        default=None,
+        description="What the tangent is about — set when suggested_next_action is 'tangent'",
+    )
 
     @property
     def score(self) -> float:
         """Backward-compatible alias for overall_score."""
         return self.overall_score
+
+
+class TangentEvaluationResult(BaseModel):
+    """Result of evaluating a student response during a tangent exchange."""
+
+    resolved: bool = Field(
+        ...,
+        description="True when the student is returning to the main problem",
+    )
+    incidental_observations: List[CompetencyScore] = Field(
+        default_factory=list,
+        description=(
+            "Positive-only incidental evidence for pending competencies observed during the tangent. "
+            "Only include if score >= 0.5 and clearly demonstrated."
+        ),
+    )
+    tangent_observation: str = Field(
+        default="",
+        description="Brief note for the student model about what the tangent revealed (e.g., prerequisite gaps)",
+    )
+    tutor_guidance: str = Field(
+        default="",
+        description="Natural-language recommendation for the tutor on how to respond to this tangent exchange",
+    )
 
 
 class GoalSelection(BaseModel):

@@ -50,19 +50,38 @@ No notes have been added yet.
 
 # YOUR TASK
 
-## Step 1: Identify the lecture narrative arc
+## Step 0: Classify sources as primary or supplementary
 
-Before generating goals, identify the sequence of ideas and examples in the material. What does the lecture introduce first? What worked examples or demonstrations appear? What definitions or formalizations are presented? How does the narrative build from one concept to the next?
+Before doing anything else, read through every source title and content to determine its role:
 
-## Step 2: Generate 3–5 learning goals
+- **Primary (lecture material)**: lecture slides, lecture notes, recorded transcripts, main textbook chapters — what a student would study first. Signal words: "lecture", "slides", "transcript", "chapter", "notes", "session".
+- **Supplementary**: readings, papers, articles, reference material, optional resources — content that deepens or broadens the core. Signal words: "reading", "paper", "article", "supplementary", "optional", "reference".
+
+When the title is ambiguous, use the content itself: primary sources tend to be pedagogically structured (definitions → examples → exercises), while supplementary sources tend to be research-dense or reference-style.
+
+Keep a mental list of which sources are primary and which are supplementary — you will use this in every subsequent step.
+
+## Step 1: Identify the narrative arc of the primary sources
+
+Using only the **primary** sources, identify the sequence of ideas and examples. What does the lecture introduce first? What worked examples or demonstrations appear? What definitions or formalizations are presented? How does the narrative build from one concept to the next?
+
+If all sources appear supplementary (no clear lecture material), treat all of them as primary and proceed normally.
+
+## Step 2: Check coverage of all sources
+
+Before generating goals, verify that every source — primary and supplementary — will be represented. For each source, identify the key concept, example, or skill it introduces that isn't already captured by the primary narrative. Note any gaps so you can fill them when writing goals.
+
+If a supplementary source introduces a concept not covered by the primary narrative, plan to incorporate it into an existing goal's `anchor_examples` or `takeaways`, or add a new goal if the concept is substantively distinct.
+
+## Step 3: Generate 2–4 learning goals
 
 For each goal, provide:
 
 ### description
-A clear, action-verb goal statement that reflects a natural checkpoint in the lecture narrative (e.g., *Explain the concept of Maximum Likelihood Estimation and its significance in statistical modeling*). Goals should follow the lecture's natural progression.
+A clear, action-verb goal statement that reflects a natural checkpoint in the primary lecture narrative (e.g., *Explain the concept of Maximum Likelihood Estimation and its significance in statistical modeling*). Goals should follow the primary sources' natural progression.
 
 ### anchor_examples
-Specific examples from the material this goal is grounded in. List concrete examples by name or brief description (e.g., "the taxi arrival Poisson example", "the coin flip Bernoulli derivation", "Figure 3.2 showing the likelihood surface"). These anchor the goal to the actual content.
+Specific examples from the material this goal is grounded in. List concrete examples by name or brief description (e.g., "the taxi arrival Poisson example from Lecture 3", "the coin flip Bernoulli derivation", "Figure 3.2 showing the likelihood surface"). Note which source each example comes from (primary or supplementary). Every source should appear in at least one goal's anchor_examples.
 
 ### takeaways
 A **dense prose explanation** (2–4 paragraphs) that serves as an "answer key." Write as if explaining the concept to a student who has just learned it. Include:
@@ -70,6 +89,7 @@ A **dense prose explanation** (2–4 paragraphs) that serves as an "answer key."
 - The formal definition or procedure
 - How it connects to the specific anchor examples
 - Key nuances or common pitfalls
+- Where relevant, how supplementary sources deepen or contextualize the primary material
 
 Do NOT use bullet points. Write continuous paragraphs that a tutor could use to explain the concept when a student is stuck.
 
@@ -80,15 +100,21 @@ Do NOT use bullet points. Write continuous paragraphs that a tutor could use to 
 - "Can trace through the Poisson MLE derivation for a novel input"
 - "Can identify when MLE applies vs. when a different estimator is needed"
 
-Generate 3–5 competencies per goal, informed by the type of examples in the material. The tutor will use these to evaluate student responses per-competency. Competencies should be **sequential** — each building on the previous — so they map onto the steps of a single worked problem (e.g., define the concept → set up the formula → work through the derivation → interpret the result).
+Generate 2–4 competencies per goal, informed by the type of examples in the material. The tutor will use these to evaluate student responses per-competency. Competencies should be **sequential** — each building on the previous — so they map onto the steps of a single worked problem (e.g., define the concept → set up the formula → work through the derivation → interpret the result).
+
+Each competency must be **independently testable**: a student who demonstrates competency 3 without explicitly addressing 1 and 2 may still be providing meaningful positive evidence. Sequential order reflects natural teaching progression, not a hard prerequisite chain — students can demonstrate later competencies before earlier ones.
 
 ---
 
 # REQUIREMENTS
 
-* Goals must **mirror the lecture narrative** – follow the natural sequence of ideas in the material
-* Each goal must reference **specific anchor examples** from the content
+* **Classify sources first** — identify primary (lecture) vs. supplementary sources before generating goals
+* Goals must **mirror the primary source narrative arc** — follow the natural sequence of ideas in the main lecture material
+* **Every source must contribute** to at least one goal's `anchor_examples` or `takeaways` — check coverage before finalizing
+* Supplementary sources should **enrich** goals (deeper examples, broader context) without overriding the primary narrative structure
+* Each goal must reference **specific anchor examples** from the content, noting which source they come from
 * Takeaways must be **dense prose**, not bullet lists – an answer key a tutor could read aloud
 * Competencies must be **categorical criteria** – what must the student be able to explain? Make them scoreable
 * If **no materials are provided**, infer reasonable goals from the module name and description
 * Be **achievable within a single module or chapter**
+* Generate between **2 and 4 goals** — use more only when supplementary sources introduce clearly distinct concepts requiring their own goal

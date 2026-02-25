@@ -36,6 +36,7 @@ interface TutorChatProps {
   moduleId?: string
   sessionId?: string | null
   onAppendVoiceTurn?: (studentText: string, tutorText: string) => void
+  className?: string
 }
 
 export function TutorChat({
@@ -51,6 +52,7 @@ export function TutorChat({
   moduleId,
   sessionId,
   onAppendVoiceTurn,
+  className,
 }: TutorChatProps) {
   const { t } = useTranslation()
   const inputId = useId()
@@ -118,7 +120,7 @@ export function TutorChat({
 
   if (isInitializing) {
     return (
-      <Card className="flex flex-col h-full flex-1 overflow-hidden">
+      <Card className={`flex flex-col h-full flex-1 overflow-hidden ${className ?? ''}`}>
         <CardContent className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
             <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
@@ -130,7 +132,7 @@ export function TutorChat({
   }
 
   return (
-    <Card className="flex flex-col h-full flex-1 overflow-hidden">
+    <Card className={`flex flex-col h-full flex-1 overflow-hidden ${className ?? ''}`}>
       <CardHeader className="pb-3 flex-shrink-0 border-b">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
