@@ -1,23 +1,31 @@
-# ContextBuilder
+# Utils
 
-A flexible and generic ContextBuilder class for the Open Notebook project that can handle any parameters and build context from sources, notebooks, insights, and notes.
+Utility functions and helpers for context building, text processing, chunking, embedding, tokenization, and versioning.
 
-## Features
+## Module Overview
 
-- **Flexible Parameters**: Accepts any parameters via `**kwargs` for future extensibility
-- **Priority-based Management**: Automatic prioritization and sorting of context items
-- **Token Counting**: Built-in token counting and truncation to fit limits
-- **Deduplication**: Automatic removal of duplicate items based on ID
-- **Type-based Grouping**: Separates sources, notes, and insights in output
-- **Async Support**: Fully async for database operations
+Six stateless utilities, each importable independently:
 
-## Basic Usage
+| File | Purpose |
+|---|---|
+| `context_builder.py` | Assemble LLM context from sources, notes, and insights with token budgeting |
+| `chunking.py` | Content-type-aware text chunking for embedding operations |
+| `embedding.py` | Embedding generation with automatic chunking and mean pooling |
+| `text_utils.py` | Text cleaning and `<think>` tag extraction |
+| `token_utils.py` | Token counting via `o200k_base` encoding (tiktoken) |
+| `version_utils.py` | Semantic version parsing, comparison, and GitHub version fetching |
+
+## ContextBuilder
+
+Builds prioritized, token-budgeted context from sources, notes, and insights. Delegates to domain models (`Source`, `Module`, `Note` from `backpack.domain.module`) for data access.
+
+### Basic Usage
 
 ```python
-from open_notebook.utils.context_builder import ContextBuilder, ContextConfig
+from backpack.utils.context_builder import ContextBuilder, ContextConfig
 
-# Simple notebook context
-builder = ContextBuilder(notebook_id="notebook:123")
+# Module context
+builder = ContextBuilder(module_id="module:123")
 context = await builder.build()
 
 # Single source with insights
@@ -29,28 +37,17 @@ builder = ContextBuilder(
 context = await builder.build()
 ```
 
-## Convenience Functions
+### Convenience Functions
 
 ```python
-from open_notebook.utils.context_builder import (
-    build_notebook_context,
+from backpack.utils.context_builder import (
+    build_module_context,
     build_source_context,
     build_mixed_context
 )
 
-# Build notebook context
-context = await build_notebook_context(
-    notebook_id="notebook:123",
-    max_tokens=5000
-)
-
-# Build single source context
-context = await build_source_context(
-    source_id="source:456",
-    include_insights=True
-)
-
-# Build mixed context
+context = await build_module_context(module_id="module:123", max_tokens=5000)
+context = await build_source_context(source_id="source:456", include_insights=True)
 context = await build_mixed_context(
     source_ids=["source:1", "source:2"],
     note_ids=["note:1", "note:2"],
@@ -58,16 +55,15 @@ context = await build_mixed_context(
 )
 ```
 
-## Advanced Configuration
+### Advanced Configuration
 
 ```python
-from open_notebook.utils.context_builder import ContextConfig
+from backpack.utils.context_builder import ContextConfig
 
-# Custom configuration
 config = ContextConfig(
     sources={
         "source:doc1": "insights",
-        "source:doc2": "full content", 
+        "source:doc2": "full content",
         "source:doc3": "not in"  # Exclude
     },
     notes={
@@ -77,112 +73,130 @@ config = ContextConfig(
     include_insights=True,
     max_tokens=3000,
     priority_weights={
-        "source": 120,  # Higher priority
-        "note": 80,     # Medium priority  
-        "insight": 100  # High priority
+        "source": 120,
+        "note": 80,
+        "insight": 100
     }
 )
 
-builder = ContextBuilder(
-    notebook_id="notebook:project",
-    context_config=config
-)
+builder = ContextBuilder(module_id="module:project", context_config=config)
 context = await builder.build()
 ```
 
-## Programmatic Item Management
-
-```python
-from open_notebook.utils.context_builder import ContextItem
-
-builder = ContextBuilder()
-
-# Add custom items
-item = ContextItem(
-    id="source:important",
-    type="source",
-    content={"title": "Key Document", "summary": "..."},
-    priority=150  # Very high priority
-)
-builder.add_item(item)
-
-# Apply management operations
-builder.remove_duplicates()
-builder.prioritize()
-builder.truncate_to_fit(1000)
-
-context = builder._format_response()
-```
-
-## Flexible Parameters
-
-The ContextBuilder accepts any parameters via `**kwargs`, making it extensible for future features:
-
-```python
-builder = ContextBuilder(
-    notebook_id="notebook:123",
-    include_insights=True,
-    max_tokens=2000,
-    
-    # Custom parameters for future extensions
-    user_id="user:456",
-    custom_filter="advanced",
-    experimental_feature=True
-)
-
-# Access custom parameters
-user_id = builder.params.get('user_id')
-```
-
-## Output Format
-
-The ContextBuilder returns a structured response:
+### Output Format
 
 ```python
 {
-    "sources": [...],           # List of source contexts
-    "notes": [...],             # List of note contexts  
-    "insights": [...],          # List of insight contexts
-    "total_tokens": 1234,       # Total token count
-    "total_items": 10,          # Total number of items
-    "notebook_id": "notebook:123",  # If provided
+    "sources": [...],
+    "notes": [...],
+    "insights": [...],
+    "total_tokens": 1234,
+    "total_items": 10,
+    "module_id": "module:123",
     "metadata": {
         "source_count": 5,
         "note_count": 3,
         "insight_count": 2,
         "config": {
-            "include_insights": true,
-            "include_notes": true,
+            "include_insights": True,
+            "include_notes": True,
             "max_tokens": 2000
         }
     }
 }
 ```
 
-## Architecture
+### Key Behaviors
 
-The ContextBuilder follows these design principles:
+- Token counting is automatic (`ContextItem.__post_init__` calls `token_count()`)
+- Higher-priority items are included first; lowest-priority items are dropped when `max_tokens` is exceeded
+- Default priority weights: source=100, note=50, insight=75
+- Accepts `**kwargs` for extensibility (accessible via `builder.params`)
 
-1. **Separation of Concerns**: Context building, item management, and formatting are separate
-2. **Extensibility**: Uses `**kwargs` and flexible configuration for future features
-3. **Performance**: Token-aware truncation and efficient deduplication
-4. **Type Safety**: Proper type hints and data classes for structure
-5. **Error Handling**: Graceful handling of missing items and database errors
+## Chunking
 
-## Integration
+Content-type-aware text splitting for embedding pipelines.
 
-The ContextBuilder integrates seamlessly with the existing Open Notebook architecture:
+```python
+from backpack.utils.chunking import chunk_text, detect_content_type, ContentType
 
-- Uses existing domain models (`Source`, `Notebook`, `Note`)
-- Leverages the repository pattern for database access
-- Follows the same async patterns as other services
-- Integrates with the token counting utilities
+# Auto-detect and chunk
+chunks = chunk_text(long_text, file_path="document.md")
 
-## Error Handling
+# Explicit content type
+chunks = chunk_text(html_content, content_type=ContentType.HTML)
+```
 
-The ContextBuilder handles errors gracefully:
+- `ContentType` enum: `HTML`, `MARKDOWN`, `PLAIN`
+- `CHUNK_SIZE = 1500` characters, `CHUNK_OVERLAP = 225` (15%)
+- Detection order: file extension first, then content heuristics (override at confidence >= 0.8)
+- Uses LangChain splitters: `HTMLHeaderTextSplitter`, `MarkdownHeaderTextSplitter`, `RecursiveCharacterTextSplitter`
+- Secondary chunking ensures no chunk exceeds `CHUNK_SIZE`
 
-- Missing notebooks/sources/notes are logged but don't stop execution
-- Database errors are wrapped in `DatabaseOperationError`
-- Invalid parameters raise `InvalidInputError`
-- All errors include detailed context information
+## Embedding
+
+Unified embedding generation with automatic chunking and mean pooling for large content.
+
+```python
+from backpack.utils.embedding import generate_embedding, generate_embeddings
+
+# Single text (handles chunking + mean pooling automatically)
+embedding = await generate_embedding(long_text)
+
+# Batch embedding
+embeddings = await generate_embeddings(["text1", "text2", "text3"])
+```
+
+- Short text (<= `CHUNK_SIZE`): embedded directly
+- Long text: chunked, each chunk embedded, results combined via normalized mean pooling
+- Uses `model_manager.get_embedding_model()` from `backpack.ai.models`
+- Raises `ValueError` for empty/whitespace-only text
+
+## Text Utils
+
+```python
+from backpack.utils.text_utils import (
+    remove_non_ascii,
+    remove_non_printable,
+    parse_thinking_content,
+    clean_thinking_content
+)
+
+clean = remove_non_ascii(text)
+clean = remove_non_printable(text)
+thinking, content = parse_thinking_content(ai_response)
+content = clean_thinking_content(ai_response)
+```
+
+- `parse_thinking_content` extracts `<think>` blocks; handles malformed output (missing opening tag)
+- Content > 100KB bypasses thinking extraction for performance
+
+## Token Utils
+
+```python
+from backpack.utils.token_utils import token_count, token_cost
+
+tokens = token_count("some text")
+cost = token_cost(tokens, cost_per_million=0.150)
+```
+
+- Uses `o200k_base` encoding via tiktoken
+- Falls back to word-count estimation (words x 1.3) if tiktoken is unavailable
+
+## Version Utils
+
+```python
+from backpack.utils.version_utils import (
+    compare_versions,
+    get_installed_version,
+    get_version_from_github
+)
+
+result = compare_versions("1.2.0", "1.3.0")  # -1
+version = get_installed_version("pytest")
+version = get_version_from_github("https://github.com/owner/repo")
+```
+
+- `compare_versions` returns -1, 0, or 1
+- Both sync (`get_version_from_github`) and async (`get_version_from_github_async`) GitHub fetchers available
+- Parses `pyproject.toml` from GitHub raw content for version info

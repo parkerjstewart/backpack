@@ -37,7 +37,6 @@ Built on top of [Open Notebook](https://github.com/lfnovo/open-notebook), Backpa
 - **Multi-Provider AI** - Supports OpenAI, Anthropic, Google, Groq, Ollama, Mistral, DeepSeek, xAI, and more via the [Esperanto](https://github.com/lfnovo/esperanto) library
 - **Semantic Search** - Full-text and vector search across all uploaded content
 - **Context-Aware Chat** - AI conversations grounded in course materials with proper citations
-- **Privacy-First** - Fully self-hosted; your data never leaves your infrastructure
 
 ---
 
