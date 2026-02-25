@@ -26,8 +26,8 @@ NAME_MAX_TOKENS = 600
 NAME_RETRY_MAX_TOKENS = 1600
 OVERVIEW_MAX_TOKENS = 900
 OVERVIEW_RETRY_MAX_TOKENS = 1800
-LEARNING_GOALS_MAX_TOKENS = 8000
-LEARNING_GOALS_RETRY_MAX_TOKENS = 12000
+LEARNING_GOALS_MAX_TOKENS = 12000
+LEARNING_GOALS_RETRY_MAX_TOKENS = 20000
 
 
 # ============================================
@@ -108,6 +108,7 @@ async def _invoke_structured_with_length_retry(
     schema: type[BaseModel],
     max_tokens: int,
     retry_max_tokens: int,
+    **extra_kwargs,
 ):
     """Invoke a structured-output model and retry once on length truncation."""
     model = await provision_langchain_model(
@@ -115,6 +116,7 @@ async def _invoke_structured_with_length_retry(
         model_id,
         default_type,
         max_tokens=max_tokens,
+        **extra_kwargs,
     )
     try:
         return await model.with_structured_output(schema).ainvoke(system_prompt)
@@ -131,6 +133,7 @@ async def _invoke_structured_with_length_retry(
             model_id,
             default_type,
             max_tokens=retry_max_tokens,
+            **extra_kwargs,
         )
         return await retry_model.with_structured_output(schema).ainvoke(system_prompt)
 
@@ -264,6 +267,7 @@ async def generate_learning_goals(
         schema=GeneratedLearningGoals,
         max_tokens=LEARNING_GOALS_MAX_TOKENS,
         retry_max_tokens=LEARNING_GOALS_RETRY_MAX_TOKENS,
+        reasoning_effort="high",
     )
     return result.goals
 

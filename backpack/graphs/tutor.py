@@ -509,7 +509,8 @@ def generate_anchor_problem(state: TutorState, config: RunnableConfig) -> dict:
             system_prompt,
             config.get("configurable", {}).get("model_id") or state.get("model_override"),
             "tools",
-            max_tokens=1000,
+            max_tokens=2000,
+            reasoning_effort="low",
         )
 
     model = _run_model(_provision)
@@ -651,11 +652,14 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     system_prompt = Prompter(prompt_template="tutor/tutor_turn").render(data=prompt_data)
 
     def _provision():
+        # Uses "tutor" type → DEFAULT_TUTOR_MODEL (gpt-5.2, no reasoning).
+        # To re-enable reasoning, remove reasoning_effort or set it to "low"/"high".
         return provision_langchain_model(
             system_prompt,
             config.get("configurable", {}).get("model_id") or state.get("model_override"),
-            "chat",
-            max_tokens=800,
+            "tutor",
+            max_tokens=1000,
+            reasoning_effort="none",
         )
 
     model = _run_model(_provision)
@@ -776,7 +780,8 @@ def evaluate_and_update_model(
                 tangent_prompt,
                 config.get("configurable", {}).get("model_id") or state.get("model_override"),
                 "tools",
-                max_tokens=800,
+                max_tokens=1500,
+                reasoning_effort="low",
             )
 
         tangent_model = _run_model(_provision_tangent)
@@ -892,7 +897,8 @@ def evaluate_and_update_model(
             system_prompt,
             config.get("configurable", {}).get("model_id") or state.get("model_override"),
             "tools",
-            max_tokens=1500,
+            max_tokens=3000,
+            reasoning_effort="none",
         )
 
     model = _run_model(_provision)
