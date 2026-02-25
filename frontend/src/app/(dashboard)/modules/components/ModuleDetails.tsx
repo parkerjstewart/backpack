@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { ModuleResponse, LearningGoalResponse } from '@/lib/types/api'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -8,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useCoursesStore } from '@/lib/stores/courses-store'
+import { modulesApi } from '@/lib/api/modules'
+import { QUERY_KEYS } from '@/lib/api/query-client'
 import {
   useUpdateModule,
   useGenerateOverview,
@@ -19,6 +22,8 @@ import {
 } from '@/lib/hooks/use-modules'
 import { Plus, X, Sparkles, Loader2, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RefinementChat } from '@/components/modules/RefinementChat'
+import { LearningGoalPreview } from '@/lib/types/api'
 
 interface ModuleDetailsProps {
   module: ModuleResponse
@@ -26,6 +31,7 @@ interface ModuleDetailsProps {
 }
 
 export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
+  const queryClient = useQueryClient()
   const updateModule = useUpdateModule()
   const generateOverview = useGenerateOverview()
   const { getModuleMetadata, updateModuleMetadata } = useCoursesStore()
@@ -181,6 +187,31 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
   const handleDeleteLearningGoal = (goalId: string) => {
     if (!canEdit) return
     deleteLearningGoal.mutate({ goalId, moduleId: module.id })
+  }
+
+  const handleRefinementApply = async (newOverview: string, newGoals: LearningGoalPreview[]) => {
+    if (!canEdit) return
+
+    // Update overview
+    setOverview(newOverview)
+    updateModule.mutate({ id: module.id, data: { overview: newOverview } })
+    updateModuleMetadata(module.id, { overview: newOverview })
+
+    // Replace learning goals: delete existing, create new
+    for (const goal of learningGoals) {
+      await modulesApi.deleteLearningGoal(goal.id)
+    }
+    for (let i = 0; i < newGoals.length; i++) {
+      await modulesApi.createLearningGoal(module.id, {
+        description: newGoals[i].description,
+        takeaways: newGoals[i].takeaways,
+        competencies: newGoals[i].competencies,
+        order: i,
+      })
+    }
+
+    // Refresh the learning goals query
+    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.learningGoals(module.id) })
   }
 
   const isGeneratingGoals = generateLearningGoals.isPending
@@ -441,6 +472,20 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Refinement Chat */}
+      {canEdit && (
+        <RefinementChat
+          currentOverview={overview}
+          currentGoals={learningGoals.map((g) => ({
+            description: g.description,
+            takeaways: g.takeaways || '',
+            competencies: g.competencies || '',
+          }))}
+          onApplyChanges={handleRefinementApply}
+          moduleId={module.id}
+        />
+      )}
     </div>
   )
 }

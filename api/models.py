@@ -493,6 +493,46 @@ class GenerateLearningGoalsResponse(BaseModel):
     )
 
 
+# Refinement models (chat-to-edit overview & learning goals)
+class RefineContentMessage(BaseModel):
+    role: Literal["user", "assistant"] = Field(..., description="Message role")
+    content: str = Field(..., description="Message content")
+
+
+class RefineContentRequest(BaseModel):
+    """Request to refine module overview and learning goals via chat."""
+    overview: str = Field(default="", description="Current overview text")
+    learning_goals: List[LearningGoalPreview] = Field(
+        default_factory=list, description="Current learning goals"
+    )
+    message: str = Field(..., description="User's refinement instruction")
+    message_history: List[RefineContentMessage] = Field(
+        default_factory=list, description="Previous conversation turns"
+    )
+    module_id: Optional[str] = Field(
+        None, description="Module ID (for fetching source context from existing module)"
+    )
+    source_ids: Optional[List[str]] = Field(
+        None, description="Source IDs (for fetching source context in preview/draft mode)"
+    )
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.module_id is None and self.source_ids is None:
+            raise ValueError("Either 'module_id' or 'source_ids' must be provided")
+        if self.module_id is not None and self.source_ids is not None:
+            raise ValueError("Cannot specify both 'module_id' and 'source_ids'")
+        return self
+
+
+class RefineContentResponse(BaseModel):
+    overview: str = Field(..., description="Updated overview text")
+    learning_goals: List[LearningGoalPreview] = Field(
+        ..., description="Updated learning goals"
+    )
+    explanation: str = Field(..., description="Explanation of changes made")
+
+
 # Error response
 class ErrorResponse(BaseModel):
     error: str
