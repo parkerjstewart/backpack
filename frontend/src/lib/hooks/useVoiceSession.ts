@@ -85,6 +85,7 @@ export function useVoiceSession({
   const audioQueueRef = useRef<AudioClip[]>([])
   const pendingAudioChunksRef = useRef<Uint8Array[]>([])
   const pendingAudioMimeTypeRef = useRef('audio/mpeg')
+  const audioContextRef = useRef<AudioContext | null>(null)
 
   const concatUint8Arrays = useCallback((chunks: Uint8Array[]): Uint8Array => {
     if (chunks.length === 0) return new Uint8Array()
@@ -104,25 +105,28 @@ export function useVoiceSession({
     const next = audioQueueRef.current.shift()
     if (!next) return
 
+    const ctx = audioContextRef.current
+    if (!ctx) return
+
     isPlayingRef.current = true
-    const blob = new Blob([next.bytes], { type: next.mimeType || 'audio/mpeg' })
-    const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
-    audio.onended = () => {
-      URL.revokeObjectURL(url)
-      isPlayingRef.current = false
-      drainAudioQueue()
-    }
-    audio.onerror = () => {
-      URL.revokeObjectURL(url)
-      isPlayingRef.current = false
-      drainAudioQueue()
-    }
-    audio.play().catch(() => {
-      URL.revokeObjectURL(url)
-      isPlayingRef.current = false
-      drainAudioQueue()
-    })
+    // Copy the buffer before passing to decodeAudioData — some browsers detach it
+    ctx.decodeAudioData(
+      next.bytes.buffer.slice(0) as ArrayBuffer,
+      (buffer) => {
+        const source = ctx.createBufferSource()
+        source.buffer = buffer
+        source.connect(ctx.destination)
+        source.onended = () => {
+          isPlayingRef.current = false
+          drainAudioQueue()
+        }
+        source.start(0)
+      },
+      () => {
+        isPlayingRef.current = false
+        drainAudioQueue()
+      },
+    )
   }, [])
 
   const sendEvent = useCallback((type: string, payload?: Record<string, unknown>) => {
@@ -212,6 +216,12 @@ export function useVoiceSession({
       }
       if (typeof MediaRecorder === 'undefined') {
         throw new Error('MediaRecorder is not supported in this browser')
+      }
+      // Create/resume AudioContext inside the user gesture so playback is unlocked
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext()
+      } else if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume()
       }
       await ensureConnected()
       const context = await getContextPayload()
