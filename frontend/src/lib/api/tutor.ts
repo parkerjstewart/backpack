@@ -24,11 +24,12 @@ export const tutorApi = {
     return response.data
   },
 
-  // Send student response and get tutor reply
-  sendResponse: async (sessionId: string, message: string) => {
+  // Send student response and get tutor reply.
+  // whiteboardPng is an optional base64 PNG data URL exported from the Excalidraw canvas.
+  sendResponse: async (sessionId: string, message: string, whiteboardPng?: string) => {
     const response = await apiClient.post<TutorResponsePayload>(
       `/tutor/sessions/${sessionId}/respond`,
-      { message }
+      { message, whiteboard_png: whiteboardPng ?? null }
     )
     return response.data
   },

@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { GraduationCap, User, Send, Loader2, Target, CheckCircle2, Mic } from 'lucide-react'
+import { GraduationCap, User, Send, Loader2, Target, CheckCircle2, Mic, Pencil } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -29,7 +29,7 @@ interface TutorChatProps {
   messages: Message[]
   isSending: boolean
   isInitializing: boolean
-  onSendMessage: (message: string) => void
+  onSendMessage: (message: string, attachDrawing?: boolean) => void
   currentGoal: string | null
   goalsCompleted: number
   goalsRemaining: number
@@ -38,6 +38,7 @@ interface TutorChatProps {
   moduleId?: string
   sessionId?: string | null
   onAppendVoiceTurn?: (studentText: string, tutorText: string, supplement?: string | null, imageUrl?: string | null) => void
+  canAttachDrawing?: boolean
   className?: string
 }
 
@@ -54,11 +55,13 @@ export function TutorChat({
   moduleId,
   sessionId,
   onAppendVoiceTurn,
+  canAttachDrawing = false,
   className,
 }: TutorChatProps) {
   const { t } = useTranslation()
   const inputId = useId()
   const [input, setInput] = useState('')
+  const [attachDrawing, setAttachDrawing] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const voiceTranscriptRef = useRef('')
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -71,8 +74,9 @@ export function TutorChat({
 
   const handleSend = () => {
     if (input.trim() && !isSending && !isSessionComplete) {
-      onSendMessage(input.trim())
+      onSendMessage(input.trim(), attachDrawing)
       setInput('')
+      setAttachDrawing(false)
     }
   }
 
@@ -349,6 +353,18 @@ export function TutorChat({
                 className="flex-1 min-h-[40px] max-h-[100px] resize-none py-2 px-3"
                 rows={1}
               />
+              {canAttachDrawing && (
+                <Button
+                  type="button"
+                  variant={attachDrawing ? 'default' : 'outline'}
+                  size="icon"
+                  className="h-[40px] w-[40px] flex-shrink-0"
+                  onClick={() => setAttachDrawing(v => !v)}
+                  title={attachDrawing ? 'Drawing will be attached to message' : 'Click to attach whiteboard drawing'}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 onClick={handleSend}
                 disabled={!input.trim() || isSending}

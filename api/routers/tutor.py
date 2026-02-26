@@ -54,6 +54,10 @@ class CreateSessionResponse(BaseModel):
 class StudentResponseRequest(BaseModel):
     """Request to submit a student response."""
     message: str = Field(..., description="Student's response message")
+    whiteboard_png: Optional[str] = Field(
+        None,
+        description="Optional base64 PNG data URL of the student's whiteboard drawing"
+    )
 
 
 class TutorResponsePayload(BaseModel):
@@ -318,9 +322,16 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
         if not current_state or not current_state.values:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Resume the graph with the student's response
+        # Resume the graph with the student's response.
+        # When a whiteboard PNG is attached, pass a dict so tutor_turn can
+        # build a multimodal HumanMessage (text + image).
+        if request.whiteboard_png:
+            resume_value = {"text": request.message, "whiteboard_png": request.whiteboard_png}
+        else:
+            resume_value = request.message
+
         result = tutor_graph.invoke(
-            Command(resume=request.message),
+            Command(resume=resume_value),
             config=config
         )
         

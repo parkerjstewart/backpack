@@ -308,4 +308,10 @@
     border-width: 2px !important;
     border-color: var(--sage-500) !important;
   }
+
+  /* Excalidraw: suppress welcome-screen robot illustration */
+  .excalidraw .welcome-screen-decor-bottom-left,
+  .excalidraw .welcome-screen-decor-bottom-right {
+    display: none;
+  }
 }

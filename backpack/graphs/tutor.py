@@ -273,15 +273,27 @@ def _get_recent_messages(state: TutorState, n: int = 8) -> List[Dict[str, str]]:
         if isinstance(msg, AIMessage) or (hasattr(msg, "type") and msg.type == "ai"):
             result.append({"role": "tutor", "content": msg.content or ""})
         elif isinstance(msg, HumanMessage) or (hasattr(msg, "type") and msg.type == "human"):
-            result.append({"role": "student", "content": msg.content or ""})
+            # Extract text only — multimodal messages (with whiteboard images) contain a list
+            content = _extract_text_content(msg.content if hasattr(msg, "content") else "")
+            result.append({"role": "student", "content": content})
     return result
 
 
+def _extract_text_content(content) -> str:
+    """Extract plain text from a message content that may be a string or multimodal list."""
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                return part.get("text", "")
+        return ""
+    return content if isinstance(content, str) else str(content)
+
+
 def _get_student_response(state: TutorState) -> str:
-    """Return the most recent human message content."""
+    """Return the most recent human message content (text only)."""
     for msg in reversed(state.get("messages", [])):
         if isinstance(msg, HumanMessage) or (hasattr(msg, "type") and msg.type == "human"):
-            return msg.content if hasattr(msg, "content") else str(msg)
+            return _extract_text_content(msg.content if hasattr(msg, "content") else "")
     return ""
 
 
@@ -765,10 +777,28 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         }
     )
 
-    logger.info(f"Received student response ({tutor_mode}): {str(student_response)[:80]}...")
+    # Resume value is either a plain string or a dict {"text": ..., "whiteboard_png": ...}
+    if isinstance(student_response, dict):
+        student_text = student_response.get("text", "")
+        whiteboard_png = student_response.get("whiteboard_png")
+    else:
+        student_text = student_response
+        whiteboard_png = None
+
+    logger.info(f"Received student response ({tutor_mode}): {str(student_text)[:80]}...")
+
+    # Build HumanMessage — multimodal when a whiteboard PNG is attached
+    if whiteboard_png:
+        human_content = [
+            {"type": "text", "text": student_text},
+            {"type": "image_url", "image_url": {"url": whiteboard_png}},
+        ]
+        human_message = HumanMessage(content=human_content)
+    else:
+        human_message = HumanMessage(content=student_text)
 
     return {
-        "messages": [AIMessage(content=message), HumanMessage(content=student_response)],
+        "messages": [AIMessage(content=message), human_message],
         "latest_supplement": supplement,
         "latest_image_url": image_url,
     }
