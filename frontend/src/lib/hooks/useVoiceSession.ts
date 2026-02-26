@@ -11,7 +11,7 @@ interface UseVoiceSessionParams {
   onError?: (message: string) => void
 }
 
-interface AudioChunk {
+interface AudioClip {
   mimeType: string
   bytes: Uint8Array
 }
@@ -82,7 +82,22 @@ export function useVoiceSession({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunksRef = useRef<Blob[]>([])
   const isPlayingRef = useRef(false)
-  const audioQueueRef = useRef<AudioChunk[]>([])
+  const audioQueueRef = useRef<AudioClip[]>([])
+  const pendingAudioChunksRef = useRef<Uint8Array[]>([])
+  const pendingAudioMimeTypeRef = useRef('audio/mpeg')
+
+  const concatUint8Arrays = useCallback((chunks: Uint8Array[]): Uint8Array => {
+    if (chunks.length === 0) return new Uint8Array()
+    if (chunks.length === 1) return chunks[0]
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+    const combined = new Uint8Array(totalLength)
+    let offset = 0
+    for (const chunk of chunks) {
+      combined.set(chunk, offset)
+      offset += chunk.length
+    }
+    return combined
+  }, [])
 
   const drainAudioQueue = useCallback(() => {
     if (isPlayingRef.current) return
@@ -165,14 +180,22 @@ export function useVoiceSession({
         } else if (data.type === 'assistant_audio_chunk') {
           const encoded = String(data.payload?.audio_base64 ?? '')
           if (encoded) {
+            pendingAudioMimeTypeRef.current = String(data.payload?.mime_type ?? 'audio/mpeg')
+            pendingAudioChunksRef.current.push(decodeBase64(encoded))
+          }
+        } else if (data.type === 'assistant_audio_end') {
+          if (pendingAudioChunksRef.current.length > 0) {
+            const merged = concatUint8Arrays(pendingAudioChunksRef.current)
+            pendingAudioChunksRef.current = []
             audioQueueRef.current.push({
-              mimeType: String(data.payload?.mime_type ?? 'audio/mpeg'),
-              bytes: decodeBase64(encoded),
+              mimeType: pendingAudioMimeTypeRef.current,
+              bytes: merged,
             })
             drainAudioQueue()
           }
         } else if (data.type === 'error') {
           setIsAssistantThinking(false)
+          pendingAudioChunksRef.current = []
           const message = String(data.payload?.message ?? 'Voice error')
           onError?.(message)
         }
@@ -199,6 +222,7 @@ export function useVoiceSession({
       sendEvent('start_turn')
       setIsAssistantThinking(false)
       setAssistantStreamingText('')
+      pendingAudioChunksRef.current = []
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mimeType = pickRecorderMimeType()
@@ -256,13 +280,14 @@ export function useVoiceSession({
       if (ws) {
         ws.close()
       }
+      pendingAudioChunksRef.current = []
       const recorder = mediaRecorderRef.current
       if (recorder && recorder.state !== 'inactive') {
         recorder.stop()
       }
       setIsAssistantThinking(false)
     }
-  }, [])
+  }, [concatUint8Arrays, drainAudioQueue])
 
   return {
     isConnected,
