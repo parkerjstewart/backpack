@@ -20,6 +20,7 @@ class LearningGoal(ObjectModel):
     description: str
     takeaways: str = ""
     competencies: str = ""
+    anchor_examples: str = ""
     order: int = 0
 
     @field_validator("module", mode="before")
@@ -56,6 +57,7 @@ class Module(ObjectModel):
     overview: Optional[str] = None
     course: Optional[str] = None  # record<course> reference
     order: int = 0  # Order within the course
+    status: Literal["draft", "published"] = "published"
 
     @field_validator("course", mode="before")
     @classmethod

@@ -1,0 +1,8 @@
+-- ============================================
+-- Migration 20: Define status field on module table
+-- ============================================
+-- Properly defines the status field schema that was missing from migration 19.
+-- The module table is SCHEMAFULL so fields must be explicitly defined.
+
+DEFINE FIELD IF NOT EXISTS status ON TABLE module TYPE option<string> DEFAULT "published";
+UPDATE module SET status = "published" WHERE status = NONE;

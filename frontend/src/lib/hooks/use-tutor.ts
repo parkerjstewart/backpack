@@ -9,6 +9,7 @@ import { tutorApi } from '@/lib/api/tutor'
 import {
   TutorSessionResponse,
   TutorResponsePayload,
+  TutorDebugInfo,
 } from '@/lib/types/api'
 
 interface Message {
@@ -32,6 +33,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
   const [currentGoal, setCurrentGoal] = useState<string | null>(null)
   const [goalsCompleted, setGoalsCompleted] = useState(0)
   const [goalsRemaining, setGoalsRemaining] = useState(0)
+  const [latestDebugInfo, setLatestDebugInfo] = useState<TutorDebugInfo | null>(null)
 
   // Create session mutation
   const createSessionMutation = useMutation({
@@ -65,6 +67,19 @@ export function useTutor({ moduleId }: UseTutorParams) {
     }
   }, [createSessionMutation])
 
+  // Reset session state so a new session can be started
+  const resetSession = useCallback(() => {
+    setSessionId(null)
+    setMessages([])
+    setIsSending(false)
+    setIsInitializing(false)
+    setSessionPhase('in_progress')
+    setCurrentGoal(null)
+    setGoalsCompleted(0)
+    setGoalsRemaining(0)
+    setLatestDebugInfo(null)
+  }, [])
+
   // Send response to tutor
   const sendMessage = useCallback(async (message: string) => {
     if (!sessionId) {
@@ -94,6 +109,9 @@ export function useTutor({ moduleId }: UseTutorParams) {
       }
       setMessages(prev => [...prev, tutorMessage])
 
+      // Fire-and-forget: fetch debug state after each exchange
+      tutorApi.getDebugState(sessionId).then(setLatestDebugInfo).catch(() => {})
+
       // Update session state
       setSessionPhase(response.phase)
       setCurrentGoal(response.current_goal_description)
@@ -110,6 +128,22 @@ export function useTutor({ moduleId }: UseTutorParams) {
     }
   }, [sessionId, t])
 
+  const appendVoiceTurn = useCallback((studentText: string, tutorText: string) => {
+    const studentMessage: Message = {
+      id: `student-${Date.now()}`,
+      type: 'student',
+      content: studentText,
+      timestamp: new Date().toISOString(),
+    }
+    const tutorMessage: Message = {
+      id: `tutor-${Date.now()}-${Math.random()}`,
+      type: 'tutor',
+      content: tutorText,
+      timestamp: new Date().toISOString(),
+    }
+    setMessages(prev => [...prev, studentMessage, tutorMessage])
+  }, [])
+
   return {
     // State
     sessionId,
@@ -121,9 +155,12 @@ export function useTutor({ moduleId }: UseTutorParams) {
     goalsCompleted,
     goalsRemaining,
     isSessionComplete: sessionPhase === 'session_complete',
+    latestDebugInfo,
 
     // Actions
     initializeSession,
     sendMessage,
+    resetSession,
+    appendVoiceTurn,
   }
 }

@@ -32,6 +32,10 @@ class ModelConfig:
     default_tts_model: str
     default_stt_model: str
     default_tools_model: Optional[str]
+    # Tutor-specific model for the student-facing conversational agent.
+    # Kept separate from default_chat_model so the low-latency tutor model
+    # can be swapped independently (e.g. gpt-5-mini → gpt-5.2 no-reasoning).
+    default_tutor_model: Optional[str]
 
     @classmethod
     def get_config(cls) -> "ModelConfig":
@@ -49,6 +53,7 @@ class ModelConfig:
             default_tts_model=os.getenv("DEFAULT_TTS_MODEL", cls.DEFAULT_TTS),
             default_stt_model=os.getenv("DEFAULT_STT_MODEL", cls.DEFAULT_STT),
             default_tools_model=os.getenv("DEFAULT_TOOLS_MODEL") or None,
+            default_tutor_model=os.getenv("DEFAULT_TUTOR_MODEL") or None,
         )
 
     def get_provider_and_model(self, model_spec: str) -> tuple[str, str]:
@@ -179,7 +184,9 @@ class ModelManager:
         model_spec: Optional[str] = None
         actual_model_type = "language"  # Default Esperanto model type
 
-        if model_type == "chat":
+        if model_type == "tutor":
+            model_spec = "openai/gpt-5.2"
+        elif model_type == "chat":
             model_spec = config.default_chat_model
         elif model_type == "transformation":
             model_spec = config.default_transformation_model or config.default_chat_model

@@ -3,6 +3,7 @@ import {
   TutorSessionResponse,
   TutorResponsePayload,
   TutorSessionStateResponse,
+  TutorDebugInfo,
 } from '@/lib/types/api'
 
 export const tutorApi = {
@@ -28,6 +29,14 @@ export const tutorApi = {
     const response = await apiClient.post<TutorResponsePayload>(
       `/tutor/sessions/${sessionId}/respond`,
       { message }
+    )
+    return response.data
+  },
+
+  // Get internal agent debug state (tutor mode, student model, hypotheses, etc.)
+  getDebugState: async (sessionId: string) => {
+    const response = await apiClient.get<TutorDebugInfo>(
+      `/tutor/sessions/${sessionId}/debug`
     )
     return response.data
   },

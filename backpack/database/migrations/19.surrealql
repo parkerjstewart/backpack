@@ -1,0 +1,8 @@
+-- ============================================
+-- Migration 19: Add status field to module table
+-- ============================================
+-- Adds a 'status' field to modules ('draft' or 'published').
+-- Backfills all existing modules as 'published'.
+
+DEFINE FIELD IF NOT EXISTS status ON TABLE module TYPE option<string> DEFAULT "published";
+UPDATE module SET status = "published" WHERE status = NONE;

@@ -20,16 +20,17 @@ export default function ReviewPage() {
 
   const { data: module, isLoading: moduleLoading } = useModule(moduleId)
   const {
+    sessionId,
     messages,
     isSending,
     isInitializing,
-    sessionPhase,
     currentGoal,
     goalsCompleted,
     goalsRemaining,
     isSessionComplete,
     initializeSession,
     sendMessage,
+    appendVoiceTurn,
   } = useTutor({ moduleId })
 
   // Initialize the tutor session when the page loads
@@ -70,7 +71,7 @@ export default function ReviewPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => router.push(`/modules/${moduleId}`)}
+              onClick={() => router.back()}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               {t.common.back}
@@ -93,6 +94,9 @@ export default function ReviewPage() {
             goalsRemaining={goalsRemaining}
             isSessionComplete={isSessionComplete}
             moduleName={module.name}
+            moduleId={moduleId}
+            sessionId={sessionId}
+            onAppendVoiceTurn={appendVoiceTurn}
           />
         </div>
       </div>

@@ -1,7 +1,9 @@
 import asyncio
+import json
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -75,6 +77,12 @@ class ExecuteChatResponse(BaseModel):
     messages: List[ChatMessage] = Field(..., description="Updated message list")
 
 
+class ChatStreamEvent(BaseModel):
+    type: str
+    content: Optional[str] = None
+    message: Optional[str] = None
+
+
 class BuildContextRequest(BaseModel):
     module_id: str = Field(..., description="Module ID")
     context_config: Dict[str, Any] = Field(..., description="Context configuration")
@@ -89,6 +97,49 @@ class BuildContextResponse(BaseModel):
 class SuccessResponse(BaseModel):
     success: bool = Field(True, description="Operation success status")
     message: str = Field(..., description="Success message")
+
+
+async def _run_module_chat_execution(request: ExecuteChatRequest) -> Dict[str, Any]:
+    """Execute module chat graph and return raw graph result."""
+    full_session_id = (
+        request.session_id
+        if request.session_id.startswith("chat_session:")
+        else f"chat_session:{request.session_id}"
+    )
+    session = await ChatSession.get(full_session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    model_override = (
+        request.model_override
+        if request.model_override is not None
+        else getattr(session, "model_override", None)
+    )
+
+    current_state = chat_graph.get_state(
+        config=RunnableConfig(configurable={"thread_id": request.session_id})
+    )
+    state_values = current_state.values if current_state else {}
+    state_values["messages"] = state_values.get("messages", [])
+    state_values["context"] = request.context
+    state_values["model_override"] = model_override
+
+    from langchain_core.messages import HumanMessage
+
+    state_values["messages"].append(HumanMessage(content=request.message))
+
+    result = chat_graph.invoke(
+        input=state_values,  # type: ignore[arg-type]
+        config=RunnableConfig(
+            configurable={
+                "thread_id": request.session_id,
+                "model_id": model_override,
+            }
+        ),
+    )
+
+    await session.save()
+    return result
 
 
 @router.get("/chat/sessions", response_model=List[ChatSessionResponse])
@@ -316,54 +367,7 @@ async def delete_session(session_id: str):
 async def execute_chat(request: ExecuteChatRequest):
     """Execute a chat request and get AI response."""
     try:
-        # Verify session exists
-        # Ensure session_id has proper table prefix
-        full_session_id = (
-            request.session_id
-            if request.session_id.startswith("chat_session:")
-            else f"chat_session:{request.session_id}"
-        )
-        session = await ChatSession.get(full_session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-
-        # Determine model override (per-request override takes precedence over session-level)
-        model_override = (
-            request.model_override
-            if request.model_override is not None
-            else getattr(session, "model_override", None)
-        )
-
-        # Get current state
-        current_state = chat_graph.get_state(
-            config=RunnableConfig(configurable={"thread_id": request.session_id})
-        )
-
-        # Prepare state for execution
-        state_values = current_state.values if current_state else {}
-        state_values["messages"] = state_values.get("messages", [])
-        state_values["context"] = request.context
-        state_values["model_override"] = model_override
-
-        # Add user message to state
-        from langchain_core.messages import HumanMessage
-
-        user_message = HumanMessage(content=request.message)
-        state_values["messages"].append(user_message)
-
-        # Execute chat graph
-        result = chat_graph.invoke(
-            input=state_values,  # type: ignore[arg-type]
-            config=RunnableConfig(
-                configurable={
-                    "thread_id": request.session_id,
-                    "model_id": model_override,
-                }
-            ),
-        )
-
-        # Update session timestamp
-        await session.save()
+        result = await _run_module_chat_execution(request)
 
         # Convert messages to response format
         messages: list[ChatMessage] = []
@@ -383,6 +387,49 @@ async def execute_chat(request: ExecuteChatRequest):
     except Exception as e:
         logger.error(f"Error executing chat: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error executing chat: {str(e)}")
+
+
+async def stream_module_chat_response(request: ExecuteChatRequest):
+    """Stream module chat response as SSE events."""
+    try:
+        user_event = ChatStreamEvent(type="user_message", content=request.message)
+        yield f"data: {json.dumps(user_event.model_dump())}\n\n"
+
+        result = await _run_module_chat_execution(request)
+        ai_text = ""
+        for msg in reversed(result.get("messages", [])):
+            if hasattr(msg, "type") and msg.type == "ai":
+                ai_text = msg.content if hasattr(msg, "content") else str(msg)
+                break
+
+        for i in range(0, len(ai_text), 32):
+            chunk = ai_text[i : i + 32]
+            event = ChatStreamEvent(type="ai_message", content=chunk)
+            yield f"data: {json.dumps(event.model_dump())}\n\n"
+
+        complete_event = ChatStreamEvent(type="complete")
+        yield f"data: {json.dumps(complete_event.model_dump())}\n\n"
+    except Exception as e:
+        logger.error(f"Error streaming module chat: {str(e)}")
+        error_event = ChatStreamEvent(type="error", message=str(e))
+        yield f"data: {json.dumps(error_event.model_dump())}\n\n"
+
+
+@router.post("/chat/sessions/{session_id}/messages/stream")
+async def stream_module_chat(session_id: str, request: ExecuteChatRequest):
+    """Stream module chat response for lower-latency UI updates."""
+    if session_id != request.session_id:
+        raise HTTPException(status_code=400, detail="Session ID mismatch")
+
+    return StreamingResponse(
+        stream_module_chat_response(request),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/plain; charset=utf-8",
+        },
+    )
 
 
 @router.post("/chat/context", response_model=BuildContextResponse)

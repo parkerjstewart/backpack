@@ -53,7 +53,7 @@ async def list_courses(
                 SELECT
                     out.* as course,
                     role as membership_role,
-                    count((SELECT * FROM module WHERE course = out.id)) as module_count,
+                    count((SELECT * FROM module WHERE course = out.id AND (status != "draft" OR status = NONE))) as module_count,
                     count((SELECT * FROM course_membership WHERE out = out.id AND role = 'student')) as student_count
                 FROM course_membership
                 WHERE in = $user_id
@@ -73,7 +73,7 @@ async def list_courses(
                 """
                 SELECT *,
                     count(<-course_membership[WHERE role = 'student']) as student_count,
-                    count((SELECT * FROM module WHERE course = parent.id)) as module_count
+                    count((SELECT * FROM module WHERE course = parent.id AND (status != "draft" OR status = NONE))) as module_count
                 FROM course
                 ORDER BY updated DESC
                 """
@@ -158,7 +158,7 @@ async def get_course(course_id: str, authorization: Optional[str] = Header(None)
             """
             SELECT *,
                 count(<-course_membership[WHERE role = 'student']) as student_count,
-                count((SELECT * FROM module WHERE course = parent.id)) as module_count
+                count((SELECT * FROM module WHERE course = parent.id AND (status != "draft" OR status = NONE))) as module_count
             FROM $course_id
             """,
             {"course_id": ensure_record_id(course_id)},
@@ -216,7 +216,7 @@ async def update_course(
             """
             SELECT
                 count(<-course_membership[WHERE role = 'student']) as student_count,
-                count((SELECT * FROM module WHERE course = parent.id)) as module_count
+                count((SELECT * FROM module WHERE course = parent.id AND (status != "draft" OR status = NONE))) as module_count
             FROM $course_id
             """,
             {"course_id": ensure_record_id(course_id)},

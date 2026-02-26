@@ -1,0 +1,5 @@
+-- ============================================
+-- Migration 21: Add anchor_examples to learning_goal
+-- ============================================
+
+DEFINE FIELD IF NOT EXISTS anchor_examples ON TABLE learning_goal TYPE option<string>;

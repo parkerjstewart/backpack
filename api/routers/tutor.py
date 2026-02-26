@@ -63,18 +63,21 @@ class TutorResponsePayload(BaseModel):
     # Current state
     current_goal_id: Optional[str] = Field(None, description="Current goal ID")
     current_goal_description: Optional[str] = Field(None, description="Current goal description")
-    current_question_index: Optional[int] = Field(None, description="Current question index")
-    current_question_text: Optional[str] = Field(None, description="Current question text")
-    
+    anchor_problem: Optional[str] = Field(None, description="Anchor problem being explored for current goal")
+
     # The tutor's response message
     tutor_message: str = Field(..., description="Tutor's response")
     
     # Latest evaluation (for real-time feedback)
     latest_understanding_score: Optional[float] = Field(
-        None, 
-        description="Latest understanding score (0-1)"
+        None,
+        description="Latest overall understanding score (0-1)",
     )
-    
+    competency_scores: Optional[Dict[str, float]] = Field(
+        None,
+        description="Per-competency scores when available",
+    )
+
     # Progress summary
     goals_completed: int = Field(default=0, description="Number of goals completed")
     goals_remaining: int = Field(default=0, description="Number of goals remaining")
@@ -92,9 +95,8 @@ class SessionStateResponse(BaseModel):
     goals_completed: int
     current_goal_id: Optional[str]
     current_goal_description: Optional[str]
-    current_question_index: Optional[int]
-    current_question_text: Optional[str]
-    
+    anchor_problem: Optional[str]
+
     # Goal progress list
     goal_progress: List[Dict[str, Any]]
     
@@ -238,12 +240,7 @@ async def get_session(session_id: str):
         state_values = state.values
         current_goal_id, current_goal_description = get_current_goal_info(state_values)
         completed, remaining = count_goals(state_values)
-        
-        # Get current question info
-        current_question = state_values.get("current_question")
-        current_question_index = current_question.get("index") if current_question else None
-        current_question_text = current_question.get("question_text") if current_question else None
-        
+
         # Determine phase
         if remaining == 0 and completed > 0:
             phase = "complete"
@@ -272,10 +269,10 @@ async def get_session(session_id: str):
                 "goal_id": goal["id"],
                 "description": goal["description"],
                 "completed": progress.get("completed", False),
-                "questions_count": len(progress.get("starter_questions", [])),
-                "current_question_index": progress.get("current_question_index", 0),
+                "exchanges": progress.get("exchanges", 0),
+                "anchor_problem": progress.get("anchor_problem"),
             })
-        
+
         return SessionStateResponse(
             session_id=session_id,
             module_id=state_values.get("module_id", ""),
@@ -285,8 +282,7 @@ async def get_session(session_id: str):
             goals_completed=completed,
             current_goal_id=current_goal_id,
             current_goal_description=current_goal_description,
-            current_question_index=current_question_index,
-            current_question_text=current_question_text,
+            anchor_problem=state_values.get("anchor_problem"),
             goal_progress=goal_progress_list,
             started_at=started_at,
             elapsed_seconds=elapsed_seconds,
@@ -334,18 +330,17 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
         
         if interrupt_data:
             # Still in progress - return the tutor's response
-            current_question = state_values.get("current_question")
             latest_eval = state_values.get("latest_evaluation", {})
-            
+
             return TutorResponsePayload(
                 session_id=session_id,
                 phase="in_progress",
                 current_goal_id=current_goal_id,
                 current_goal_description=current_goal_description,
-                current_question_index=current_question.get("index") if current_question else None,
-                current_question_text=current_question.get("question_text") if current_question else None,
+                anchor_problem=state_values.get("anchor_problem"),
                 tutor_message=interrupt_data.get("message", ""),
                 latest_understanding_score=latest_eval.get("score"),
+                competency_scores=latest_eval.get("competency_score_dict"),
                 goals_completed=completed,
                 goals_remaining=remaining,
             )
@@ -378,10 +373,10 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
             phase=phase,
             current_goal_id=current_goal_id,
             current_goal_description=current_goal_description,
-            current_question_index=None,
-            current_question_text=None,
+            anchor_problem=state_values.get("anchor_problem"),
             tutor_message=last_ai_message or "Session updated.",
             latest_understanding_score=state_values.get("latest_evaluation", {}).get("score"),
+            competency_scores=state_values.get("latest_evaluation", {}).get("competency_score_dict"),
             goals_completed=completed,
             goals_remaining=remaining,
         )
@@ -430,15 +425,8 @@ async def get_trajectory(session_id: str):
                 "initial_understanding": progress.get("initial_understanding"),
                 "final_understanding": progress.get("final_understanding"),
                 "trajectory_points": len(goal_trajectory),
-                "questions": [
-                    {
-                        "index": q.get("index"),
-                        "text": q.get("question_text"),
-                        "resolved": q.get("resolved", False),
-                        "exchanges": q.get("exchanges", 0),
-                    }
-                    for q in progress.get("starter_questions", [])
-                ],
+                "exchanges": progress.get("exchanges", 0),
+                "anchor_problem": progress.get("anchor_problem"),
             })
         
         return TrajectoryResponse(
@@ -453,6 +441,83 @@ async def get_trajectory(session_id: str):
         raise
     except Exception as e:
         logger.error(f"Error getting trajectory: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class DebugStateResponse(BaseModel):
+    """Debug state for inspecting tutor agent internals during a session."""
+    session_id: str
+    tutor_mode: Optional[str] = Field(None, description="Current behavioral profile (opening/guide/nudge/give_fact/explain/transition/tangent)")
+    exchanges_on_goal: int = Field(0, description="Number of exchanges on current goal")
+    student_model: Optional[Dict[str, Any]] = Field(None, description="Full student model for current goal")
+    evaluation_notes: Optional[str] = Field(None, description="Evaluator notes from last exchange")
+    action_rationale: Optional[str] = Field(None, description="Evaluator rationale for chosen action")
+    evaluator_guidance: Optional[str] = Field(None, description="Natural-language tutor guidance from evaluator")
+    latest_understanding_score: Optional[float] = Field(None, description="Overall understanding score (0-1)")
+    competency_scores: Optional[Dict[str, float]] = Field(None, description="Per-competency scores")
+    # Per-competency lifecycle tracking
+    competency_statuses: Optional[List[Dict[str, Any]]] = Field(None, description="Per-competency lifecycle status (pending/active/mastered/explained)")
+    active_competency_index: Optional[int] = Field(None, description="Index of currently active competency (-1 = brain-dump)")
+    # Goal-level scoring
+    goal_score: Optional[float] = Field(None, description="Average competency score for current goal (0-1)")
+    competencies_mastered: Optional[int] = Field(None, description="Number of mastered competencies for current goal")
+    competencies_total: Optional[int] = Field(None, description="Total number of competencies for current goal")
+    evaluator_action: Optional[str] = Field(None, description="Last suggested_next_action from evaluator (advance/continue/probe/macro_hint/explain_competency/tangent)")
+
+
+@router.get("/tutor/sessions/{session_id}/debug", response_model=DebugStateResponse)
+async def get_debug_state(session_id: str):
+    """Get the current internal agent state for debugging.
+
+    Returns tutor mode, student model (competency assessments, hypotheses, evidence),
+    and the latest evaluation output. Useful for inspecting agent behavior during a session.
+    """
+    logger.info(f"Getting debug state for session: {session_id}")
+
+    try:
+        config = {"configurable": {"thread_id": session_id}}
+        state = tutor_graph.get_state(config=RunnableConfig(**config))
+
+        if not state or not state.values:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        sv = state.values
+        current_goal_id, _ = get_current_goal_info(sv)
+        latest_eval = sv.get("latest_evaluation") or {}
+        student_model = sv.get("student_model", {})
+
+        # Compute goal-level scoring from competency statuses
+        statuses = sv.get("competency_statuses", [])
+        goal_score = None
+        competencies_mastered = None
+        competencies_total = None
+        if statuses:
+            goal_score = sum(c.get("score", 0) for c in statuses) / len(statuses)
+            competencies_mastered = sum(1 for c in statuses if c.get("status") == "mastered")
+            competencies_total = len(statuses)
+
+        return DebugStateResponse(
+            session_id=session_id,
+            tutor_mode=sv.get("tutor_mode"),
+            exchanges_on_goal=sv.get("exchanges_on_goal", 0),
+            student_model=student_model.get(current_goal_id) if current_goal_id else None,
+            evaluation_notes=latest_eval.get("notes"),
+            action_rationale=latest_eval.get("action_rationale"),
+            evaluator_guidance=sv.get("evaluator_guidance"),
+            latest_understanding_score=latest_eval.get("score"),
+            competency_scores=latest_eval.get("competency_score_dict"),
+            competency_statuses=sv.get("competency_statuses"),
+            active_competency_index=sv.get("active_competency_index"),
+            goal_score=goal_score,
+            competencies_mastered=competencies_mastered,
+            competencies_total=competencies_total,
+            evaluator_action=latest_eval.get("suggested_next_action"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting debug state: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -487,39 +552,35 @@ async def get_summary(session_id: str):
         trajectory = state_values.get("understanding_trajectory", [])
         
         # Calculate statistics
-        total_questions = 0
         total_exchanges = 0
         initial_scores = []
         final_scores = []
         all_misconceptions = []
         all_breakthroughs = []
         goal_summaries = []
-        
+
         for goal in state_values.get("learning_goals", []):
             progress = goal_progress_dict.get(goal["id"], {})
-            questions = progress.get("starter_questions", [])
-            
-            total_questions += len(questions)
-            for q in questions:
-                total_exchanges += q.get("exchanges", 0)
-            
+            exchanges = progress.get("exchanges", 0)
+            total_exchanges += exchanges
+
             if progress.get("initial_understanding") is not None:
                 initial_scores.append(progress["initial_understanding"])
             if progress.get("final_understanding") is not None:
                 final_scores.append(progress["final_understanding"])
-            
+
             # Collect from trajectory
             for t in progress.get("trajectory", []):
                 if isinstance(t, dict):
                     all_misconceptions.extend(t.get("misconceptions", []))
                     all_breakthroughs.extend(t.get("breakthroughs", []))
-            
+
             goal_summaries.append({
                 "goal_id": goal["id"],
                 "description": goal["description"],
                 "completed": progress.get("completed", False),
-                "questions_count": len(questions),
-                "total_exchanges": sum(q.get("exchanges", 0) for q in questions),
+                "exchanges": exchanges,
+                "anchor_problem": progress.get("anchor_problem"),
                 "initial_understanding": progress.get("initial_understanding"),
                 "final_understanding": progress.get("final_understanding"),
             })
@@ -542,7 +603,6 @@ async def get_summary(session_id: str):
             "module_name": state_values.get("module_name", ""),
             "total_goals": len(state_values.get("learning_goals", [])),
             "goals_completed": completed,
-            "total_questions": total_questions,
             "total_exchanges": total_exchanges,
             "average_initial_understanding": avg_initial,
             "average_final_understanding": avg_final,
@@ -562,4 +622,90 @@ async def get_summary(session_id: str):
         raise
     except Exception as e:
         logger.error(f"Error getting summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SessionExportResponse(BaseModel):
+    """Full export of session data including conversation, competency lifecycle, and trajectories."""
+    session_id: str
+    module_id: str
+    module_name: str
+    phase: str
+    session_started_at: Optional[str] = None
+    messages: List[Dict[str, Any]] = Field(default_factory=list, description="Full conversation [{role, content}]")
+    learning_goals: List[Dict[str, Any]] = Field(default_factory=list)
+    goal_progress: Dict[str, Any] = Field(default_factory=dict, description="Per-goal data including competency_statuses snapshots for completed goals")
+    understanding_trajectory: List[Dict[str, Any]] = Field(default_factory=list, description="All evaluation points across the session")
+    student_model: Dict[str, Any] = Field(default_factory=dict, description="Per-goal competency assessments and hypotheses")
+    current_state: Optional[Dict[str, Any]] = Field(None, description="Live competency_statuses and active_competency_index if session in progress")
+
+
+@router.get("/tutor/sessions/{session_id}/export", response_model=SessionExportResponse)
+async def export_session(session_id: str):
+    """Export full session data for post-session analysis.
+
+    Returns the complete conversation history, per-goal competency lifecycle snapshots
+    (including scores, evidence, hypotheses, and hint counts), the full understanding
+    trajectory, and the student model. Available during and after the session.
+    """
+    logger.info(f"Exporting session data: {session_id}")
+
+    try:
+        config = {"configurable": {"thread_id": session_id}}
+        state = tutor_graph.get_state(config=RunnableConfig(**config))
+
+        if not state or not state.values:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        sv = state.values
+
+        # Convert LangChain messages to plain dicts
+        raw_messages = sv.get("messages", [])
+        messages = []
+        for msg in raw_messages:
+            if hasattr(msg, "type"):
+                role = "tutor" if msg.type == "ai" else "student"
+            else:
+                role = "unknown"
+            content = msg.content if hasattr(msg, "content") else str(msg)
+            messages.append({"role": role, "content": content})
+
+        # Determine in-progress state (competency_statuses is non-empty if goal active)
+        current_competency_statuses = sv.get("competency_statuses", [])
+        current_state = None
+        if current_competency_statuses:
+            current_state = {
+                "competency_statuses": current_competency_statuses,
+                "active_competency_index": sv.get("active_competency_index", -1),
+                "tutor_mode": sv.get("tutor_mode"),
+                "current_goal_id": sv.get("current_goal_id"),
+            }
+
+        # Determine phase
+        completed, remaining = count_goals(sv)
+        if remaining == 0 and completed > 0:
+            phase = "complete"
+        elif completed == 0 and remaining > 0:
+            phase = "in_progress"
+        else:
+            phase = "in_progress"
+
+        return SessionExportResponse(
+            session_id=session_id,
+            module_id=sv.get("module_id", ""),
+            module_name=sv.get("module_name", ""),
+            phase=phase,
+            session_started_at=sv.get("session_started_at"),
+            messages=messages,
+            learning_goals=sv.get("learning_goals", []),
+            goal_progress=sv.get("goal_progress", {}),
+            understanding_trajectory=sv.get("understanding_trajectory", []),
+            student_model=sv.get("student_model", {}),
+            current_state=current_state,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting session: {e}")
         raise HTTPException(status_code=500, detail=str(e))

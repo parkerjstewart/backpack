@@ -19,6 +19,17 @@ from backpack.graphs.transformation import graph as transform_graph
 from backpack.utils.token_utils import token_count
 
 
+# Structured-output calls can truncate on reasoning-heavy models if the
+# completion budget is too low. Keep budgets generous and retry once on
+# length-limit parse failures.
+NAME_MAX_TOKENS = 600
+NAME_RETRY_MAX_TOKENS = 1600
+OVERVIEW_MAX_TOKENS = 900
+OVERVIEW_RETRY_MAX_TOKENS = 1800
+LEARNING_GOALS_MAX_TOKENS = 12000
+LEARNING_GOALS_RETRY_MAX_TOKENS = 20000
+
+
 # ============================================
 # Pydantic output models for structured AI responses
 # ============================================
@@ -45,6 +56,10 @@ class GeneratedLearningGoal(BaseModel):
     )
     competencies: str = Field(
         default="", description="Demonstrable skills as bullet points"
+    )
+    anchor_examples: str = Field(
+        default="",
+        description="Specific lecture examples this goal is grounded in",
     )
 
 
@@ -83,6 +98,44 @@ class ModuleGenerationState(TypedDict, total=False):
     generated_name: str
     overview: str
     learning_goals: list[dict]
+
+
+async def _invoke_structured_with_length_retry(
+    *,
+    system_prompt: str,
+    model_id: str | None,
+    default_type: str,
+    schema: type[BaseModel],
+    max_tokens: int,
+    retry_max_tokens: int,
+    **extra_kwargs,
+):
+    """Invoke a structured-output model and retry once on length truncation."""
+    model = await provision_langchain_model(
+        system_prompt,
+        model_id,
+        default_type,
+        max_tokens=max_tokens,
+        **extra_kwargs,
+    )
+    try:
+        return await model.with_structured_output(schema).ainvoke(system_prompt)
+    except Exception as e:
+        message = str(e).lower()
+        if "length limit was reached" not in message:
+            raise
+        logger.warning(
+            f"Structured output hit length limit at max_tokens={max_tokens}; "
+            f"retrying with max_tokens={retry_max_tokens}"
+        )
+        retry_model = await provision_langchain_model(
+            system_prompt,
+            model_id,
+            default_type,
+            max_tokens=retry_max_tokens,
+            **extra_kwargs,
+        )
+        return await retry_model.with_structured_output(schema).ainvoke(system_prompt)
 
 
 # ============================================
@@ -151,14 +204,14 @@ async def generate_name(
     system_prompt = Prompter(prompt_template="module/name").render(
         data=prompt_data
     )
-    model = await provision_langchain_model(
-        system_prompt,
-        model_id,
-        "transformation",
-        max_tokens=100,
+    result = await _invoke_structured_with_length_retry(
+        system_prompt=system_prompt,
+        model_id=model_id,
+        default_type="transformation",
+        schema=GeneratedName,
+        max_tokens=NAME_MAX_TOKENS,
+        retry_max_tokens=NAME_RETRY_MAX_TOKENS,
     )
-    structured_model = model.with_structured_output(GeneratedName)
-    result = await structured_model.ainvoke(system_prompt)
     return result.name
 
 
@@ -179,14 +232,14 @@ async def generate_overview(
     system_prompt = Prompter(prompt_template="module/overview").render(
         data=prompt_data
     )
-    model = await provision_langchain_model(
-        system_prompt,
-        model_id,
-        "transformation",
-        max_tokens=500,
+    result = await _invoke_structured_with_length_retry(
+        system_prompt=system_prompt,
+        model_id=model_id,
+        default_type="transformation",
+        schema=GeneratedOverview,
+        max_tokens=OVERVIEW_MAX_TOKENS,
+        retry_max_tokens=OVERVIEW_RETRY_MAX_TOKENS,
     )
-    structured_model = model.with_structured_output(GeneratedOverview)
-    result = await structured_model.ainvoke(system_prompt)
     return result.overview
 
 
@@ -207,14 +260,15 @@ async def generate_learning_goals(
     system_prompt = Prompter(prompt_template="module/learning_goals").render(
         data=prompt_data
     )
-    model = await provision_langchain_model(
-        system_prompt,
-        model_id,
-        "transformation",
-        max_tokens=2000,
+    result = await _invoke_structured_with_length_retry(
+        system_prompt=system_prompt,
+        model_id=model_id,
+        default_type="transformation",
+        schema=GeneratedLearningGoals,
+        max_tokens=LEARNING_GOALS_MAX_TOKENS,
+        retry_max_tokens=LEARNING_GOALS_RETRY_MAX_TOKENS,
+        reasoning_effort="high",
     )
-    structured_model = model.with_structured_output(GeneratedLearningGoals)
-    result = await structured_model.ainvoke(system_prompt)
     return result.goals
 
 

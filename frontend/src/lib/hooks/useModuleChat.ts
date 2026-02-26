@@ -172,7 +172,7 @@ export function useModuleChat({ moduleId, sources, notes, contextSelections }: U
     return response.context
   }, [moduleId, sources, notes, contextSelections])
 
-  // Send message (synchronous, no streaming)
+  // Send message with SSE streaming
   const sendMessage = useCallback(async (message: string, modelOverride?: string) => {
     let sessionId = currentSessionId
 
@@ -215,17 +215,71 @@ export function useModuleChat({ moduleId, sources, notes, contextSelections }: U
     try {
       // Build context and send message
       const context = await buildContext()
-      const response = await chatApi.sendMessage({
+      const stream = await chatApi.sendMessageStream(sessionId, {
         session_id: sessionId,
         message,
         context,
         model_override: modelOverride ?? (currentSession?.model_override ?? undefined)
       })
+      if (!stream) {
+        throw new Error('No response stream')
+      }
 
-      // Update messages with API response
-      setMessages(response.messages)
+      const reader = stream.getReader()
+      const decoder = new TextDecoder()
+      let aiMessageId: string | null = null
+      let buffer = ''
 
-      // Refetch current session to get updated data
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          const event = chatApi.parseStreamEvent(line)
+          if (!event) continue
+          if (event.type === 'ai_message') {
+            const chunk = event.content ?? ''
+            if (!aiMessageId) {
+              aiMessageId = `ai-${Date.now()}`
+              setMessages(prev => [...prev, {
+                id: aiMessageId!,
+                type: 'ai',
+                content: chunk,
+                timestamp: new Date().toISOString()
+              }])
+            } else {
+              setMessages(prev => prev.map(msg => msg.id === aiMessageId
+                ? { ...msg, content: `${msg.content}${chunk}` }
+                : msg
+              ))
+            }
+          } else if (event.type === 'error') {
+            throw new Error(event.message || 'Stream error')
+          }
+        }
+      }
+      if (buffer) {
+        const event = chatApi.parseStreamEvent(buffer)
+        if (event?.type === 'ai_message') {
+          const chunk = event.content ?? ''
+          if (!aiMessageId) {
+            aiMessageId = `ai-${Date.now()}`
+            setMessages(prev => [...prev, {
+              id: aiMessageId!,
+              type: 'ai',
+              content: chunk,
+              timestamp: new Date().toISOString()
+            }])
+          } else {
+            setMessages(prev => prev.map(msg => msg.id === aiMessageId
+              ? { ...msg, content: `${msg.content}${chunk}` }
+              : msg
+            ))
+          }
+        }
+      }
       await refetchCurrentSession()
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string } }, message?: string };
@@ -246,6 +300,10 @@ export function useModuleChat({ moduleId, sources, notes, contextSelections }: U
     queryClient,
     t
   ])
+
+  const buildContextForVoice = useCallback(async () => {
+    return buildContext()
+  }, [buildContext])
 
   // Switch session
   const switchSession = useCallback((sessionId: string) => {
@@ -287,6 +345,24 @@ export function useModuleChat({ moduleId, sources, notes, contextSelections }: U
     }
   }, [currentSessionId, updateSessionMutation])
 
+  const appendVoiceTurn = useCallback((studentText: string, aiText: string) => {
+    const now = new Date().toISOString()
+    const human: ModuleChatMessage = {
+      id: `voice-human-${Date.now()}`,
+      type: 'human',
+      content: studentText,
+      timestamp: now,
+    }
+    const ai: ModuleChatMessage = {
+      id: `voice-ai-${Date.now()}-${Math.random()}`,
+      type: 'ai',
+      content: aiText,
+      timestamp: now,
+    }
+    setMessages(prev => [...prev, human, ai])
+    refetchCurrentSession()
+  }, [refetchCurrentSession])
+
   // Update token/char counts when context selections change
   useEffect(() => {
     const updateContextCounts = async () => {
@@ -318,6 +394,8 @@ export function useModuleChat({ moduleId, sources, notes, contextSelections }: U
     switchSession,
     sendMessage,
     setModelOverride,
-    refetchSessions
+    refetchSessions,
+    buildContextForVoice,
+    appendVoiceTurn,
   }
 }

@@ -1,0 +1,63 @@
+# SYSTEM ROLE
+
+You are designing a single discussion problem for a one-on-one Socratic tutoring session. The problem should be rich enough to explore conversationally across 3–6 short exchanges — NOT answerable in one shot.
+
+# LEARNING GOAL
+
+**Goal**: {{ goal.description }}
+{% if goal.competencies %}
+**Competencies** (the student must demonstrate each of these — your problem must naturally require all of them):
+{{ goal.competencies }}
+{% endif %}
+{% if goal.anchor_examples %}
+**Anchor Examples** (ground your problem in one of these specific lecture examples):
+{{ goal.anchor_examples }}
+{% endif %}
+{% if goal.takeaways %}
+**Key Takeaways** (answer key — for your reference only):
+{{ goal.takeaways }}
+{% endif %}
+
+# MODULE CONTEXT
+
+{% if module_name %}**Module**: {{ module_name }}{% endif %}
+
+{% if module_examples %}
+**Extracted examples from the material** (reference by name):
+{% for ex in module_examples %}
+- **{{ ex.get('name', ex.get('term', '')) }}** ({{ ex.type }}): {{ ex.get('description', ex.get('summary', '')) }}
+{% endfor %}
+{% endif %}
+
+{% if context_chunks %}
+## Relevant Course Materials
+
+{% for chunk in context_chunks %}
+**Source [{{ chunk.id }}]**: {{ chunk.content[:400] if chunk.content else chunk.get('full_text', '')[:400] }}...
+{% endfor %}
+{% endif %}
+
+# YOUR TASK
+
+Design ONE anchor problem that:
+
+1. **Maps to ALL competencies** — working through this problem should require the student to demonstrate each competency listed above, roughly in order
+2. **Is grounded in a specific named lecture example** — use one from the anchor_examples or module_examples lists (e.g., the taxi arrival Poisson example, the coin-flip Bernoulli derivation)
+3. **Has natural sub-pieces** — the problem should have 3–5 steps or angles the tutor can explore through conversation (not one big question to answer all at once)
+4. **Is "fill-in-the-gap" style** — present a partial scenario and ask the student to work through it, not "explain X from scratch"
+5. **Sounds like a real tutor talking** — conversational, not exam-like
+
+Also write a natural **opening_framing**: the first thing the tutor says to introduce this problem. Should sound casual and engaging — "Let's work through..." or "Alright, here's a problem..."
+
+**Important**: Don't assume the student remembers the specific lecture example. Introduce the scenario as fresh context: "Let's try a Poisson problem. Imagine a doctor who records the number of calls she gets per day..." — NOT "Remember the doctor example from lecture?"
+
+# OUTPUT FORMAT
+
+```json
+{
+  "anchor_problem": "The full description of the problem scenario (2-4 sentences setting up what you're asking them to work through)",
+  "opening_framing": "The natural intro message the tutor says to kick things off (2-3 sentences, casual tone, introduces the scenario as fresh context without assuming lecture recall)"
+}
+```
+
+Generate the anchor problem now:

@@ -1,4 +1,6 @@
 import os
+import re
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, TypeVar, Union
@@ -7,6 +9,11 @@ from loguru import logger
 from surrealdb import AsyncSurreal, RecordID  # type: ignore
 
 T = TypeVar("T", Dict[str, Any], List[Dict[str, Any]])
+_TRANSIENT_DB_MAX_ATTEMPTS = 3
+_TRANSIENT_DB_BASE_DELAY_SECONDS = 0.25
+_UUID_KEY_PATTERN = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 
 
 def get_database_url():
@@ -44,6 +51,52 @@ def ensure_record_id(value: Union[str, RecordID]) -> RecordID:
     return RecordID.parse(value)
 
 
+def _is_transient_database_error(exc: Exception) -> bool:
+    """Return True for transient transport/websocket DB failures."""
+    if isinstance(exc, (ConnectionError, TimeoutError, asyncio.TimeoutError)):
+        return True
+
+    # SurrealDB websocket client can raise KeyError('<query-uuid>') after
+    # cancelled futures. Treat that as transient and retry with a fresh connection.
+    if isinstance(exc, KeyError):
+        key = str(exc).strip("\"'")
+        if _UUID_KEY_PATTERN.fullmatch(key):
+            return True
+
+    message = str(exc).lower()
+    transient_markers = (
+        "timed out during opening handshake",
+        "future cancelled",
+        "cancellederror",
+        "connection closed",
+        "connection reset",
+        "broken pipe",
+        "temporarily unavailable",
+        "websocket",
+    )
+    return any(marker in message for marker in transient_markers)
+
+
+async def _run_with_transient_db_retry(coro_factory, operation_name: str):
+    """Run a DB operation with retries for transient transport failures."""
+    for attempt in range(1, _TRANSIENT_DB_MAX_ATTEMPTS + 1):
+        try:
+            return await coro_factory()
+        except RuntimeError:
+            # Preserve transaction conflict semantics.
+            raise
+        except Exception as exc:
+            is_last_attempt = attempt == _TRANSIENT_DB_MAX_ATTEMPTS
+            if not _is_transient_database_error(exc) or is_last_attempt:
+                raise
+            delay = _TRANSIENT_DB_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+            logger.warning(
+                f"{operation_name} transient error (attempt {attempt}/"
+                f"{_TRANSIENT_DB_MAX_ATTEMPTS}): {exc}. Retrying in {delay:.2f}s"
+            )
+            await asyncio.sleep(delay)
+
+
 @asynccontextmanager
 async def db_connection():
     db = AsyncSurreal(get_database_url())
@@ -66,20 +119,22 @@ async def repo_query(
     query_str: str, vars: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """Execute a SurrealQL query and return the results"""
-
-    async with db_connection() as connection:
-        try:
+    async def _execute():
+        async with db_connection() as connection:
             result = parse_record_ids(await connection.query(query_str, vars))
             if isinstance(result, str):
                 raise RuntimeError(result)
             return result
-        except RuntimeError as e:
-            # RuntimeError is raised for retriable transaction conflicts - log at debug to avoid noise
-            logger.debug(str(e))
-            raise
-        except Exception as e:
-            logger.exception(e)
-            raise
+
+    try:
+        return await _run_with_transient_db_retry(_execute, "repo_query")
+    except RuntimeError as e:
+        # RuntimeError is raised for retriable transaction conflicts - log at debug to avoid noise
+        logger.debug(str(e))
+        raise
+    except Exception as e:
+        logger.exception(e)
+        raise
 
 
 async def repo_create(table: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -88,9 +143,12 @@ async def repo_create(table: str, data: Dict[str, Any]) -> Dict[str, Any]:
     data.pop("id", None)
     data["created"] = datetime.now(timezone.utc)
     data["updated"] = datetime.now(timezone.utc)
-    try:
+    async def _execute():
         async with db_connection() as connection:
             return parse_record_ids(await connection.insert(table, data))
+
+    try:
+        return await _run_with_transient_db_retry(_execute, "repo_create")
     except RuntimeError as e:
         logger.error(str(e))
         raise
@@ -153,10 +211,11 @@ async def repo_update(
 
 async def repo_delete(record_id: Union[str, RecordID]):
     """Delete a record by record id"""
-
-    try:
+    async def _execute():
         async with db_connection() as connection:
             return await connection.delete(ensure_record_id(record_id))
+    try:
+        return await _run_with_transient_db_retry(_execute, "repo_delete")
     except Exception as e:
         logger.exception(e)
         raise RuntimeError(f"Failed to delete record: {str(e)}")
@@ -166,9 +225,12 @@ async def repo_insert(
     table: str, data: List[Dict[str, Any]], ignore_duplicates: bool = False
 ) -> List[Dict[str, Any]]:
     """Create a new record in the specified table"""
-    try:
+    async def _execute():
         async with db_connection() as connection:
             return parse_record_ids(await connection.insert(table, data))
+
+    try:
+        return await _run_with_transient_db_retry(_execute, "repo_insert")
     except Exception as e:
         if ignore_duplicates and "already contains" in str(e):
             return []

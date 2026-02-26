@@ -3,6 +3,7 @@ export interface ModuleResponse {
   name: string
   description: string
   archived: boolean
+  status: 'draft' | 'published'
   overview: string | null
   created: string
   updated: string
@@ -66,6 +67,7 @@ export interface CreateModuleRequest {
   name: string
   description?: string
   course_id?: string
+  status?: 'draft' | 'published'
 }
 
 export interface UpdateModuleRequest {
@@ -237,6 +239,44 @@ export interface SendModuleChatMessageRequest {
     notes: Array<Record<string, unknown>>
   }
   model_override?: string
+}
+
+export interface ModuleChatStreamEvent {
+  type: 'user_message' | 'ai_message' | 'complete' | 'error'
+  content?: string
+  message?: string
+}
+
+export type VoiceSurface = 'tutor' | 'module'
+
+export interface VoiceContextPayload {
+  surface: VoiceSurface
+  session_id: string
+  module_id?: string
+  model_override?: string | null
+  module_context?: {
+    sources: Array<Record<string, unknown>>
+    notes: Array<Record<string, unknown>>
+  }
+}
+
+export interface VoiceClientEvent {
+  type: 'context' | 'start_turn' | 'audio_chunk' | 'end_turn' | 'cancel_turn'
+  payload?: Record<string, unknown>
+}
+
+export interface VoiceServerEvent {
+  type:
+    | 'ready'
+    | 'partial_transcript'
+    | 'final_transcript'
+    | 'assistant_thinking'
+    | 'assistant_text_delta'
+    | 'assistant_text_final'
+    | 'assistant_audio_chunk'
+    | 'assistant_audio_end'
+    | 'error'
+  payload: Record<string, unknown>
 }
 
 export interface BuildContextRequest {
@@ -443,10 +483,10 @@ export interface TutorResponsePayload {
   phase: 'in_progress' | 'goal_complete' | 'session_complete'
   current_goal_id: string | null
   current_goal_description: string | null
-  current_question_index: number | null
-  current_question_text: string | null
+  anchor_problem: string | null
   tutor_message: string
   latest_understanding_score: number | null
+  competency_scores: Record<string, number> | null
   goals_completed: number
   goals_remaining: number
 }
@@ -460,8 +500,67 @@ export interface TutorSessionStateResponse {
   goals_completed: number
   current_goal_id: string | null
   current_goal_description: string | null
-  current_question_index: number | null
-  current_question_text: string | null
+  anchor_problem: string | null
+  goal_progress: Array<{
+    goal_id: string
+    description: string
+    completed: boolean
+    exchanges: number
+    anchor_problem: string | null
+  }>
   started_at: string | null
   elapsed_seconds: number | null
+}
+
+export interface CompetencyHypothesis {
+  text: string
+  confidence: 'high' | 'medium' | 'low'
+}
+
+export type CompetencyLifecycleStatus = 'pending' | 'active' | 'mastered' | 'explained'
+
+export interface CompetencyAssessment {
+  competency: string
+  score: number
+  evidence: string[]
+  hypotheses: CompetencyHypothesis[]
+  gap: string
+  attempts: number
+  status?: CompetencyLifecycleStatus
+}
+
+export interface CompetencyStatusInfo {
+  competency: string
+  status: CompetencyLifecycleStatus
+  score: number
+  evidence: string[]
+  gap: string
+  hypotheses: CompetencyHypothesis[]
+  encounters: number
+  turns_since_progress: number
+}
+
+export interface TutorStudentModel {
+  competency_assessments: CompetencyAssessment[]
+  active_probe_target: string | null
+  turns_since_last_progress: number
+  confirmed_knowledge: string[]
+}
+
+export interface TutorDebugInfo {
+  session_id: string
+  tutor_mode: string | null
+  exchanges_on_goal: number
+  student_model: TutorStudentModel | null
+  evaluation_notes: string | null
+  action_rationale: string | null
+  evaluator_guidance: string | null
+  latest_understanding_score: number | null
+  competency_scores: Record<string, number> | null
+  competency_statuses: CompetencyStatusInfo[] | null
+  active_competency_index: number | null
+  goal_score: number | null
+  competencies_mastered: number | null
+  competencies_total: number | null
+  evaluator_action: string | null
 }

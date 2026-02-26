@@ -39,6 +39,7 @@ export default function ModuleReviewPage() {
     hasGeneratedContent,
     setModuleField,
     setGeneratedContent,
+    setDraftModuleId,
     reset,
   } = useModuleDraftStore();
 
@@ -238,32 +239,32 @@ export default function ModuleReviewPage() {
     setShowDeleteModal(true);
   };
 
-  // Handle confirm - create module and link sources
+  // Handle confirm - save module as draft, link sources, then navigate to try-tutor
   const handleConfirm = async () => {
     if (!name.trim()) {
-      // Name is required
       return;
     }
 
     setIsConfirming(true);
     try {
-      // 1. Create the module (include course_id if created from a course page)
-      const module = await createModule.mutateAsync({
+      // 1. Create the module as a draft
+      const createdModule = await createModule.mutateAsync({
         name: name.trim(),
         description: overview || undefined,
         course_id: targetCourseId || undefined,
+        status: "draft",
       });
 
       // 2. Link sources to the module
       await Promise.allSettled(
         pendingSourceIds.map((sourceId) =>
-          modulesApi.addSource(module.id, sourceId)
+          modulesApi.addSource(createdModule.id, sourceId)
         )
       );
 
       // 3. Create learning goals if any
       for (const goal of learningGoals) {
-        await modulesApi.createLearningGoal(module.id, {
+        await modulesApi.createLearningGoal(createdModule.id, {
           description: goal.description,
           takeaways: goal.takeaways || undefined,
           competencies: goal.competencies || undefined,
@@ -273,27 +274,17 @@ export default function ModuleReviewPage() {
 
       // 4. Update overview if set
       if (overview) {
-        await modulesApi.update(module.id, { overview });
+        await modulesApi.update(createdModule.id, { overview });
       }
 
       // 5. Assign to course if created from course page
       if (targetCourseId) {
-        assignModuleToCourse(module.id, targetCourseId);
+        assignModuleToCourse(createdModule.id, targetCourseId);
       }
 
-      // 6. Reset store and navigate to the new module
-      reset();
-
-      // Navigate to the module or course page
-      if (targetCourseId) {
-        router.push(
-          `/courses/${encodeURIComponent(
-            targetCourseId
-          )}/modules/${encodeURIComponent(module.id)}`
-        );
-      } else {
-        router.push(`/modules/${encodeURIComponent(module.id)}`);
-      }
+      // 6. Store draft module ID and navigate to try-tutor page
+      setDraftModuleId(createdModule.id);
+      router.push(`/modules/${encodeURIComponent(createdModule.id)}/try-tutor`);
     } catch (error: unknown) {
       const axiosErr = error as { response?: { data?: unknown } };
       console.error("Error creating module:", error);
@@ -418,7 +409,7 @@ export default function ModuleReviewPage() {
             onClick={handleConfirm}
             disabled={!canConfirm}
           >
-            {isConfirming ? "Creating..." : "Confirm"}
+            {isConfirming ? "Creating..." : "Try Tutor"}
           </Button>
         </div>
       </footer>
