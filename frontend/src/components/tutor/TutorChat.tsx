@@ -20,6 +20,7 @@ interface Message {
   id: string
   type: 'tutor' | 'student'
   content: string
+  supplement?: string | null
   timestamp: string
 }
 
@@ -35,7 +36,7 @@ interface TutorChatProps {
   moduleName?: string
   moduleId?: string
   sessionId?: string | null
-  onAppendVoiceTurn?: (studentText: string, tutorText: string) => void
+  onAppendVoiceTurn?: (studentText: string, tutorText: string, supplement?: string | null) => void
   className?: string
 }
 
@@ -106,9 +107,9 @@ export function TutorChat({
       setVoiceTranscript(text)
       voiceTranscriptRef.current = text
     },
-    onAssistantTextFinal: (text) => {
+    onAssistantTextFinal: (text, supplement) => {
       if (voiceTranscriptRef.current && onAppendVoiceTurn) {
-        onAppendVoiceTurn(voiceTranscriptRef.current, text)
+        onAppendVoiceTurn(voiceTranscriptRef.current, text, supplement)
       }
       setVoiceTranscript('')
       voiceTranscriptRef.current = ''
@@ -204,6 +205,18 @@ export function TutorChat({
                         </p>
                       )}
                     </div>
+                    {message.type === 'tutor' && message.supplement && (
+                      <div className="rounded-lg border bg-background px-4 py-3 text-sm">
+                        <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                          >
+                            {message.supplement}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   {message.type === 'student' && (
                     <div className="flex-shrink-0">

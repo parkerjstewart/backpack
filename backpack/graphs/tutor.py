@@ -18,6 +18,8 @@ Graph flow (per goal):
 
 import asyncio
 import concurrent.futures
+import json
+import re
 import sqlite3
 from datetime import datetime
 from typing import Annotated, Any, Dict, List, Literal, Optional
@@ -40,6 +42,7 @@ from backpack.graphs.tutor_models import (
     GeneratedAnchorProblem,
     ModuleExamples,
     TangentEvaluationResult,
+    TutorResponse,
 )
 from backpack.utils import clean_thinking_content
 from backpack.utils.context_builder import ContextBuilder
@@ -70,7 +73,8 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Follow the evaluator's assessment closely — it tells you what the student needs\n"
         "- If giving info, give enough to unblock, then follow with a question\n"
         "- If prior evidence exists, build on it — don't re-test demonstrated understanding\n"
-        "- 2-4 sentences typical, shorter or longer as the exchange calls for"
+        "- 2-4 sentences typical, shorter or longer as the exchange calls for\n"
+        "- If you reference a formula or formal definition, put it in the supplement field"
     ),
     "nudge": (
         "The student is close — they almost have it. Give a brief, targeted push.\n"
@@ -85,7 +89,8 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Don't ask them to recall it again — just give it and move on\n"
         "- Check: is this a context gap (forgot the scenario) or a knowledge gap "
         "  (forgot the formula)? If context gap, restate the scenario instead.\n"
-        "- 2-3 sentences typical"
+        "- 2-3 sentences typical\n"
+        "- If the fact is a formula, put it in the supplement field as a LaTeX equation"
     ),
     "explain": (
         "The student is genuinely stuck on this concept. Explain it clearly and "
@@ -96,7 +101,8 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Walk through the reasoning step by step if that helps\n"
         "- End with: \"Does that help? Any questions about this, or should we move on?\"\n"
         "- Don't quiz them on this concept again after explaining\n"
-        "- Stay conversational — \"here's how I think about it...\" not \"the answer is...\""
+        "- Stay conversational — \"here's how I think about it...\" not \"the answer is...\"\n"
+        "- Put any equations or formal definitions in the supplement field, not in the message"
     ),
     "transition": (
         "Look at the evaluator_guidance to determine how to frame this transition.\n"
@@ -235,6 +241,9 @@ class TutorState(TypedDict):
 
     # Worked examples / figures / definitions extracted from module material
     module_examples: List[Dict[str, Any]]
+
+    # Supplement from the most recent tutor_turn (equations, definitions, etc.)
+    latest_supplement: Optional[str]
 
 
 # ============================================================================
@@ -404,6 +413,7 @@ def initialize_session(state: TutorState, config: RunnableConfig) -> dict:
         "is_tangent": False,
         "student_model": {},
         "module_examples": module_examples,
+        "latest_supplement": None,
         "messages": [
             AIMessage(
                 content=f"Hey! Ready to work through '{module.name}' together? "
@@ -663,10 +673,41 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         )
 
     model = _run_model(_provision)
-    ai_msg = model.invoke(system_prompt)
-    message = clean_thinking_content(
-        ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
-    )
+
+    message = ""
+    supplement = None
+    try:
+        result: TutorResponse = model.with_structured_output(TutorResponse).invoke(system_prompt)
+        message = clean_thinking_content(result.message or "")
+        supplement = result.supplement or None
+        logger.info(f"tutor_turn structured output ok | supplement={'yes (' + str(len(supplement)) + ' chars)' if supplement else 'null'}")
+    except Exception as e:
+        logger.warning(f"Structured output failed for tutor_turn ({e}); falling back to plain invoke")
+        try:
+            ai_msg = model.invoke(system_prompt)
+            raw = clean_thinking_content(
+                ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
+            )
+            # Model may have followed the JSON format in the prompt even without structured output
+            try:
+                data = json.loads(raw.strip())
+                message = clean_thinking_content(data.get("message", "") or "")
+                supplement = data.get("supplement") or None
+                logger.info(f"tutor_turn JSON fallback ok | supplement={'yes' if supplement else 'null'}")
+            except json.JSONDecodeError:
+                json_match = re.search(r'\{[\s\S]*\}', raw)
+                if json_match:
+                    try:
+                        data = json.loads(json_match.group())
+                        message = clean_thinking_content(data.get("message", "") or "")
+                        supplement = data.get("supplement") or None
+                    except json.JSONDecodeError:
+                        message = raw
+                else:
+                    message = raw
+                    logger.info("tutor_turn plain text fallback (no JSON found in response)")
+        except Exception as e2:
+            logger.error(f"Plain invoke also failed: {e2}")
 
     if not message:
         message = "What are your thoughts on this?"
@@ -676,6 +717,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         {
             "type": "tutor_turn",
             "message": message,
+            "supplement": supplement,
             "tutor_mode": tutor_mode,
             "goal_id": current_goal_id,
         }
@@ -685,6 +727,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
 
     return {
         "messages": [AIMessage(content=message), HumanMessage(content=student_response)],
+        "latest_supplement": supplement,
     }
 
 

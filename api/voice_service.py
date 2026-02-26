@@ -98,13 +98,16 @@ class VoiceService:
         yield VoiceServerEvent(type="final_transcript", payload={"text": transcript})
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "start"})
 
-        assistant_text = await self._dispatch_to_agent(state.context, transcript)
+        assistant_text, supplement = await self._dispatch_to_agent(state.context, transcript)
         display_text, speech_text = format_for_voice(assistant_text)
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "end"})
 
         for delta in _iter_text_deltas(display_text):
             yield VoiceServerEvent(type="assistant_text_delta", payload={"text": delta})
-        yield VoiceServerEvent(type="assistant_text_final", payload={"text": display_text})
+        final_payload: dict[str, Any] = {"text": display_text}
+        if supplement:
+            final_payload["supplement"] = supplement
+        yield VoiceServerEvent(type="assistant_text_final", payload=final_payload)
 
         audio_output = await self._synthesize(speech_text)
         if audio_output:
@@ -125,12 +128,16 @@ class VoiceService:
             events.append(event)
         return events
 
-    async def _dispatch_to_agent(self, context: VoiceContextPayload, text: str) -> str:
+    async def _dispatch_to_agent(
+        self, context: VoiceContextPayload, text: str
+    ) -> tuple[str, Optional[str]]:
         if context.surface == "tutor":
             return await self._run_tutor(context, text)
-        return await self._run_module_chat(context, text)
+        return await self._run_module_chat(context, text), None
 
-    async def _run_tutor(self, context: VoiceContextPayload, text: str) -> str:
+    async def _run_tutor(
+        self, context: VoiceContextPayload, text: str
+    ) -> tuple[str, Optional[str]]:
         session_id = context.session_id
         from langgraph.types import Command
 
@@ -142,7 +149,9 @@ class VoiceService:
         result = tutor_graph.invoke(Command(resume=text), config=config)
         interrupt_data = _extract_interrupt_data(result)
         if interrupt_data:
-            return str(interrupt_data.get("message", "")).strip()
+            message = str(interrupt_data.get("message", "")).strip()
+            supplement = interrupt_data.get("supplement") or None
+            return message, supplement
 
         updated = tutor_graph.get_state(config=RunnableConfig(**config))
         state_values = updated.values if updated else result
@@ -150,8 +159,8 @@ class VoiceService:
             if isinstance(msg, AIMessage) or (
                 hasattr(msg, "type") and getattr(msg, "type", "") == "ai"
             ):
-                return str(getattr(msg, "content", "")).strip()
-        return "I am ready for your next response."
+                return str(getattr(msg, "content", "")).strip(), None
+        return "I am ready for your next response.", None
 
     async def _run_module_chat(self, context: VoiceContextPayload, text: str) -> str:
         full_session_id = (

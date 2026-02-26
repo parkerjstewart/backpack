@@ -16,6 +16,7 @@ interface Message {
   id: string
   type: 'tutor' | 'student'
   content: string
+  supplement?: string | null
   timestamp: string
 }
 
@@ -47,6 +48,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
         id: `tutor-${Date.now()}`,
         type: 'tutor',
         content: session.first_message,
+        supplement: session.first_supplement,
         timestamp: new Date().toISOString(),
       }
       setMessages([tutorMessage])
@@ -105,6 +107,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
         id: `tutor-${Date.now()}`,
         type: 'tutor',
         content: response.tutor_message,
+        supplement: response.tutor_supplement,
         timestamp: new Date().toISOString(),
       }
       setMessages(prev => [...prev, tutorMessage])
@@ -128,7 +131,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     }
   }, [sessionId, t])
 
-  const appendVoiceTurn = useCallback((studentText: string, tutorText: string) => {
+  const appendVoiceTurn = useCallback((studentText: string, tutorText: string, supplement?: string | null) => {
     const studentMessage: Message = {
       id: `student-${Date.now()}`,
       type: 'student',
@@ -139,6 +142,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
       id: `tutor-${Date.now()}-${Math.random()}`,
       type: 'tutor',
       content: tutorText,
+      supplement: supplement ?? null,
       timestamp: new Date().toISOString(),
     }
     setMessages(prev => [...prev, studentMessage, tutorMessage])

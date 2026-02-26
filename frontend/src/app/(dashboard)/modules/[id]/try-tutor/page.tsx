@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { TutorChat } from '@/components/tutor/TutorChat'
@@ -31,6 +31,7 @@ export default function TryTutorPage() {
   const router = useRouter()
 
   const moduleId = params?.id ? decodeURIComponent(params.id as string) : ''
+  const hasInitializedRef = useRef(false)
 
   const { reset: resetDraftStore } = useModuleDraftStore()
   const { data: module, isLoading: moduleLoading } = useModule(moduleId)
@@ -56,10 +57,11 @@ export default function TryTutorPage() {
   } = useTutor({ moduleId })
 
   useEffect(() => {
-    if (moduleId && !isInitializing && messages.length === 0) {
+    if (moduleId && !hasInitializedRef.current) {
+      hasInitializedRef.current = true
       initializeSession()
     }
-  }, [moduleId, isInitializing, messages.length, initializeSession])
+  }, [moduleId, initializeSession])
 
   useEffect(() => {
     if (module && module.status !== 'draft') {

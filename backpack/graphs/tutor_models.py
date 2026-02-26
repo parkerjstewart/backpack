@@ -249,6 +249,30 @@ class GoalProgress(BaseModel):
     trajectory: List[UnderstandingPoint] = Field(default_factory=list)
 
 
+class TutorResponse(BaseModel):
+    """Structured output from the tutor_turn LLM call."""
+
+    message: str = Field(
+        ...,
+        description=(
+            "Conversational tutor message in plain spoken English only. "
+            "MUST NOT contain any equations, LaTeX, math notation, or markdown. "
+            "Write as if speaking aloud — no symbols like nabla, sigma, top, $, $$, etc. "
+            "Any formula or equation MUST go in the supplement field instead."
+        ),
+    )
+    supplement: Optional[str] = Field(
+        default=None,
+        description=(
+            "Supplemental block rendered below the message with full LaTeX and markdown support. "
+            "Use this whenever the message references a formula, equation, or formal definition. "
+            "Use LaTeX: $expr$ for inline, $$expr$$ on its own line for display. "
+            "Use markdown bullets/headers for multi-step derivations. "
+            "Set to null ONLY for simple probe questions with no math content."
+        ),
+    )
+
+
 class SessionSummary(BaseModel):
     """Summary of a completed tutoring session."""
 

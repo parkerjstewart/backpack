@@ -42,6 +42,7 @@ class CreateSessionResponse(BaseModel):
     module_id: str = Field(..., description="Module ID")
     module_name: str = Field(..., description="Module name")
     first_message: str = Field(..., description="First message from tutor")
+    first_supplement: Optional[str] = Field(None, description="Optional supplemental content for first message")
     current_goal_id: Optional[str] = Field(None, description="Current learning goal ID")
     current_goal_description: Optional[str] = Field(None, description="Current goal description")
     total_goals: int = Field(..., description="Total number of learning goals")
@@ -67,6 +68,7 @@ class TutorResponsePayload(BaseModel):
 
     # The tutor's response message
     tutor_message: str = Field(..., description="Tutor's response")
+    tutor_supplement: Optional[str] = Field(None, description="Optional supplemental equations/definitions block")
     
     # Latest evaluation (for real-time feedback)
     latest_understanding_score: Optional[float] = Field(
@@ -212,6 +214,7 @@ async def create_session(request: CreateSessionRequest):
             module_id=request.module_id,
             module_name=state_values.get("module_name", module.name),
             first_message=interrupt_data.get("message", ""),
+            first_supplement=interrupt_data.get("supplement"),
             current_goal_id=current_goal_id,
             current_goal_description=current_goal_description,
             total_goals=total_goals,
@@ -327,7 +330,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
         
         # Check if we hit another interrupt (waiting for next response)
         interrupt_data = extract_interrupt_data(result)
-        
+
         if interrupt_data:
             # Still in progress - return the tutor's response
             latest_eval = state_values.get("latest_evaluation", {})
@@ -339,6 +342,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
                 current_goal_description=current_goal_description,
                 anchor_problem=state_values.get("anchor_problem"),
                 tutor_message=interrupt_data.get("message", ""),
+                tutor_supplement=interrupt_data.get("supplement"),
                 latest_understanding_score=latest_eval.get("score"),
                 competency_scores=latest_eval.get("competency_score_dict"),
                 goals_completed=completed,

@@ -473,6 +473,7 @@ export interface TutorSessionResponse {
   module_id: string
   module_name: string
   first_message: string
+  first_supplement?: string | null
   current_goal_id: string | null
   current_goal_description: string | null
   total_goals: number
@@ -485,6 +486,7 @@ export interface TutorResponsePayload {
   current_goal_description: string | null
   anchor_problem: string | null
   tutor_message: string
+  tutor_supplement?: string | null
   latest_understanding_score: number | null
   competency_scores: Record<string, number> | null
   goals_completed: number

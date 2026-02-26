@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { TutorChat } from '@/components/tutor/TutorChat'
@@ -17,6 +17,7 @@ export default function ReviewPage() {
   const router = useRouter()
 
   const moduleId = params?.id ? decodeURIComponent(params.id as string) : ''
+  const hasInitializedRef = useRef(false)
 
   const { data: module, isLoading: moduleLoading } = useModule(moduleId)
   const {
@@ -33,12 +34,16 @@ export default function ReviewPage() {
     appendVoiceTurn,
   } = useTutor({ moduleId })
 
-  // Initialize the tutor session when the page loads
+  // Initialize the tutor session once when the page loads.
+  // Guard with a ref to prevent double-initialization: initializeSession changes
+  // reference on every render (because useMutation returns a new object each render),
+  // which would cause this effect to re-run and create a second session.
   useEffect(() => {
-    if (moduleId && !isInitializing && messages.length === 0) {
+    if (moduleId && !hasInitializedRef.current) {
+      hasInitializedRef.current = true
       initializeSession()
     }
-  }, [moduleId, isInitializing, messages.length, initializeSession])
+  }, [moduleId, initializeSession])
 
   if (moduleLoading) {
     return (
