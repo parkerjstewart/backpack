@@ -8,6 +8,7 @@ import {
   ModuleChatMessage,
   BuildContextRequest,
   BuildContextResponse,
+  ModuleChatStreamEvent,
 } from '@/lib/types/api'
 
 export const chatApi = {
@@ -57,6 +58,44 @@ export const chatApi = {
       data
     )
     return response.data
+  },
+
+  // Messaging with SSE streaming
+  sendMessageStream: (sessionId: string, data: SendModuleChatMessageRequest) => {
+    let token = null
+    if (typeof window !== 'undefined') {
+      const authStorage = localStorage.getItem('auth-storage')
+      if (authStorage) {
+        try {
+          const { state } = JSON.parse(authStorage)
+          token = state?.token ?? null
+        } catch {
+          token = null
+        }
+      }
+    }
+    return fetch(`/api/chat/sessions/${sessionId}/messages/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify(data),
+    }).then((response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      return response.body
+    })
+  },
+
+  parseStreamEvent: (line: string): ModuleChatStreamEvent | null => {
+    if (!line.startsWith('data: ')) return null
+    try {
+      return JSON.parse(line.slice(6)) as ModuleChatStreamEvent
+    } catch {
+      return null
+    }
   },
 
   buildContext: async (data: BuildContextRequest) => {

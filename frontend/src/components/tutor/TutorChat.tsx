@@ -6,10 +6,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { GraduationCap, User, Send, Loader2, Target, CheckCircle2 } from 'lucide-react'
+import { GraduationCap, User, Send, Loader2, Target, CheckCircle2, Mic } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useVoiceSession } from '@/lib/hooks/useVoiceSession'
+import { toast } from 'sonner'
 
 interface Message {
   id: string
@@ -28,6 +33,9 @@ interface TutorChatProps {
   goalsRemaining: number
   isSessionComplete: boolean
   moduleName?: string
+  moduleId?: string
+  sessionId?: string | null
+  onAppendVoiceTurn?: (studentText: string, tutorText: string) => void
   className?: string
 }
 
@@ -41,11 +49,16 @@ export function TutorChat({
   goalsRemaining,
   isSessionComplete,
   moduleName,
+  moduleId,
+  sessionId,
+  onAppendVoiceTurn,
   className,
 }: TutorChatProps) {
   const { t } = useTranslation()
   const inputId = useId()
   const [input, setInput] = useState('')
+  const [voiceTranscript, setVoiceTranscript] = useState('')
+  const voiceTranscriptRef = useRef('')
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -73,6 +86,37 @@ export function TutorChat({
 
   const isMac = typeof navigator !== 'undefined' && navigator.userAgent.toUpperCase().indexOf('MAC') >= 0
   const keyHint = isMac ? '⌘+Enter' : 'Ctrl+Enter'
+
+  const {
+    isRecording,
+    isAssistantThinking,
+    assistantStreamingText,
+    startRecording,
+    stopRecording,
+  } = useVoiceSession({
+    getContextPayload: async () => {
+      if (!sessionId) return null
+      return {
+        surface: 'tutor',
+        session_id: sessionId,
+        module_id: moduleId,
+      }
+    },
+    onFinalTranscript: (text) => {
+      setVoiceTranscript(text)
+      voiceTranscriptRef.current = text
+    },
+    onAssistantTextFinal: (text) => {
+      if (voiceTranscriptRef.current && onAppendVoiceTurn) {
+        onAppendVoiceTurn(voiceTranscriptRef.current, text)
+      }
+      setVoiceTranscript('')
+      voiceTranscriptRef.current = ''
+    },
+    onError: (message) => {
+      toast.error(message)
+    },
+  })
 
   if (isInitializing) {
     return (
@@ -150,7 +194,7 @@ export function TutorChat({
                     >
                       {message.type === 'tutor' ? (
                         <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                             {message.content}
                           </ReactMarkdown>
                         </div>
@@ -183,6 +227,44 @@ export function TutorChat({
                 </div>
               </div>
             )}
+            {voiceTranscript && (
+              <div className="flex gap-3 justify-end">
+                <div className="flex flex-col gap-2 max-w-[80%]">
+                  <div className="rounded-lg px-4 py-2 bg-primary text-primary-foreground">
+                    <p className="text-sm break-words overflow-wrap-anywhere">{voiceTranscript}</p>
+                  </div>
+                </div>
+                <div className="flex-shrink-0">
+                  <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
+                    <User className="h-4 w-4 text-primary-foreground" />
+                  </div>
+                </div>
+              </div>
+            )}
+            {isAssistantThinking && !assistantStreamingText && (
+              <div className="flex gap-3 justify-start">
+                <div className="flex-shrink-0">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                    <GraduationCap className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="rounded-lg px-4 py-2 bg-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                </div>
+              </div>
+            )}
+            {assistantStreamingText && (
+              <div className="flex gap-3 justify-start">
+                <div className="flex-shrink-0">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                    <GraduationCap className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="rounded-lg px-4 py-2 bg-muted text-sm">
+                  {assistantStreamingText}
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
@@ -195,7 +277,43 @@ export function TutorChat({
               <p className="text-sm">{t.tutor.sessionComplete}</p>
             </div>
           ) : (
-            <div className="flex gap-2 items-end">
+            <>
+              {(isRecording || voiceTranscript) && (
+                <p className="text-xs text-muted-foreground">
+                  {isRecording ? 'Recording...' : voiceTranscript}
+                </p>
+              )}
+              <div className="flex gap-2 items-end">
+              <Button
+                type="button"
+                variant={isRecording ? 'destructive' : 'outline'}
+                size="icon"
+                className="h-[40px] w-[40px] flex-shrink-0"
+                disabled={!sessionId || isSending}
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  startRecording()
+                }}
+                onPointerUp={(e) => {
+                  e.preventDefault()
+                  stopRecording()
+                }}
+                onPointerCancel={(e) => {
+                  e.preventDefault()
+                  if (isRecording) {
+                    stopRecording()
+                  }
+                }}
+                onPointerLeave={(e) => {
+                  e.preventDefault()
+                  if (isRecording) {
+                    stopRecording()
+                  }
+                }}
+                title={isRecording ? 'Release to send' : 'Hold to talk'}
+              >
+                <Mic className="h-4 w-4" />
+              </Button>
               <Textarea
                 id={inputId}
                 name="student-response"
@@ -220,7 +338,8 @@ export function TutorChat({
                   <Send className="h-4 w-4" />
                 )}
               </Button>
-            </div>
+              </div>
+            </>
           )}
         </div>
       </CardContent>

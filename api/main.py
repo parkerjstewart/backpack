@@ -40,6 +40,7 @@ from api.routers import (
     transformations,
     tutor,
     users,
+    voice,
 )
 from api.routers import commands as commands_router
 from backpack.database.async_migrate import AsyncMigrationManager
@@ -181,6 +182,7 @@ app.include_router(users.router, prefix="/api", tags=["users"])
 app.include_router(courses.router, prefix="/api", tags=["courses"])
 app.include_router(invitations.router, prefix="/api", tags=["invitations"])
 app.include_router(tutor.router, prefix="/api", tags=["tutor"])
+app.include_router(voice.router, prefix="/api", tags=["voice"])
 
 
 @app.get("/")
