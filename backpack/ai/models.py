@@ -185,7 +185,7 @@ class ModelManager:
         actual_model_type = "language"  # Default Esperanto model type
 
         if model_type == "tutor":
-            model_spec = config.default_tutor_model or config.default_chat_model
+            model_spec = "openai/gpt-5.2"
         elif model_type == "chat":
             model_spec = config.default_chat_model
         elif model_type == "transformation":
