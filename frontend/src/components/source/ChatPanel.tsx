@@ -16,13 +16,18 @@ import {
   Lightbulb,
   StickyNote,
   Clock,
+  Mic,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import {
   SourceChatMessage,
   SourceChatContextIndicator,
   BaseChatSession,
+  VoiceContextPayload,
 } from "@/lib/types/api";
 import { ContextIndicator } from "@/components/common/ContextIndicator";
 import { SessionManager } from "@/components/source/SessionManager";
@@ -34,6 +39,7 @@ import {
 import { useModalManager } from "@/lib/hooks/use-modal-manager";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/hooks/use-translation";
+import { useVoiceSession } from "@/lib/hooks/useVoiceSession";
 
 interface ModuleContextStats {
   sourcesInsights: number;
@@ -63,6 +69,9 @@ interface ChatPanelProps {
   moduleContextStats?: ModuleContextStats;
   // Module ID for saving notes
   moduleId?: string;
+  voiceEnabled?: boolean;
+  getVoiceContextPayload?: () => Promise<VoiceContextPayload | null>;
+  onAppendVoiceTurn?: (studentText: string, aiText: string) => void;
 }
 
 export function ChatPanel({
@@ -81,10 +90,15 @@ export function ChatPanel({
   contextType = "source",
   moduleContextStats,
   moduleId,
+  voiceEnabled = false,
+  getVoiceContextPayload,
+  onAppendVoiceTurn,
 }: ChatPanelProps) {
   const { t } = useTranslation();
   const chatInputId = useId();
   const [input, setInput] = useState("");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const voiceTranscriptRef = useRef("");
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -136,6 +150,32 @@ export function ChatPanel({
     typeof navigator !== "undefined" &&
     navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
   const keyHint = isMac ? "⌘+Enter" : "Ctrl+Enter";
+
+  const {
+    isRecording,
+    isAssistantThinking,
+    assistantStreamingText,
+    startRecording,
+    stopRecording,
+  } =
+    useVoiceSession({
+      getContextPayload: async () => {
+        if (!voiceEnabled || !getVoiceContextPayload) return null;
+        return getVoiceContextPayload();
+      },
+      onFinalTranscript: (text) => {
+        setVoiceTranscript(text);
+        voiceTranscriptRef.current = text;
+      },
+      onAssistantTextFinal: (text) => {
+        if (voiceTranscriptRef.current && onAppendVoiceTurn) {
+          onAppendVoiceTurn(voiceTranscriptRef.current, text);
+        }
+        setVoiceTranscript("");
+        voiceTranscriptRef.current = "";
+      },
+      onError: (message) => toast.error(message),
+    });
 
   return (
     <>
@@ -268,6 +308,46 @@ export function ChatPanel({
                   </div>
                 </div>
               )}
+              {voiceTranscript && (
+                <div className="flex gap-3 justify-end">
+                  <div className="flex flex-col gap-2 max-w-[80%]">
+                    <div className="rounded-lg px-4 py-2 bg-primary text-primary-foreground">
+                      <p className="text-sm break-words overflow-wrap-anywhere">
+                        {voiceTranscript}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
+                      <User className="h-4 w-4 text-primary-foreground" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {isAssistantThinking && !assistantStreamingText && (
+                <div className="flex gap-3 justify-start">
+                  <div className="flex-shrink-0">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Bot className="h-4 w-4" />
+                    </div>
+                  </div>
+                  <div className="rounded-lg px-4 py-2 bg-muted">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                </div>
+              )}
+              {assistantStreamingText && (
+                <div className="flex gap-3 justify-start">
+                  <div className="flex-shrink-0">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Bot className="h-4 w-4" />
+                    </div>
+                  </div>
+                  <div className="rounded-lg px-4 py-2 bg-muted text-sm">
+                    {assistantStreamingText}
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
@@ -317,7 +397,44 @@ export function ChatPanel({
 
           {/* Input Area */}
           <div className="flex-shrink-0 p-4 space-y-3 border-t">
+            {(isRecording || voiceTranscript) && (
+              <p className="text-xs text-muted-foreground">
+                {isRecording ? "Recording..." : voiceTranscript}
+              </p>
+            )}
             <div className="flex gap-2 items-end">
+              {voiceEnabled && (
+                <Button
+                  type="button"
+                  variant={isRecording ? "destructive" : "outline"}
+                  size="icon"
+                  className="h-[40px] w-[40px] flex-shrink-0"
+                  disabled={isStreaming}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    startRecording();
+                  }}
+                  onPointerUp={(e) => {
+                    e.preventDefault();
+                    stopRecording();
+                  }}
+                  onPointerCancel={(e) => {
+                    e.preventDefault();
+                    if (isRecording) {
+                      stopRecording();
+                    }
+                  }}
+                  onPointerLeave={(e) => {
+                    e.preventDefault();
+                    if (isRecording) {
+                      stopRecording();
+                    }
+                  }}
+                  title={isRecording ? "Release to send" : "Hold to talk"}
+                >
+                  <Mic className="h-4 w-4" />
+                </Button>
+              )}
               <Textarea
                 id={chatInputId}
                 name="chat-message"
@@ -373,7 +490,8 @@ function AIMessageContent({
   return (
     <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
         components={{
           a: LinkComponent,
           p: ({ children }) => <p className="mb-4">{children}</p>,

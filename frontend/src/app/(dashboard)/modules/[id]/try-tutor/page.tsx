@@ -47,10 +47,12 @@ export default function TryTutorPage() {
     goalsCompleted,
     goalsRemaining,
     isSessionComplete,
+    sessionId,
     latestDebugInfo,
     initializeSession,
     sendMessage,
     resetSession,
+    appendVoiceTurn,
   } = useTutor({ moduleId })
 
   useEffect(() => {
@@ -208,6 +210,9 @@ export default function TryTutorPage() {
             goalsRemaining={goalsRemaining}
             isSessionComplete={isSessionComplete}
             moduleName={module.name}
+            moduleId={moduleId}
+            sessionId={sessionId}
+            onAppendVoiceTurn={appendVoiceTurn}
             className="flex-1 min-w-0"
           />
           {showDebug && (
