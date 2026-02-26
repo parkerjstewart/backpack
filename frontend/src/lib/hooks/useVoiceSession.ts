@@ -7,7 +7,7 @@ interface UseVoiceSessionParams {
   getContextPayload: () => Promise<VoiceContextPayload | null>
   onFinalTranscript: (text: string) => void
   onAssistantTextDelta?: (text: string) => void
-  onAssistantTextFinal: (text: string, supplement?: string | null) => void
+  onAssistantTextFinal: (text: string, supplement?: string | null, imageUrl?: string | null) => void
   onError?: (message: string) => void
 }
 
@@ -179,9 +179,10 @@ export function useVoiceSession({
         } else if (data.type === 'assistant_text_final') {
           const text = String(data.payload?.text ?? '')
           const supplement = data.payload?.supplement ? String(data.payload.supplement) : null
+          const imageUrl = data.payload?.image_url ? String(data.payload.image_url) : null
           setIsAssistantThinking(false)
           setAssistantStreamingText('')
-          onAssistantTextFinal(text, supplement)
+          onAssistantTextFinal(text, supplement, imageUrl)
         } else if (data.type === 'assistant_audio_chunk') {
           const encoded = String(data.payload?.audio_base64 ?? '')
           if (encoded) {

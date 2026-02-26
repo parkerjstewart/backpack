@@ -24,6 +24,8 @@ import sqlite3
 from datetime import datetime
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
+import openai
+
 from ai_prompter import Prompter
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -102,7 +104,9 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- End with: \"Does that help? Any questions about this, or should we move on?\"\n"
         "- Don't quiz them on this concept again after explaining\n"
         "- Stay conversational — \"here's how I think about it...\" not \"the answer is...\"\n"
-        "- Put any equations or formal definitions in the supplement field, not in the message"
+        "- Put any equations or formal definitions in the supplement field, not in the message\n"
+        "- For structural concepts (networks, trees, state machines, graphs), set image_prompt "
+        "  instead of trying to describe the structure in text"
     ),
     "transition": (
         "Look at the evaluator_guidance to determine how to frame this transition.\n"
@@ -244,6 +248,9 @@ class TutorState(TypedDict):
 
     # Supplement from the most recent tutor_turn (equations, definitions, etc.)
     latest_supplement: Optional[str]
+
+    # Generated image data URI from the most recent tutor_turn (if any)
+    latest_image_url: Optional[str]
 
 
 # ============================================================================
@@ -414,6 +421,7 @@ def initialize_session(state: TutorState, config: RunnableConfig) -> dict:
         "student_model": {},
         "module_examples": module_examples,
         "latest_supplement": None,
+        "latest_image_url": None,
         "messages": [
             AIMessage(
                 content=f"Hey! Ready to work through '{module.name}' together? "
@@ -603,6 +611,30 @@ def _build_demonstrated_knowledge(state: TutorState) -> str:
     return "\n".join(lines) if lines else ""
 
 
+def _generate_image(prompt: str) -> Optional[str]:
+    """Call OpenAI image generation with the given prompt.
+
+    Returns a data URI (data:image/png;base64,...) on success, or None on failure.
+    Failures are logged as warnings and silently swallowed so the tutor turn still
+    completes — the image is just omitted from the response.
+    """
+    try:
+        client = openai.OpenAI()
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            n=1,
+            size="1024x1024",
+            response_format="b64_json",
+        )
+        b64 = response.data[0].b64_json
+        logger.info(f"Image generated successfully (prompt: {prompt[:60]}...)")
+        return f"data:image/png;base64,{b64}"
+    except Exception as e:
+        logger.warning(f"Image generation failed, continuing without image: {e}")
+        return None
+
+
 def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     """Generate a tutor message and wait for student response.
 
@@ -676,11 +708,16 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
 
     message = ""
     supplement = None
+    image_prompt = None
     try:
         result: TutorResponse = model.with_structured_output(TutorResponse).invoke(system_prompt)
         message = clean_thinking_content(result.message or "")
         supplement = result.supplement or None
-        logger.info(f"tutor_turn structured output ok | supplement={'yes (' + str(len(supplement)) + ' chars)' if supplement else 'null'}")
+        image_prompt = result.image_prompt or None
+        logger.info(
+            f"tutor_turn structured output ok | supplement={'yes (' + str(len(supplement)) + ' chars)' if supplement else 'null'}"
+            f" | image_prompt={'yes' if image_prompt else 'null'}"
+        )
     except Exception as e:
         logger.warning(f"Structured output failed for tutor_turn ({e}); falling back to plain invoke")
         try:
@@ -693,6 +730,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
                 data = json.loads(raw.strip())
                 message = clean_thinking_content(data.get("message", "") or "")
                 supplement = data.get("supplement") or None
+                image_prompt = data.get("image_prompt") or None
                 logger.info(f"tutor_turn JSON fallback ok | supplement={'yes' if supplement else 'null'}")
             except json.JSONDecodeError:
                 json_match = re.search(r'\{[\s\S]*\}', raw)
@@ -701,6 +739,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
                         data = json.loads(json_match.group())
                         message = clean_thinking_content(data.get("message", "") or "")
                         supplement = data.get("supplement") or None
+                        image_prompt = data.get("image_prompt") or None
                     except json.JSONDecodeError:
                         message = raw
                 else:
@@ -712,12 +751,15 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     if not message:
         message = "What are your thoughts on this?"
 
+    image_url = _generate_image(image_prompt) if image_prompt else None
+
     # INTERRUPT: pause and wait for the student's response
     student_response = interrupt(
         {
             "type": "tutor_turn",
             "message": message,
             "supplement": supplement,
+            "image_url": image_url,
             "tutor_mode": tutor_mode,
             "goal_id": current_goal_id,
         }
@@ -728,6 +770,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     return {
         "messages": [AIMessage(content=message), HumanMessage(content=student_response)],
         "latest_supplement": supplement,
+        "latest_image_url": image_url,
     }
 
 

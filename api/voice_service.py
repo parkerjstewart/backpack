@@ -98,7 +98,7 @@ class VoiceService:
         yield VoiceServerEvent(type="final_transcript", payload={"text": transcript})
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "start"})
 
-        assistant_text, supplement = await self._dispatch_to_agent(state.context, transcript)
+        assistant_text, supplement, image_url = await self._dispatch_to_agent(state.context, transcript)
         display_text, speech_text = format_for_voice(assistant_text)
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "end"})
 
@@ -107,6 +107,8 @@ class VoiceService:
         final_payload: dict[str, Any] = {"text": display_text}
         if supplement:
             final_payload["supplement"] = supplement
+        if image_url:
+            final_payload["image_url"] = image_url
         yield VoiceServerEvent(type="assistant_text_final", payload=final_payload)
 
         audio_output = await self._synthesize(speech_text)
@@ -130,14 +132,14 @@ class VoiceService:
 
     async def _dispatch_to_agent(
         self, context: VoiceContextPayload, text: str
-    ) -> tuple[str, Optional[str]]:
+    ) -> tuple[str, Optional[str], Optional[str]]:
         if context.surface == "tutor":
             return await self._run_tutor(context, text)
-        return await self._run_module_chat(context, text), None
+        return await self._run_module_chat(context, text), None, None
 
     async def _run_tutor(
         self, context: VoiceContextPayload, text: str
-    ) -> tuple[str, Optional[str]]:
+    ) -> tuple[str, Optional[str], Optional[str]]:
         session_id = context.session_id
         from langgraph.types import Command
 
@@ -151,7 +153,8 @@ class VoiceService:
         if interrupt_data:
             message = str(interrupt_data.get("message", "")).strip()
             supplement = interrupt_data.get("supplement") or None
-            return message, supplement
+            image_url = interrupt_data.get("image_url") or None
+            return message, supplement, image_url
 
         updated = tutor_graph.get_state(config=RunnableConfig(**config))
         state_values = updated.values if updated else result
@@ -159,8 +162,8 @@ class VoiceService:
             if isinstance(msg, AIMessage) or (
                 hasattr(msg, "type") and getattr(msg, "type", "") == "ai"
             ):
-                return str(getattr(msg, "content", "")).strip(), None
-        return "I am ready for your next response.", None
+                return str(getattr(msg, "content", "")).strip(), None, None
+        return "I am ready for your next response.", None, None
 
     async def _run_module_chat(self, context: VoiceContextPayload, text: str) -> str:
         full_session_id = (

@@ -9,9 +9,11 @@ Provides endpoints for:
 """
 
 import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
+from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 from loguru import logger
@@ -43,6 +45,7 @@ class CreateSessionResponse(BaseModel):
     module_name: str = Field(..., description="Module name")
     first_message: str = Field(..., description="First message from tutor")
     first_supplement: Optional[str] = Field(None, description="Optional supplemental content for first message")
+    first_image_url: Optional[str] = Field(None, description="Optional generated image data URI for first message")
     current_goal_id: Optional[str] = Field(None, description="Current learning goal ID")
     current_goal_description: Optional[str] = Field(None, description="Current goal description")
     total_goals: int = Field(..., description="Total number of learning goals")
@@ -69,6 +72,7 @@ class TutorResponsePayload(BaseModel):
     # The tutor's response message
     tutor_message: str = Field(..., description="Tutor's response")
     tutor_supplement: Optional[str] = Field(None, description="Optional supplemental equations/definitions block")
+    tutor_image_url: Optional[str] = Field(None, description="Optional generated image data URI")
     
     # Latest evaluation (for real-time feedback)
     latest_understanding_score: Optional[float] = Field(
@@ -129,10 +133,9 @@ class SessionSummaryResponse(BaseModel):
 
 def extract_interrupt_data(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Extract interrupt data from graph result."""
-    if "__interrupt__" in result:
-        interrupts = result["__interrupt__"]
-        if interrupts and len(interrupts) > 0:
-            return interrupts[0].value
+    interrupts = result.get("__interrupt__")
+    if interrupts:
+        return interrupts[0].value
     return None
 
 
@@ -215,6 +218,7 @@ async def create_session(request: CreateSessionRequest):
             module_name=state_values.get("module_name", module.name),
             first_message=interrupt_data.get("message", ""),
             first_supplement=interrupt_data.get("supplement"),
+            first_image_url=interrupt_data.get("image_url"),
             current_goal_id=current_goal_id,
             current_goal_description=current_goal_description,
             total_goals=total_goals,
@@ -256,7 +260,6 @@ async def get_session(session_id: str):
         started_at = state_values.get("session_started_at")
         elapsed_seconds = None
         if started_at:
-            from datetime import datetime
             try:
                 start_dt = datetime.fromisoformat(started_at)
                 elapsed_seconds = (datetime.now() - start_dt).total_seconds()
@@ -343,6 +346,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
                 anchor_problem=state_values.get("anchor_problem"),
                 tutor_message=interrupt_data.get("message", ""),
                 tutor_supplement=interrupt_data.get("supplement"),
+                tutor_image_url=interrupt_data.get("image_url"),
                 latest_understanding_score=latest_eval.get("score"),
                 competency_scores=latest_eval.get("competency_score_dict"),
                 goals_completed=completed,

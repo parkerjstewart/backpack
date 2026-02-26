@@ -268,7 +268,19 @@ class TutorResponse(BaseModel):
             "Use this whenever the message references a formula, equation, or formal definition. "
             "Use LaTeX: $expr$ for inline, $$expr$$ on its own line for display. "
             "Use markdown bullets/headers for multi-step derivations. "
-            "Set to null ONLY for simple probe questions with no math content."
+            "Set to null when no symbolic math is needed, or when image_prompt is used instead."
+        ),
+    )
+    image_prompt: Optional[str] = Field(
+        default=None,
+        description=(
+            "Description of a visual diagram to generate when a picture explains the concept better than equations. "
+            "Use for structural and relational concepts: neural networks, probability trees, DAGs, "
+            "Markov chains, state machines, flowcharts, computational graphs, decision trees. "
+            "Be specific: include node labels, arrow directions, layer sizes, and any values to annotate. "
+            "Example: 'A 3-layer neural network: 2 input nodes x1 and x2, 3 hidden nodes h1-h3, "
+            "1 output node y. Show forward-pass arrows between all nodes in adjacent layers.' "
+            "Leave null when equations in supplement are sufficient (pure math, derivations, etc.)."
         ),
     )
 

@@ -21,6 +21,7 @@ interface Message {
   type: 'tutor' | 'student'
   content: string
   supplement?: string | null
+  image_url?: string | null
   timestamp: string
 }
 
@@ -36,7 +37,7 @@ interface TutorChatProps {
   moduleName?: string
   moduleId?: string
   sessionId?: string | null
-  onAppendVoiceTurn?: (studentText: string, tutorText: string, supplement?: string | null) => void
+  onAppendVoiceTurn?: (studentText: string, tutorText: string, supplement?: string | null, imageUrl?: string | null) => void
   className?: string
 }
 
@@ -107,9 +108,9 @@ export function TutorChat({
       setVoiceTranscript(text)
       voiceTranscriptRef.current = text
     },
-    onAssistantTextFinal: (text, supplement) => {
+    onAssistantTextFinal: (text, supplement, imageUrl) => {
       if (voiceTranscriptRef.current && onAppendVoiceTurn) {
-        onAppendVoiceTurn(voiceTranscriptRef.current, text, supplement)
+        onAppendVoiceTurn(voiceTranscriptRef.current, text, supplement, imageUrl)
       }
       setVoiceTranscript('')
       voiceTranscriptRef.current = ''
@@ -215,6 +216,15 @@ export function TutorChat({
                             {message.supplement}
                           </ReactMarkdown>
                         </div>
+                      </div>
+                    )}
+                    {message.type === 'tutor' && message.image_url && (
+                      <div className="rounded-lg border bg-background p-3 overflow-hidden">
+                        <img
+                          src={message.image_url}
+                          alt="Tutor diagram"
+                          className="w-full max-h-72 object-contain rounded"
+                        />
                       </div>
                     )}
                   </div>
