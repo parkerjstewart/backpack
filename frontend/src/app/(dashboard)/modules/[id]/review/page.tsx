@@ -63,6 +63,7 @@ export default function ReviewPage() {
     isSessionComplete,
     latestDebugInfo,
     setExportCanvas,
+    getWhiteboardPng,
     initializeSession,
     sendMessage,
     resetSession,
@@ -180,6 +181,7 @@ export default function ReviewPage() {
               sessionId={sessionId}
               onAppendVoiceTurn={appendVoiceTurn}
               canAttachDrawing={showCanvas}
+              getWhiteboardPng={showCanvas ? getWhiteboardPng : undefined}
               className="flex-1 min-w-0"
             />
           </div>

@@ -18,8 +18,7 @@ Graph flow (per goal):
 
 import asyncio
 import concurrent.futures
-import json
-import re
+import os
 import sqlite3
 from datetime import datetime
 from typing import Annotated, Any, Dict, List, Literal, Optional
@@ -629,21 +628,25 @@ def _generate_image(prompt: str) -> Optional[str]:
     Returns a data URI (data:image/png;base64,...) on success, or None on failure.
     Failures are logged as warnings and silently swallowed so the tutor turn still
     completes — the image is just omitted from the response.
+
+    The model is configured via DEFAULT_IMAGE_MODEL env var (format: provider/model-name).
     """
+    image_model_spec = os.getenv("DEFAULT_IMAGE_MODEL", "openai/dall-e-3")
+    model_name = image_model_spec.split("/", 1)[-1]
     try:
-        client = openai.OpenAI()
+        client = openai.OpenAI(timeout=30.0)
         response = client.images.generate(
-            model="dall-e-3",
+            model=model_name,
             prompt=prompt,
             n=1,
             size="1024x1024",
             response_format="b64_json",
         )
         b64 = response.data[0].b64_json
-        logger.info(f"Image generated successfully (prompt: {prompt[:60]}...)")
+        logger.info(f"Image generated (model={model_name}, prompt: {prompt[:60]}...)")
         return f"data:image/png;base64,{b64}"
     except Exception as e:
-        logger.warning(f"Image generation failed, continuing without image: {e}")
+        logger.warning(f"Image generation failed (model={model_name}): {e}")
         return None
 
 
@@ -689,6 +692,18 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         if opening_framing:
             behavioral_profile = BEHAVIORAL_PROFILES["opening"] + f"\n\nOpening framing hint (adapt this naturally): {opening_framing}"
 
+    # Check whether the most recent student message includes a whiteboard image.
+    # Done here so prompt_data can advertise the capability to the model.
+    last_student_image = None
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage):
+            if isinstance(msg.content, list):
+                for part in msg.content:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        last_student_image = part
+                        break
+            break  # only check the most recent human message
+
     prompt_data = {
         "goal": current_goal or {},
         "anchor_problem": state.get("anchor_problem", ""),
@@ -701,6 +716,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         "next_pending_competency": next_pending_competency,
         "module_examples": state.get("module_examples", [])[:8],
         "context_chunks": state.get("goal_contexts", {}).get(current_goal_id, [])[:3],
+        "has_student_drawing": last_student_image is not None,
     }
 
     system_prompt = Prompter(prompt_template="tutor/tutor_turn").render(data=prompt_data)
@@ -717,18 +733,6 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         )
 
     model = _run_model(_provision)
-
-    # If the most recent student message included a whiteboard image, pass it to the
-    # model alongside the system prompt so the agent can actually see the drawing.
-    last_student_image = None
-    for msg in reversed(state.get("messages", [])):
-        if isinstance(msg, HumanMessage):
-            if isinstance(msg.content, list):
-                for part in msg.content:
-                    if isinstance(part, dict) and part.get("type") == "image_url":
-                        last_student_image = part
-                        break
-            break  # only check the most recent human message
 
     if last_student_image:
         model_input = [HumanMessage(content=[
@@ -752,34 +756,8 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
             f" | image_prompt={'yes' if image_prompt else 'null'}"
         )
     except Exception as e:
-        logger.warning(f"Structured output failed for tutor_turn ({e}); falling back to plain invoke")
-        try:
-            ai_msg = model.invoke(model_input)
-            raw = clean_thinking_content(
-                ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
-            )
-            # Model may have followed the JSON format in the prompt even without structured output
-            try:
-                data = json.loads(raw.strip())
-                message = clean_thinking_content(data.get("message", "") or "")
-                supplement = data.get("supplement") or None
-                image_prompt = data.get("image_prompt") or None
-                logger.info(f"tutor_turn JSON fallback ok | supplement={'yes' if supplement else 'null'}")
-            except json.JSONDecodeError:
-                json_match = re.search(r'\{[\s\S]*\}', raw)
-                if json_match:
-                    try:
-                        data = json.loads(json_match.group())
-                        message = clean_thinking_content(data.get("message", "") or "")
-                        supplement = data.get("supplement") or None
-                        image_prompt = data.get("image_prompt") or None
-                    except json.JSONDecodeError:
-                        message = raw
-                else:
-                    message = raw
-                    logger.info("tutor_turn plain text fallback (no JSON found in response)")
-        except Exception as e2:
-            logger.error(f"Plain invoke also failed: {e2}")
+        logger.error(f"tutor_turn structured output failed: {e}")
+        raise
 
     if not message:
         message = "What are your thoughts on this?"

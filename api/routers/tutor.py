@@ -33,7 +33,7 @@ class CreateSessionRequest(BaseModel):
     """Request to create a new tutoring session."""
     module_id: str = Field(..., description="ID of the module to tutor")
     model_override: Optional[str] = Field(
-        None, 
+        None,
         description="Optional model override for this session"
     )
 
@@ -64,10 +64,10 @@ class TutorResponsePayload(BaseModel):
     """Response from tutor after student message."""
     session_id: str = Field(..., description="Session identifier")
     phase: Literal["in_progress", "goal_complete", "session_complete"] = Field(
-        ..., 
+        ...,
         description="Current phase of the session"
     )
-    
+
     # Current state
     current_goal_id: Optional[str] = Field(None, description="Current goal ID")
     current_goal_description: Optional[str] = Field(None, description="Current goal description")
@@ -77,7 +77,7 @@ class TutorResponsePayload(BaseModel):
     tutor_message: str = Field(..., description="Tutor's response")
     tutor_supplement: Optional[str] = Field(None, description="Optional supplemental equations/definitions block")
     tutor_image_url: Optional[str] = Field(None, description="Optional generated image data URI")
-    
+
     # Latest evaluation (for real-time feedback)
     latest_understanding_score: Optional[float] = Field(
         None,
@@ -99,7 +99,7 @@ class SessionStateResponse(BaseModel):
     module_id: str
     module_name: str
     phase: str
-    
+
     # Progress
     total_goals: int
     goals_completed: int
@@ -109,7 +109,7 @@ class SessionStateResponse(BaseModel):
 
     # Goal progress list
     goal_progress: List[Dict[str, Any]]
-    
+
     # Session timing
     started_at: Optional[str]
     elapsed_seconds: Optional[float]
@@ -147,13 +147,13 @@ def get_current_goal_info(state: Dict[str, Any]) -> tuple[Optional[str], Optiona
     """Get current goal ID and description from state."""
     current_goal_id = state.get("current_goal_id")
     current_goal_description = None
-    
+
     if current_goal_id:
         for goal in state.get("learning_goals", []):
             if goal.get("id") == current_goal_id:
                 current_goal_description = goal.get("description")
                 break
-    
+
     return current_goal_id, current_goal_description
 
 
@@ -171,22 +171,22 @@ def count_goals(state: Dict[str, Any]) -> tuple[int, int]:
 @router.post("/tutor/sessions", response_model=CreateSessionResponse)
 async def create_session(request: CreateSessionRequest):
     """Create a new tutoring session for a module.
-    
+
     Initializes the session, selects the first goal, generates questions,
     and returns the first question to present to the student.
     """
     logger.info(f"Creating tutoring session for module: {request.module_id}")
-    
+
     try:
         # Verify module exists
         module = await Module.get(request.module_id)
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
-        
+
         # Generate session ID
         session_id = f"tutor-{uuid.uuid4()}"
         config = {"configurable": {"thread_id": session_id}}
-        
+
         # Start the graph - will initialize and hit first interrupt
         initial_state = {
             "module_id": request.module_id,
@@ -197,25 +197,25 @@ async def create_session(request: CreateSessionRequest):
             "goal_contexts": {},
             "understanding_trajectory": [],
         }
-        
+
         result = tutor_graph.invoke(initial_state, config=config)
-        
+
         # Extract interrupt data (first question)
         interrupt_data = extract_interrupt_data(result)
-        
+
         if not interrupt_data:
             raise HTTPException(
-                status_code=500, 
+                status_code=500,
                 detail="Session initialization failed - no interrupt received"
             )
-        
+
         # Get state for response
         state = tutor_graph.get_state(config=RunnableConfig(**config))
         state_values = state.values if state else result
-        
+
         current_goal_id, current_goal_description = get_current_goal_info(state_values)
         total_goals = len(state_values.get("learning_goals", []))
-        
+
         return CreateSessionResponse(
             session_id=session_id,
             module_id=request.module_id,
@@ -227,7 +227,7 @@ async def create_session(request: CreateSessionRequest):
             current_goal_description=current_goal_description,
             total_goals=total_goals,
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -240,14 +240,14 @@ async def create_session(request: CreateSessionRequest):
 async def get_session(session_id: str):
     """Get the current state of a tutoring session."""
     logger.info(f"Getting session state: {session_id}")
-    
+
     try:
         config = {"configurable": {"thread_id": session_id}}
         state = tutor_graph.get_state(config=RunnableConfig(**config))
-        
+
         if not state or not state.values:
             raise HTTPException(status_code=404, detail="Session not found")
-        
+
         state_values = state.values
         current_goal_id, current_goal_description = get_current_goal_info(state_values)
         completed, remaining = count_goals(state_values)
@@ -259,7 +259,7 @@ async def get_session(session_id: str):
             phase = "in_progress"
         else:
             phase = "initializing"
-        
+
         # Calculate elapsed time
         started_at = state_values.get("session_started_at")
         elapsed_seconds = None
@@ -269,7 +269,7 @@ async def get_session(session_id: str):
                 elapsed_seconds = (datetime.now() - start_dt).total_seconds()
             except ValueError:
                 pass
-        
+
         # Get goal progress list
         goal_progress_dict = state_values.get("goal_progress", {})
         goal_progress_list = []
@@ -297,7 +297,7 @@ async def get_session(session_id: str):
             started_at=started_at,
             elapsed_seconds=elapsed_seconds,
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -308,20 +308,20 @@ async def get_session(session_id: str):
 @router.post("/tutor/sessions/{session_id}/respond", response_model=TutorResponsePayload)
 async def submit_response(session_id: str, request: StudentResponseRequest):
     """Submit a student response and get the tutor's reply.
-    
+
     Resumes the graph with the student's message, evaluates their response,
     and returns either a Socratic follow-up or advances to the next question/goal.
     """
     logger.info(f"Submitting response to session: {session_id}")
-    
+
     try:
         config = {"configurable": {"thread_id": session_id}}
-        
+
         # Check if session exists
         current_state = tutor_graph.get_state(config=RunnableConfig(**config))
         if not current_state or not current_state.values:
             raise HTTPException(status_code=404, detail="Session not found")
-        
+
         # Resume the graph with the student's response.
         # When a whiteboard PNG is attached, pass a dict so tutor_turn can
         # build a multimodal HumanMessage (text + image).
@@ -334,14 +334,14 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
             Command(resume=resume_value),
             config=config
         )
-        
+
         # Get updated state
         updated_state = tutor_graph.get_state(config=RunnableConfig(**config))
         state_values = updated_state.values if updated_state else result
-        
+
         completed, remaining = count_goals(state_values)
         current_goal_id, current_goal_description = get_current_goal_info(state_values)
-        
+
         # Check if we hit another interrupt (waiting for next response)
         interrupt_data = extract_interrupt_data(result)
 
@@ -363,7 +363,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
                 goals_completed=completed,
                 goals_remaining=remaining,
             )
-        
+
         # No interrupt means session might be complete or transitioning
         # Get the last AI message
         messages = state_values.get("messages", [])
@@ -372,13 +372,10 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
             if hasattr(msg, 'type') and msg.type == 'ai':
                 last_ai_message = msg.content
                 break
-            elif hasattr(msg, 'content') and not hasattr(msg, 'type'):
-                # AIMessage object
-                from langchain_core.messages import AIMessage
-                if isinstance(msg, AIMessage):
-                    last_ai_message = msg.content
-                    break
-        
+            elif isinstance(msg, AIMessage):
+                last_ai_message = msg.content
+                break
+
         # Determine phase
         if remaining == 0:
             phase = "session_complete"
@@ -386,7 +383,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
             phase = "goal_complete"
         else:
             phase = "in_progress"
-        
+
         return TutorResponsePayload(
             session_id=session_id,
             phase=phase,
@@ -394,12 +391,14 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
             current_goal_description=current_goal_description,
             anchor_problem=state_values.get("anchor_problem"),
             tutor_message=last_ai_message or "Session updated.",
+            tutor_supplement=state_values.get("latest_supplement"),
+            tutor_image_url=state_values.get("latest_image_url"),
             latest_understanding_score=state_values.get("latest_evaluation", {}).get("score"),
             competency_scores=state_values.get("latest_evaluation", {}).get("competency_score_dict"),
             goals_completed=completed,
             goals_remaining=remaining,
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -411,32 +410,32 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
 @router.get("/tutor/sessions/{session_id}/trajectory", response_model=TrajectoryResponse)
 async def get_trajectory(session_id: str):
     """Get the full understanding trajectory for instructor view.
-    
+
     Returns all understanding points recorded during the session,
     organized by learning goal.
     """
     logger.info(f"Getting trajectory for session: {session_id}")
-    
+
     try:
         config = {"configurable": {"thread_id": session_id}}
         state = tutor_graph.get_state(config=RunnableConfig(**config))
-        
+
         if not state or not state.values:
             raise HTTPException(status_code=404, detail="Session not found")
-        
+
         state_values = state.values
         trajectory = state_values.get("understanding_trajectory", [])
-        
+
         # Build goal summaries
         goal_progress_dict = state_values.get("goal_progress", {})
         goal_summaries = []
-        
+
         for goal in state_values.get("learning_goals", []):
             progress = goal_progress_dict.get(goal["id"], {})
-            
+
             # Get trajectory points for this goal
             goal_trajectory = [t for t in trajectory if t.get("goal_id") == goal["id"]]
-            
+
             goal_summaries.append({
                 "goal_id": goal["id"],
                 "description": goal["description"],
@@ -447,7 +446,7 @@ async def get_trajectory(session_id: str):
                 "exchanges": progress.get("exchanges", 0),
                 "anchor_problem": progress.get("anchor_problem"),
             })
-        
+
         return TrajectoryResponse(
             session_id=session_id,
             module_id=state_values.get("module_id", ""),
@@ -455,7 +454,7 @@ async def get_trajectory(session_id: str):
             trajectory=trajectory,
             goal_summaries=goal_summaries,
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -543,33 +542,33 @@ async def get_debug_state(session_id: str):
 @router.get("/tutor/sessions/{session_id}/summary", response_model=SessionSummaryResponse)
 async def get_summary(session_id: str):
     """Get the session summary (only available when session is complete).
-    
+
     Returns comprehensive statistics and a narrative summary of the
     student's learning journey.
     """
     logger.info(f"Getting summary for session: {session_id}")
-    
+
     try:
         config = {"configurable": {"thread_id": session_id}}
         state = tutor_graph.get_state(config=RunnableConfig(**config))
-        
+
         if not state or not state.values:
             raise HTTPException(status_code=404, detail="Session not found")
-        
+
         state_values = state.values
-        
+
         # Check if session is complete
         completed, remaining = count_goals(state_values)
         if remaining > 0:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Session not complete. Summary only available after all goals are mastered."
             )
-        
+
         # Build summary from state
         goal_progress_dict = state_values.get("goal_progress", {})
         trajectory = state_values.get("understanding_trajectory", [])
-        
+
         # Calculate statistics
         total_exchanges = 0
         initial_scores = []
@@ -603,10 +602,10 @@ async def get_summary(session_id: str):
                 "initial_understanding": progress.get("initial_understanding"),
                 "final_understanding": progress.get("final_understanding"),
             })
-        
+
         avg_initial = sum(initial_scores) / len(initial_scores) if initial_scores else 0
         avg_final = sum(final_scores) / len(final_scores) if final_scores else 0
-        
+
         # Get narrative from last AI message (summary was generated)
         messages = state_values.get("messages", [])
         narrative = ""
@@ -615,7 +614,7 @@ async def get_summary(session_id: str):
             if "Session Complete" in content or "Goals Completed" in content:
                 narrative = content
                 break
-        
+
         summary = {
             "session_id": session_id,
             "module_id": state_values.get("module_id", ""),
@@ -630,13 +629,13 @@ async def get_summary(session_id: str):
             "key_breakthroughs": list(set(all_breakthroughs))[:10],
             "goal_summaries": goal_summaries,
         }
-        
+
         return SessionSummaryResponse(
             session_id=session_id,
             summary=summary,
             narrative=narrative,
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
