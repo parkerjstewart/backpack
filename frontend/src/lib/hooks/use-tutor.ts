@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
@@ -16,6 +16,8 @@ interface Message {
   id: string
   type: 'tutor' | 'student'
   content: string
+  supplement?: string | null
+  image_url?: string | null
   timestamp: string
 }
 
@@ -35,6 +37,22 @@ export function useTutor({ moduleId }: UseTutorParams) {
   const [goalsRemaining, setGoalsRemaining] = useState(0)
   const [latestDebugInfo, setLatestDebugInfo] = useState<TutorDebugInfo | null>(null)
 
+  // Holds the async PNG export function provided by ExcalidrawCanvas.
+  // Using a ref avoids re-renders while still being accessible in sendMessage.
+  const exportCanvasRef = useRef<(() => Promise<string | null>) | null>(null)
+  const setExportCanvas = useCallback((fn: () => Promise<string | null>) => {
+    exportCanvasRef.current = fn
+  }, [])
+
+  const getWhiteboardPng = useCallback(async (): Promise<string | null> => {
+    if (!exportCanvasRef.current) return null
+    try {
+      return await exportCanvasRef.current()
+    } catch {
+      return null
+    }
+  }, [])
+
   // Create session mutation
   const createSessionMutation = useMutation({
     mutationFn: () => tutorApi.createSession(moduleId),
@@ -47,6 +65,8 @@ export function useTutor({ moduleId }: UseTutorParams) {
         id: `tutor-${Date.now()}`,
         type: 'tutor',
         content: session.first_message,
+        supplement: session.first_supplement,
+        image_url: session.first_image_url,
         timestamp: new Date().toISOString(),
       }
       setMessages([tutorMessage])
@@ -80,8 +100,10 @@ export function useTutor({ moduleId }: UseTutorParams) {
     setLatestDebugInfo(null)
   }, [])
 
-  // Send response to tutor
-  const sendMessage = useCallback(async (message: string) => {
+  // Send response to tutor.
+  // When attachDrawing=true, the current canvas state is exported as a PNG
+  // and sent alongside the text so the model can see what the student drew.
+  const sendMessage = useCallback(async (message: string, attachDrawing = false) => {
     if (!sessionId) {
       toast.error('No active session')
       return
@@ -97,14 +119,26 @@ export function useTutor({ moduleId }: UseTutorParams) {
     setMessages(prev => [...prev, studentMessage])
     setIsSending(true)
 
+    // Export canvas as PNG data URL if attachment was requested
+    let whiteboardPng: string | undefined = undefined
+    if (attachDrawing && exportCanvasRef.current) {
+      try {
+        whiteboardPng = (await exportCanvasRef.current()) ?? undefined
+      } catch {
+        // Non-fatal — proceed without the image
+      }
+    }
+
     try {
-      const response: TutorResponsePayload = await tutorApi.sendResponse(sessionId, message)
+      const response: TutorResponsePayload = await tutorApi.sendResponse(sessionId, message, whiteboardPng)
 
       // Add tutor response
       const tutorMessage: Message = {
         id: `tutor-${Date.now()}`,
         type: 'tutor',
         content: response.tutor_message,
+        supplement: response.tutor_supplement,
+        image_url: response.tutor_image_url,
         timestamp: new Date().toISOString(),
       }
       setMessages(prev => [...prev, tutorMessage])
@@ -128,7 +162,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     }
   }, [sessionId, t])
 
-  const appendVoiceTurn = useCallback((studentText: string, tutorText: string) => {
+  const appendVoiceTurn = useCallback((studentText: string, tutorText: string, supplement?: string | null, imageUrl?: string | null) => {
     const studentMessage: Message = {
       id: `student-${Date.now()}`,
       type: 'student',
@@ -139,6 +173,8 @@ export function useTutor({ moduleId }: UseTutorParams) {
       id: `tutor-${Date.now()}-${Math.random()}`,
       type: 'tutor',
       content: tutorText,
+      supplement: supplement ?? null,
+      image_url: imageUrl ?? null,
       timestamp: new Date().toISOString(),
     }
     setMessages(prev => [...prev, studentMessage, tutorMessage])
@@ -156,6 +192,10 @@ export function useTutor({ moduleId }: UseTutorParams) {
     goalsRemaining,
     isSessionComplete: sessionPhase === 'session_complete',
     latestDebugInfo,
+
+    // Canvas export function setter (ref-based — updates don't cause re-renders)
+    setExportCanvas,
+    getWhiteboardPng,
 
     // Actions
     initializeSession,

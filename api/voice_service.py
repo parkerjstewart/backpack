@@ -72,7 +72,7 @@ class VoiceService:
         return []
 
     async def stream_end_turn(
-        self, state: ConnectionVoiceState
+        self, state: ConnectionVoiceState, payload: dict[str, Any] | None = None
     ) -> AsyncIterator[VoiceServerEvent]:
         if not state.context:
             yield VoiceServerEvent(
@@ -86,6 +86,8 @@ class VoiceService:
             yield VoiceServerEvent(type="error", payload={"message": "No audio provided"})
             return
 
+        whiteboard_png: Optional[str] = (payload or {}).get("whiteboard_png") or None
+
         transcript = await self._transcribe(audio_bytes, state.audio_mime_type)
         if not transcript:
             yield VoiceServerEvent(
@@ -98,13 +100,18 @@ class VoiceService:
         yield VoiceServerEvent(type="final_transcript", payload={"text": transcript})
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "start"})
 
-        assistant_text = await self._dispatch_to_agent(state.context, transcript)
+        assistant_text, supplement, image_url = await self._dispatch_to_agent(state.context, transcript, whiteboard_png)
         display_text, speech_text = format_for_voice(assistant_text)
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "end"})
 
         for delta in _iter_text_deltas(display_text):
             yield VoiceServerEvent(type="assistant_text_delta", payload={"text": delta})
-        yield VoiceServerEvent(type="assistant_text_final", payload={"text": display_text})
+        final_payload: dict[str, Any] = {"text": display_text}
+        if supplement:
+            final_payload["supplement"] = supplement
+        if image_url:
+            final_payload["image_url"] = image_url
+        yield VoiceServerEvent(type="assistant_text_final", payload=final_payload)
 
         audio_output = await self._synthesize(speech_text)
         if audio_output:
@@ -125,12 +132,16 @@ class VoiceService:
             events.append(event)
         return events
 
-    async def _dispatch_to_agent(self, context: VoiceContextPayload, text: str) -> str:
+    async def _dispatch_to_agent(
+        self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
+    ) -> tuple[str, Optional[str], Optional[str]]:
         if context.surface == "tutor":
-            return await self._run_tutor(context, text)
-        return await self._run_module_chat(context, text)
+            return await self._run_tutor(context, text, whiteboard_png)
+        return await self._run_module_chat(context, text), None, None
 
-    async def _run_tutor(self, context: VoiceContextPayload, text: str) -> str:
+    async def _run_tutor(
+        self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
+    ) -> tuple[str, Optional[str], Optional[str]]:
         session_id = context.session_id
         from langgraph.types import Command
 
@@ -139,10 +150,14 @@ class VoiceService:
         if not current_state or not current_state.values:
             raise ValueError("Tutor session not found")
 
-        result = tutor_graph.invoke(Command(resume=text), config=config)
+        resume_value: str | dict = {"text": text, "whiteboard_png": whiteboard_png} if whiteboard_png else text
+        result = tutor_graph.invoke(Command(resume=resume_value), config=config)
         interrupt_data = _extract_interrupt_data(result)
         if interrupt_data:
-            return str(interrupt_data.get("message", "")).strip()
+            message = str(interrupt_data.get("message", "")).strip()
+            supplement = interrupt_data.get("supplement") or None
+            image_url = interrupt_data.get("image_url") or None
+            return message, supplement, image_url
 
         updated = tutor_graph.get_state(config=RunnableConfig(**config))
         state_values = updated.values if updated else result
@@ -150,8 +165,8 @@ class VoiceService:
             if isinstance(msg, AIMessage) or (
                 hasattr(msg, "type") and getattr(msg, "type", "") == "ai"
             ):
-                return str(getattr(msg, "content", "")).strip()
-        return "I am ready for your next response."
+                return str(getattr(msg, "content", "")).strip(), None, None
+        return "I am ready for your next response.", None, None
 
     async def _run_module_chat(self, context: VoiceContextPayload, text: str) -> str:
         full_session_id = (

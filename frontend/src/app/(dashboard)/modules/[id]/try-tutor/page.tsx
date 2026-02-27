@@ -1,17 +1,18 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { TutorChat } from '@/components/tutor/TutorChat'
 import { TutorDebugPanel } from '@/components/tutor/TutorDebugPanel'
+import { ExcalidrawCanvas } from '@/components/tutor/ExcalidrawCanvas'
 import { useTutor } from '@/lib/hooks/use-tutor'
 import { useModule } from '@/lib/hooks/use-modules'
 import { modulesApi } from '@/lib/api/modules'
 import { useModuleDraftStore } from '@/lib/stores/module-draft-store'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, CheckCircle2, Trash2, RotateCcw, Bug } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Trash2, RotateCcw, Bug, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { toast } from 'sonner'
 import {
@@ -31,6 +32,7 @@ export default function TryTutorPage() {
   const router = useRouter()
 
   const moduleId = params?.id ? decodeURIComponent(params.id as string) : ''
+  const hasInitializedRef = useRef(false)
 
   const { reset: resetDraftStore } = useModuleDraftStore()
   const { data: module, isLoading: moduleLoading } = useModule(moduleId)
@@ -39,6 +41,34 @@ export default function TryTutorPage() {
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
+  const [showCanvas, setShowCanvas] = useState(true)
+
+  // Resizable chat panel width
+  const [chatWidth, setChatWidth] = useState(420)
+  const isDraggingRef = useRef(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    isDraggingRef.current = true
+    e.preventDefault()
+  }, [])
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current || !containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      const newWidth = Math.max(280, Math.min(e.clientX - rect.left, rect.width - 300))
+      setChatWidth(newWidth)
+    }
+    const handleMouseUp = () => { isDraggingRef.current = false }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
   const {
     messages,
     isSending,
@@ -49,6 +79,8 @@ export default function TryTutorPage() {
     isSessionComplete,
     sessionId,
     latestDebugInfo,
+    setExportCanvas,
+    getWhiteboardPng,
     initializeSession,
     sendMessage,
     resetSession,
@@ -56,10 +88,11 @@ export default function TryTutorPage() {
   } = useTutor({ moduleId })
 
   useEffect(() => {
-    if (moduleId && !isInitializing && messages.length === 0) {
+    if (moduleId && !hasInitializedRef.current) {
+      hasInitializedRef.current = true
       initializeSession()
     }
-  }, [moduleId, isInitializing, messages.length, initializeSession])
+  }, [moduleId, initializeSession])
 
   useEffect(() => {
     if (module && module.status !== 'draft') {
@@ -166,6 +199,18 @@ export default function TryTutorPage() {
                 {t.tutor.tryAgain}
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCanvas(v => !v)}
+                title={showCanvas ? 'Hide whiteboard' : 'Show whiteboard'}
+              >
+                {showCanvas ? (
+                  <PanelRightClose className="h-4 w-4" />
+                ) : (
+                  <PanelRightOpen className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
                 variant={showDebug ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setShowDebug(v => !v)}
@@ -198,25 +243,61 @@ export default function TryTutorPage() {
           </p>
         </div>
 
-        {/* Chat + Debug Area */}
-        <div className="flex-1 p-6 min-h-0 flex gap-4">
-          <TutorChat
-            messages={messages}
-            isSending={isSending}
-            isInitializing={isInitializing}
-            onSendMessage={sendMessage}
-            currentGoal={currentGoal}
-            goalsCompleted={goalsCompleted}
-            goalsRemaining={goalsRemaining}
-            isSessionComplete={isSessionComplete}
-            moduleName={module.name}
-            moduleId={moduleId}
-            sessionId={sessionId}
-            onAppendVoiceTurn={appendVoiceTurn}
-            className="flex-1 min-w-0"
-          />
+        {/* Chat + Canvas + Debug Area */}
+        <div ref={containerRef} className="flex-1 min-h-0 flex overflow-hidden">
+          {/* Chat panel */}
+          <div
+            className="flex flex-col min-h-0 p-6 flex-shrink-0"
+            style={{ width: showCanvas ? chatWidth : undefined, flex: showCanvas ? undefined : '1' }}
+          >
+            <TutorChat
+              messages={messages}
+              isSending={isSending}
+              isInitializing={isInitializing}
+              onSendMessage={sendMessage}
+              currentGoal={currentGoal}
+              goalsCompleted={goalsCompleted}
+              goalsRemaining={goalsRemaining}
+              isSessionComplete={isSessionComplete}
+              moduleName={module.name}
+              moduleId={moduleId}
+              sessionId={sessionId}
+              onAppendVoiceTurn={appendVoiceTurn}
+              canAttachDrawing={showCanvas}
+              getWhiteboardPng={showCanvas ? getWhiteboardPng : undefined}
+              className="flex-1 min-w-0"
+            />
+          </div>
+
+          {/* Drag handle */}
+          {showCanvas && (
+            <div
+              className="w-1 flex-shrink-0 cursor-col-resize bg-border hover:bg-primary/40 active:bg-primary/60 transition-colors"
+              onMouseDown={handleDragStart}
+            />
+          )}
+
+          {/* Whiteboard panel */}
+          {showCanvas && (
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+              <div className="flex-shrink-0 px-4 py-2 border-b bg-muted/30 flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">Whiteboard</span>
+                <span className="text-xs text-muted-foreground">
+                  Draw, then click the pencil icon to attach your drawing to a message
+                </span>
+              </div>
+              <div className="flex-1 min-h-0" style={{ position: 'relative' }}>
+                <ExcalidrawCanvas
+                  onExportReady={setExportCanvas}
+                  className="absolute inset-0"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Debug panel */}
           {showDebug && (
-            <div className="w-80 flex-shrink-0 min-h-0">
+            <div className="w-80 flex-shrink-0 min-h-0 border-l p-4 overflow-y-auto">
               <TutorDebugPanel debugInfo={latestDebugInfo} currentGoal={currentGoal} />
             </div>
           )}

@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { GraduationCap, User, Send, Loader2, Target, CheckCircle2, Mic } from 'lucide-react'
+import { GraduationCap, User, Send, Loader2, Target, CheckCircle2, Mic, Pencil } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -20,6 +20,8 @@ interface Message {
   id: string
   type: 'tutor' | 'student'
   content: string
+  supplement?: string | null
+  image_url?: string | null
   timestamp: string
 }
 
@@ -27,7 +29,7 @@ interface TutorChatProps {
   messages: Message[]
   isSending: boolean
   isInitializing: boolean
-  onSendMessage: (message: string) => void
+  onSendMessage: (message: string, attachDrawing?: boolean) => void
   currentGoal: string | null
   goalsCompleted: number
   goalsRemaining: number
@@ -35,7 +37,9 @@ interface TutorChatProps {
   moduleName?: string
   moduleId?: string
   sessionId?: string | null
-  onAppendVoiceTurn?: (studentText: string, tutorText: string) => void
+  onAppendVoiceTurn?: (studentText: string, tutorText: string, supplement?: string | null, imageUrl?: string | null) => void
+  canAttachDrawing?: boolean
+  getWhiteboardPng?: () => Promise<string | null>
   className?: string
 }
 
@@ -52,25 +56,38 @@ export function TutorChat({
   moduleId,
   sessionId,
   onAppendVoiceTurn,
+  canAttachDrawing = false,
+  getWhiteboardPng,
   className,
 }: TutorChatProps) {
   const { t } = useTranslation()
   const inputId = useId()
   const [input, setInput] = useState('')
+  const [attachDrawing, setAttachDrawing] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const voiceTranscriptRef = useRef('')
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive.
+  // Scroll the Radix viewport directly to avoid scrollIntoView bubbling up
+  // to outer containers and collapsing the visible chat area.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (scrollAreaRef.current) {
+      const viewport = scrollAreaRef.current.querySelector(
+        '[data-radix-scroll-area-viewport]'
+      ) as HTMLElement | null
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight
+      }
+    }
   }, [messages])
 
   const handleSend = () => {
     if (input.trim() && !isSending && !isSessionComplete) {
-      onSendMessage(input.trim())
+      onSendMessage(input.trim(), attachDrawing)
       setInput('')
+      setAttachDrawing(false)
     }
   }
 
@@ -94,6 +111,7 @@ export function TutorChat({
     startRecording,
     stopRecording,
   } = useVoiceSession({
+    getWhiteboardPng,
     getContextPayload: async () => {
       if (!sessionId) return null
       return {
@@ -106,9 +124,9 @@ export function TutorChat({
       setVoiceTranscript(text)
       voiceTranscriptRef.current = text
     },
-    onAssistantTextFinal: (text) => {
+    onAssistantTextFinal: (text, supplement, imageUrl) => {
       if (voiceTranscriptRef.current && onAppendVoiceTurn) {
-        onAppendVoiceTurn(voiceTranscriptRef.current, text)
+        onAppendVoiceTurn(voiceTranscriptRef.current, text, supplement, imageUrl)
       }
       setVoiceTranscript('')
       voiceTranscriptRef.current = ''
@@ -204,6 +222,27 @@ export function TutorChat({
                         </p>
                       )}
                     </div>
+                    {message.type === 'tutor' && message.supplement && (
+                      <div className="rounded-lg border bg-background px-4 py-3 text-sm">
+                        <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                          >
+                            {message.supplement}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
+                    {message.type === 'tutor' && message.image_url && (
+                      <div className="rounded-lg border bg-background p-3 overflow-hidden">
+                        <img
+                          src={message.image_url}
+                          alt="Tutor diagram"
+                          className="w-full max-h-72 object-contain rounded"
+                        />
+                      </div>
+                    )}
                   </div>
                   {message.type === 'student' && (
                     <div className="flex-shrink-0">
@@ -326,6 +365,18 @@ export function TutorChat({
                 className="flex-1 min-h-[40px] max-h-[100px] resize-none py-2 px-3"
                 rows={1}
               />
+              {canAttachDrawing && (
+                <Button
+                  type="button"
+                  variant={attachDrawing ? 'default' : 'outline'}
+                  size="icon"
+                  className="h-[40px] w-[40px] flex-shrink-0"
+                  onClick={() => setAttachDrawing(v => !v)}
+                  title={attachDrawing ? 'Drawing will be attached to message' : 'Click to attach whiteboard drawing'}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 onClick={handleSend}
                 disabled={!input.trim() || isSending}

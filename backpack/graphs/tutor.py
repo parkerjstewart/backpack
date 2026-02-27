@@ -18,9 +18,12 @@ Graph flow (per goal):
 
 import asyncio
 import concurrent.futures
+import os
 import sqlite3
 from datetime import datetime
 from typing import Annotated, Any, Dict, List, Literal, Optional
+
+import openai
 
 from ai_prompter import Prompter
 from langchain_core.messages import AIMessage, HumanMessage
@@ -40,6 +43,7 @@ from backpack.graphs.tutor_models import (
     GeneratedAnchorProblem,
     ModuleExamples,
     TangentEvaluationResult,
+    TutorResponse,
 )
 from backpack.utils import clean_thinking_content
 from backpack.utils.context_builder import ContextBuilder
@@ -70,7 +74,8 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Follow the evaluator's assessment closely — it tells you what the student needs\n"
         "- If giving info, give enough to unblock, then follow with a question\n"
         "- If prior evidence exists, build on it — don't re-test demonstrated understanding\n"
-        "- 2-4 sentences typical, shorter or longer as the exchange calls for"
+        "- 2-4 sentences typical, shorter or longer as the exchange calls for\n"
+        "- If you reference a formula or formal definition, put it in the supplement field"
     ),
     "nudge": (
         "The student is close — they almost have it. Give a brief, targeted push.\n"
@@ -85,7 +90,8 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Don't ask them to recall it again — just give it and move on\n"
         "- Check: is this a context gap (forgot the scenario) or a knowledge gap "
         "  (forgot the formula)? If context gap, restate the scenario instead.\n"
-        "- 2-3 sentences typical"
+        "- 2-3 sentences typical\n"
+        "- If the fact is a formula, put it in the supplement field as a LaTeX equation"
     ),
     "explain": (
         "The student is genuinely stuck on this concept. Explain it clearly and "
@@ -96,7 +102,10 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Walk through the reasoning step by step if that helps\n"
         "- End with: \"Does that help? Any questions about this, or should we move on?\"\n"
         "- Don't quiz them on this concept again after explaining\n"
-        "- Stay conversational — \"here's how I think about it...\" not \"the answer is...\""
+        "- Stay conversational — \"here's how I think about it...\" not \"the answer is...\"\n"
+        "- Put any equations or formal definitions in the supplement field, not in the message\n"
+        "- For structural concepts (networks, trees, state machines, graphs), set image_prompt "
+        "  instead of trying to describe the structure in text"
     ),
     "transition": (
         "Look at the evaluator_guidance to determine how to frame this transition.\n"
@@ -236,6 +245,12 @@ class TutorState(TypedDict):
     # Worked examples / figures / definitions extracted from module material
     module_examples: List[Dict[str, Any]]
 
+    # Supplement from the most recent tutor_turn (equations, definitions, etc.)
+    latest_supplement: Optional[str]
+
+    # Generated image data URI from the most recent tutor_turn (if any)
+    latest_image_url: Optional[str]
+
 
 # ============================================================================
 # Helper: get current goal dict from state
@@ -257,15 +272,27 @@ def _get_recent_messages(state: TutorState, n: int = 8) -> List[Dict[str, str]]:
         if isinstance(msg, AIMessage) or (hasattr(msg, "type") and msg.type == "ai"):
             result.append({"role": "tutor", "content": msg.content or ""})
         elif isinstance(msg, HumanMessage) or (hasattr(msg, "type") and msg.type == "human"):
-            result.append({"role": "student", "content": msg.content or ""})
+            # Extract text only — multimodal messages (with whiteboard images) contain a list
+            content = _extract_text_content(msg.content if hasattr(msg, "content") else "")
+            result.append({"role": "student", "content": content})
     return result
 
 
+def _extract_text_content(content) -> str:
+    """Extract plain text from a message content that may be a string or multimodal list."""
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                return part.get("text", "")
+        return ""
+    return content if isinstance(content, str) else str(content)
+
+
 def _get_student_response(state: TutorState) -> str:
-    """Return the most recent human message content."""
+    """Return the most recent human message content (text only)."""
     for msg in reversed(state.get("messages", [])):
         if isinstance(msg, HumanMessage) or (hasattr(msg, "type") and msg.type == "human"):
-            return msg.content if hasattr(msg, "content") else str(msg)
+            return _extract_text_content(msg.content if hasattr(msg, "content") else "")
     return ""
 
 
@@ -404,6 +431,8 @@ def initialize_session(state: TutorState, config: RunnableConfig) -> dict:
         "is_tangent": False,
         "student_model": {},
         "module_examples": module_examples,
+        "latest_supplement": None,
+        "latest_image_url": None,
         "messages": [
             AIMessage(
                 content=f"Hey! Ready to work through '{module.name}' together? "
@@ -593,6 +622,34 @@ def _build_demonstrated_knowledge(state: TutorState) -> str:
     return "\n".join(lines) if lines else ""
 
 
+def _generate_image(prompt: str) -> Optional[str]:
+    """Call OpenAI image generation with the given prompt.
+
+    Returns a data URI (data:image/png;base64,...) on success, or None on failure.
+    Failures are logged as warnings and silently swallowed so the tutor turn still
+    completes — the image is just omitted from the response.
+
+    The model is configured via DEFAULT_IMAGE_MODEL env var (format: provider/model-name).
+    """
+    image_model_spec = os.getenv("DEFAULT_IMAGE_MODEL", "openai/dall-e-3")
+    model_name = image_model_spec.split("/", 1)[-1]
+    try:
+        client = openai.OpenAI(timeout=30.0)
+        response = client.images.generate(
+            model=model_name,
+            prompt=prompt,
+            n=1,
+            size="1024x1024",
+            response_format="b64_json",
+        )
+        b64 = response.data[0].b64_json
+        logger.info(f"Image generated (model={model_name}, prompt: {prompt[:60]}...)")
+        return f"data:image/png;base64,{b64}"
+    except Exception as e:
+        logger.warning(f"Image generation failed (model={model_name}): {e}")
+        return None
+
+
 def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     """Generate a tutor message and wait for student response.
 
@@ -635,6 +692,18 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         if opening_framing:
             behavioral_profile = BEHAVIORAL_PROFILES["opening"] + f"\n\nOpening framing hint (adapt this naturally): {opening_framing}"
 
+    # Check whether the most recent student message includes a whiteboard image.
+    # Done here so prompt_data can advertise the capability to the model.
+    last_student_image = None
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage):
+            if isinstance(msg.content, list):
+                for part in msg.content:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        last_student_image = part
+                        break
+            break  # only check the most recent human message
+
     prompt_data = {
         "goal": current_goal or {},
         "anchor_problem": state.get("anchor_problem", ""),
@@ -647,6 +716,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         "next_pending_competency": next_pending_competency,
         "module_examples": state.get("module_examples", [])[:8],
         "context_chunks": state.get("goal_contexts", {}).get(current_goal_id, [])[:3],
+        "has_student_drawing": last_student_image is not None,
     }
 
     system_prompt = Prompter(prompt_template="tutor/tutor_turn").render(data=prompt_data)
@@ -663,28 +733,73 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         )
 
     model = _run_model(_provision)
-    ai_msg = model.invoke(system_prompt)
-    message = clean_thinking_content(
-        ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
-    )
+
+    if last_student_image:
+        model_input = [HumanMessage(content=[
+            {"type": "text", "text": system_prompt},
+            last_student_image,
+        ])]
+        logger.info("tutor_turn: including student whiteboard image in model invocation")
+    else:
+        model_input = system_prompt
+
+    message = ""
+    supplement = None
+    image_prompt = None
+    try:
+        result: TutorResponse = model.with_structured_output(TutorResponse).invoke(model_input)
+        message = clean_thinking_content(result.message or "")
+        supplement = result.supplement or None
+        image_prompt = result.image_prompt or None
+        logger.info(
+            f"tutor_turn structured output ok | supplement={'yes (' + str(len(supplement)) + ' chars)' if supplement else 'null'}"
+            f" | image_prompt={'yes' if image_prompt else 'null'}"
+        )
+    except Exception as e:
+        logger.error(f"tutor_turn structured output failed: {e}")
+        raise
 
     if not message:
         message = "What are your thoughts on this?"
+
+    image_url = _generate_image(image_prompt) if image_prompt else None
 
     # INTERRUPT: pause and wait for the student's response
     student_response = interrupt(
         {
             "type": "tutor_turn",
             "message": message,
+            "supplement": supplement,
+            "image_url": image_url,
             "tutor_mode": tutor_mode,
             "goal_id": current_goal_id,
         }
     )
 
-    logger.info(f"Received student response ({tutor_mode}): {str(student_response)[:80]}...")
+    # Resume value is either a plain string or a dict {"text": ..., "whiteboard_png": ...}
+    if isinstance(student_response, dict):
+        student_text = student_response.get("text", "")
+        whiteboard_png = student_response.get("whiteboard_png")
+    else:
+        student_text = student_response
+        whiteboard_png = None
+
+    logger.info(f"Received student response ({tutor_mode}): {str(student_text)[:80]}...")
+
+    # Build HumanMessage — multimodal when a whiteboard PNG is attached
+    if whiteboard_png:
+        human_content = [
+            {"type": "text", "text": student_text},
+            {"type": "image_url", "image_url": {"url": whiteboard_png}},
+        ]
+        human_message = HumanMessage(content=human_content)
+    else:
+        human_message = HumanMessage(content=student_text)
 
     return {
-        "messages": [AIMessage(content=message), HumanMessage(content=student_response)],
+        "messages": [AIMessage(content=message), human_message],
+        "latest_supplement": supplement,
+        "latest_image_url": image_url,
     }
 
 

@@ -5,9 +5,10 @@ import { VoiceContextPayload, VoiceServerEvent } from '@/lib/types/api'
 
 interface UseVoiceSessionParams {
   getContextPayload: () => Promise<VoiceContextPayload | null>
+  getWhiteboardPng?: () => Promise<string | null>
   onFinalTranscript: (text: string) => void
   onAssistantTextDelta?: (text: string) => void
-  onAssistantTextFinal: (text: string) => void
+  onAssistantTextFinal: (text: string, supplement?: string | null, imageUrl?: string | null) => void
   onError?: (message: string) => void
 }
 
@@ -68,6 +69,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 export function useVoiceSession({
   getContextPayload,
+  getWhiteboardPng,
   onFinalTranscript,
   onAssistantTextDelta,
   onAssistantTextFinal,
@@ -85,6 +87,7 @@ export function useVoiceSession({
   const audioQueueRef = useRef<AudioClip[]>([])
   const pendingAudioChunksRef = useRef<Uint8Array[]>([])
   const pendingAudioMimeTypeRef = useRef('audio/mpeg')
+  const audioContextRef = useRef<AudioContext | null>(null)
 
   const concatUint8Arrays = useCallback((chunks: Uint8Array[]): Uint8Array => {
     if (chunks.length === 0) return new Uint8Array()
@@ -104,25 +107,28 @@ export function useVoiceSession({
     const next = audioQueueRef.current.shift()
     if (!next) return
 
+    const ctx = audioContextRef.current
+    if (!ctx) return
+
     isPlayingRef.current = true
-    const blob = new Blob([next.bytes], { type: next.mimeType || 'audio/mpeg' })
-    const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
-    audio.onended = () => {
-      URL.revokeObjectURL(url)
-      isPlayingRef.current = false
-      drainAudioQueue()
-    }
-    audio.onerror = () => {
-      URL.revokeObjectURL(url)
-      isPlayingRef.current = false
-      drainAudioQueue()
-    }
-    audio.play().catch(() => {
-      URL.revokeObjectURL(url)
-      isPlayingRef.current = false
-      drainAudioQueue()
-    })
+    // Copy the buffer before passing to decodeAudioData — some browsers detach it
+    ctx.decodeAudioData(
+      next.bytes.buffer.slice(0) as ArrayBuffer,
+      (buffer) => {
+        const source = ctx.createBufferSource()
+        source.buffer = buffer
+        source.connect(ctx.destination)
+        source.onended = () => {
+          isPlayingRef.current = false
+          drainAudioQueue()
+        }
+        source.start(0)
+      },
+      () => {
+        isPlayingRef.current = false
+        drainAudioQueue()
+      },
+    )
   }, [])
 
   const sendEvent = useCallback((type: string, payload?: Record<string, unknown>) => {
@@ -174,9 +180,11 @@ export function useVoiceSession({
           onAssistantTextDelta?.(delta)
         } else if (data.type === 'assistant_text_final') {
           const text = String(data.payload?.text ?? '')
+          const supplement = data.payload?.supplement ? String(data.payload.supplement) : null
+          const imageUrl = data.payload?.image_url ? String(data.payload.image_url) : null
           setIsAssistantThinking(false)
           setAssistantStreamingText('')
-          onAssistantTextFinal(text)
+          onAssistantTextFinal(text, supplement, imageUrl)
         } else if (data.type === 'assistant_audio_chunk') {
           const encoded = String(data.payload?.audio_base64 ?? '')
           if (encoded) {
@@ -213,6 +221,12 @@ export function useVoiceSession({
       if (typeof MediaRecorder === 'undefined') {
         throw new Error('MediaRecorder is not supported in this browser')
       }
+      // Create/resume AudioContext inside the user gesture so playback is unlocked
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext()
+      } else if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume()
+      }
       await ensureConnected()
       const context = await getContextPayload()
       if (!context) {
@@ -246,6 +260,15 @@ export function useVoiceSession({
   const stopRecording = useCallback(async () => {
     const recorder = mediaRecorderRef.current
     if (!recorder) return
+    // Capture whiteboard PNG before stopping (while user gesture is still active)
+    let whiteboardPng: string | null = null
+    if (getWhiteboardPng) {
+      try {
+        whiteboardPng = await getWhiteboardPng()
+      } catch {
+        // Non-fatal — proceed without image
+      }
+    }
     await new Promise<void>((resolve) => {
       recorder.onstop = async () => {
         try {
@@ -255,7 +278,9 @@ export function useVoiceSession({
             audio_base64: audioBase64,
             mime_type: blob.type || 'audio/webm',
           })
-          sendEvent('end_turn')
+          const endTurnPayload: Record<string, unknown> = {}
+          if (whiteboardPng) endTurnPayload.whiteboard_png = whiteboardPng
+          sendEvent('end_turn', endTurnPayload)
         } catch (error) {
           onError?.((error as Error).message || 'Unable to process recording')
         } finally {
@@ -267,7 +292,7 @@ export function useVoiceSession({
       }
       recorder.stop()
     })
-  }, [onError, sendEvent])
+  }, [getWhiteboardPng, onError, sendEvent])
 
   const cancelTurn = useCallback(() => {
     sendEvent('cancel_turn')

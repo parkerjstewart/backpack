@@ -24,6 +24,7 @@ class ModelConfig:
     DEFAULT_LARGE_CONTEXT = "anthropic/claude-sonnet-4-20250514"
     DEFAULT_TTS = "openai/tts-1"
     DEFAULT_STT = "openai/whisper-1"
+    DEFAULT_IMAGE = "openai/dall-e-3"
 
     default_chat_model: str
     default_transformation_model: Optional[str]
@@ -36,6 +37,7 @@ class ModelConfig:
     # Kept separate from default_chat_model so the low-latency tutor model
     # can be swapped independently (e.g. gpt-5-mini → gpt-5.2 no-reasoning).
     default_tutor_model: Optional[str]
+    default_image_model: str
 
     @classmethod
     def get_config(cls) -> "ModelConfig":
@@ -54,6 +56,7 @@ class ModelConfig:
             default_stt_model=os.getenv("DEFAULT_STT_MODEL", cls.DEFAULT_STT),
             default_tools_model=os.getenv("DEFAULT_TOOLS_MODEL") or None,
             default_tutor_model=os.getenv("DEFAULT_TUTOR_MODEL") or None,
+            default_image_model=os.getenv("DEFAULT_IMAGE_MODEL", cls.DEFAULT_IMAGE),
         )
 
     def get_provider_and_model(self, model_spec: str) -> tuple[str, str]:
