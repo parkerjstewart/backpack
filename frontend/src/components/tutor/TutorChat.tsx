@@ -39,6 +39,7 @@ interface TutorChatProps {
   sessionId?: string | null
   onAppendVoiceTurn?: (studentText: string, tutorText: string, supplement?: string | null, imageUrl?: string | null) => void
   canAttachDrawing?: boolean
+  getWhiteboardPng?: () => Promise<string | null>
   className?: string
 }
 
@@ -56,6 +57,7 @@ export function TutorChat({
   sessionId,
   onAppendVoiceTurn,
   canAttachDrawing = false,
+  getWhiteboardPng,
   className,
 }: TutorChatProps) {
   const { t } = useTranslation()
@@ -67,9 +69,18 @@ export function TutorChat({
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive.
+  // Scroll the Radix viewport directly to avoid scrollIntoView bubbling up
+  // to outer containers and collapsing the visible chat area.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (scrollAreaRef.current) {
+      const viewport = scrollAreaRef.current.querySelector(
+        '[data-radix-scroll-area-viewport]'
+      ) as HTMLElement | null
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight
+      }
+    }
   }, [messages])
 
   const handleSend = () => {
@@ -100,6 +111,7 @@ export function TutorChat({
     startRecording,
     stopRecording,
   } = useVoiceSession({
+    getWhiteboardPng,
     getContextPayload: async () => {
       if (!sessionId) return null
       return {

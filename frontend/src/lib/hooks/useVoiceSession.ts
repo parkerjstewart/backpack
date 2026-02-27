@@ -5,6 +5,7 @@ import { VoiceContextPayload, VoiceServerEvent } from '@/lib/types/api'
 
 interface UseVoiceSessionParams {
   getContextPayload: () => Promise<VoiceContextPayload | null>
+  getWhiteboardPng?: () => Promise<string | null>
   onFinalTranscript: (text: string) => void
   onAssistantTextDelta?: (text: string) => void
   onAssistantTextFinal: (text: string, supplement?: string | null, imageUrl?: string | null) => void
@@ -68,6 +69,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 export function useVoiceSession({
   getContextPayload,
+  getWhiteboardPng,
   onFinalTranscript,
   onAssistantTextDelta,
   onAssistantTextFinal,
@@ -258,6 +260,15 @@ export function useVoiceSession({
   const stopRecording = useCallback(async () => {
     const recorder = mediaRecorderRef.current
     if (!recorder) return
+    // Capture whiteboard PNG before stopping (while user gesture is still active)
+    let whiteboardPng: string | null = null
+    if (getWhiteboardPng) {
+      try {
+        whiteboardPng = await getWhiteboardPng()
+      } catch {
+        // Non-fatal — proceed without image
+      }
+    }
     await new Promise<void>((resolve) => {
       recorder.onstop = async () => {
         try {
@@ -267,7 +278,9 @@ export function useVoiceSession({
             audio_base64: audioBase64,
             mime_type: blob.type || 'audio/webm',
           })
-          sendEvent('end_turn')
+          const endTurnPayload: Record<string, unknown> = {}
+          if (whiteboardPng) endTurnPayload.whiteboard_png = whiteboardPng
+          sendEvent('end_turn', endTurnPayload)
         } catch (error) {
           onError?.((error as Error).message || 'Unable to process recording')
         } finally {
@@ -279,7 +292,7 @@ export function useVoiceSession({
       }
       recorder.stop()
     })
-  }, [onError, sendEvent])
+  }, [getWhiteboardPng, onError, sendEvent])
 
   const cancelTurn = useCallback(() => {
     sendEvent('cancel_turn')

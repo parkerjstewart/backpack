@@ -80,6 +80,7 @@ export default function TryTutorPage() {
     sessionId,
     latestDebugInfo,
     setExportCanvas,
+    getWhiteboardPng,
     initializeSession,
     sendMessage,
     resetSession,
@@ -263,6 +264,7 @@ export default function TryTutorPage() {
               sessionId={sessionId}
               onAppendVoiceTurn={appendVoiceTurn}
               canAttachDrawing={showCanvas}
+              getWhiteboardPng={showCanvas ? getWhiteboardPng : undefined}
               className="flex-1 min-w-0"
             />
           </div>

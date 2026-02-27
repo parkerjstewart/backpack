@@ -56,7 +56,7 @@ async def realtime_voice(websocket: WebSocket):
             elif event.type == "cancel_turn":
                 response_events = await voice_service.cancel_turn(state)
             elif event.type == "end_turn":
-                async for response_event in voice_service.stream_end_turn(state):
+                async for response_event in voice_service.stream_end_turn(state, event.payload or {}):
                     await websocket.send_json(response_event.model_dump())
                 continue
 

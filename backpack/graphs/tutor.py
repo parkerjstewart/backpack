@@ -718,11 +718,32 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
 
     model = _run_model(_provision)
 
+    # If the most recent student message included a whiteboard image, pass it to the
+    # model alongside the system prompt so the agent can actually see the drawing.
+    last_student_image = None
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage):
+            if isinstance(msg.content, list):
+                for part in msg.content:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        last_student_image = part
+                        break
+            break  # only check the most recent human message
+
+    if last_student_image:
+        model_input = [HumanMessage(content=[
+            {"type": "text", "text": system_prompt},
+            last_student_image,
+        ])]
+        logger.info("tutor_turn: including student whiteboard image in model invocation")
+    else:
+        model_input = system_prompt
+
     message = ""
     supplement = None
     image_prompt = None
     try:
-        result: TutorResponse = model.with_structured_output(TutorResponse).invoke(system_prompt)
+        result: TutorResponse = model.with_structured_output(TutorResponse).invoke(model_input)
         message = clean_thinking_content(result.message or "")
         supplement = result.supplement or None
         image_prompt = result.image_prompt or None
@@ -733,7 +754,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     except Exception as e:
         logger.warning(f"Structured output failed for tutor_turn ({e}); falling back to plain invoke")
         try:
-            ai_msg = model.invoke(system_prompt)
+            ai_msg = model.invoke(model_input)
             raw = clean_thinking_content(
                 ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
             )

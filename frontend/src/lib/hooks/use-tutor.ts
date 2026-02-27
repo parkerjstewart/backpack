@@ -44,6 +44,15 @@ export function useTutor({ moduleId }: UseTutorParams) {
     exportCanvasRef.current = fn
   }, [])
 
+  const getWhiteboardPng = useCallback(async (): Promise<string | null> => {
+    if (!exportCanvasRef.current) return null
+    try {
+      return await exportCanvasRef.current()
+    } catch {
+      return null
+    }
+  }, [])
+
   // Create session mutation
   const createSessionMutation = useMutation({
     mutationFn: () => tutorApi.createSession(moduleId),
@@ -186,6 +195,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
 
     // Canvas export function setter (ref-based — updates don't cause re-renders)
     setExportCanvas,
+    getWhiteboardPng,
 
     // Actions
     initializeSession,
