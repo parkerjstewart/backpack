@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { MarkdownViewEdit } from "@/components/ui/markdown-view-edit";
+import { CompetencyList, parseCompetencies } from "@/components/ui/competency-list";
 import {
   useModuleDraftStore,
   DraftLearningGoal,
@@ -15,7 +17,7 @@ import { cn } from "@/lib/utils";
 interface LearningGoalsPanelProps {
   isGenerating: boolean;
   onRegenerateLearningGoals: () => void;
-  isPulsingGoals?: boolean;
+  pulsingGoalIndices?: Set<number>;
 }
 
 interface ExpandableGoalProps {
@@ -35,19 +37,24 @@ function ExpandableGoal({
   onUpdate,
   onRemove,
 }: ExpandableGoalProps) {
+  const competencyCount = parseCompetencies(goal.competencies || "").length;
+  const takeawayPreview = goal.takeaways
+    ? goal.takeaways.replace(/[#*_`]/g, "").split(/\n+/)[0]?.trim().slice(0, 80)
+    : null;
+
   return (
     <div
       className={cn(
-        "border rounded-[16px] overflow-hidden transition-all",
+        "border rounded-[16px] overflow-hidden transition-[background-color] duration-300",
         "border-border",
-        isExpanded && "bg-white"
+        isExpanded ? "bg-white" : "bg-transparent"
       )}
     >
-      {/* Collapsed/Header view */}
+      {/* Header — always visible */}
       <div
         className={cn(
-          "flex items-center gap-2 p-4 cursor-pointer transition-colors",
-          !isExpanded && "hover:bg-secondary/50"
+          "flex items-center gap-2 p-4 cursor-pointer",
+          !isExpanded && "hover:bg-secondary/50 transition-colors duration-200"
         )}
         onClick={onToggle}
       >
@@ -61,25 +68,53 @@ function ExpandableGoal({
         >
           <ChevronDown
             className={cn(
-              "h-4 w-4 text-muted-foreground transition-transform",
+              "h-4 w-4 text-muted-foreground transition-transform duration-300",
               isExpanded && "rotate-180"
             )}
           />
         </button>
 
-        {isExpanded ? (
+        {/* Title — single Input element, styled as plain text when collapsed */}
+        <div className="flex-1 min-w-0">
           <Input
             value={goal.description}
             onChange={(e) => onUpdate({ description: e.target.value })}
-            onClick={(e) => e.stopPropagation()}
-            placeholder="Goal title"
-            className="flex-1 h-10 px-2 py-2 text-[18px] md:text-[18px] font-medium tracking-[-0.01em] border border-border rounded-lg bg-white placeholder:italic placeholder:text-primary/40 placeholder:font-normal"
+            onClick={(e) => isExpanded && e.stopPropagation()}
+            readOnly={!isExpanded}
+            tabIndex={isExpanded ? 0 : -1}
+            placeholder={isExpanded ? "Goal title" : `Goal ${index + 1}`}
+            className={cn(
+              "flex-1 w-full h-10 px-2 py-2 text-[18px] md:text-[18px] font-medium tracking-[-0.01em] transition-all duration-300",
+              "placeholder:italic placeholder:text-primary/40 placeholder:font-normal",
+              isExpanded
+                ? "border border-border rounded-lg bg-white cursor-text"
+                : "border-transparent bg-transparent rounded-lg cursor-pointer pointer-events-none select-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+            )}
           />
-        ) : (
-          <span className="flex-1 font-sans text-[18px] font-medium tracking-[-0.01em] text-primary truncate">
-            {goal.description || `Goal ${index + 1}`}
-          </span>
-        )}
+
+          {/* Collapsed subtitle row — fades out when expanded */}
+          <div
+            className={cn(
+              "flex items-center gap-2 overflow-hidden transition-all duration-300",
+              isExpanded ? "opacity-0 max-h-0 mt-0" : "opacity-100 max-h-6 mt-0.5"
+            )}
+          >
+            {competencyCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="text-[11px] px-1.5 py-0 h-4 font-normal text-muted-foreground"
+              >
+                {competencyCount} {competencyCount === 1 ? "competency" : "competencies"}
+              </Badge>
+            )}
+            {takeawayPreview && (
+              <span className="text-[12px] text-muted-foreground truncate">
+                {takeawayPreview}
+                {goal.takeaways && goal.takeaways.length > 80 ? "…" : ""}
+              </span>
+            )}
+          </div>
+        </div>
 
         <button
           type="button"
@@ -93,36 +128,42 @@ function ExpandableGoal({
         </button>
       </div>
 
-      {/* Expanded content */}
-      {isExpanded && (
-        <div className="px-6 pb-8 space-y-4">
-          {/* Takeaways section */}
-          <div className="space-y-2">
-            <h4 className="font-sans text-[14px] font-normal text-primary">
-              THE TAKEAWAYS
-            </h4>
-            <Textarea
-              value={goal.takeaways}
-              onChange={(e) => onUpdate({ takeaways: e.target.value })}
-              placeholder="Key concepts or skills to be learned..."
-              className="bg-white border border-border rounded-lg px-4 py-2 min-h-[40px] text-[14px] md:text-[14px] font-normal tracking-[-0.01em] text-primary placeholder:italic placeholder:text-primary/40 resize-none"
-            />
-          </div>
+      {/* Expanded content — always rendered, animated via CSS grid trick */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-300 ease-in-out",
+          isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="px-6 pb-8 space-y-4">
+            {/* Takeaways section */}
+            <div className="space-y-2">
+              <h4 className="font-sans text-[14px] font-normal text-primary">
+                THE TAKEAWAYS
+              </h4>
+              <MarkdownViewEdit
+                value={goal.takeaways || ""}
+                onChange={(val) => onUpdate({ takeaways: val })}
+                placeholder="Key concepts or skills to be learned..."
+                className="bg-white border border-border rounded-lg px-4 py-2 min-h-[80px] text-[14px] tracking-[-0.01em] text-primary"
+              />
+            </div>
 
-          {/* Competencies section */}
-          <div className="space-y-2">
-            <h4 className="font-sans text-[14px] font-normal text-primary">
-              COMPETENCIES
-            </h4>
-            <Textarea
-              value={goal.competencies}
-              onChange={(e) => onUpdate({ competencies: e.target.value })}
-              placeholder="Abilities to apply learned concepts..."
-              className="bg-white border border-border rounded-lg px-4 py-2 min-h-[40px] text-[14px] md:text-[14px] font-normal tracking-[-0.01em] text-primary placeholder:italic placeholder:text-primary/40 resize-none"
-            />
+            {/* Competencies section */}
+            <div className="space-y-2">
+              <h4 className="font-sans text-[14px] font-normal text-primary">
+                COMPETENCIES
+              </h4>
+              <CompetencyList
+                value={goal.competencies || ""}
+                onChange={(val) => onUpdate({ competencies: val })}
+                placeholder="Abilities to apply learned concepts..."
+              />
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -130,7 +171,7 @@ function ExpandableGoal({
 export function LearningGoalsPanel({
   isGenerating,
   onRegenerateLearningGoals,
-  isPulsingGoals = false,
+  pulsingGoalIndices = new Set(),
 }: LearningGoalsPanelProps) {
   const {
     learningGoals,
@@ -184,7 +225,7 @@ export function LearningGoalsPanel({
       <div
         className={cn(
           "flex-1 space-y-3 p-4 -m-1 border-2 rounded-[16px] transition-all",
-          (isGenerating || isPulsingGoals) ? "animate-border-pulse" : "border-input"
+          isGenerating ? "animate-border-pulse" : "border-input"
         )}
       >
         {/* Add new goal button */}
@@ -209,7 +250,7 @@ export function LearningGoalsPanel({
 
         {/* Goal cards */}
         {learningGoals.map((goal, index) => (
-          <div key={`goal-${index}`} className="group">
+          <div key={`goal-${index}`} className={cn("group", pulsingGoalIndices.has(index) && "animate-border-pulse rounded-[16px]")}>
             <ExpandableGoal
               goal={goal}
               index={index}

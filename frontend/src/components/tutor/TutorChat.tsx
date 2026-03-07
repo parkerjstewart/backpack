@@ -12,6 +12,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import { normalizeLatexDelimiters } from '@/lib/utils'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useVoiceSession } from '@/lib/hooks/useVoiceSession'
 import { toast } from 'sonner'
@@ -209,7 +210,7 @@ export function TutorChat({
                       {message.type === 'tutor' ? (
                         <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words">
                           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                            {message.content}
+                            {normalizeLatexDelimiters(message.content)}
                           </ReactMarkdown>
                         </div>
                       ) : (
@@ -225,7 +226,7 @@ export function TutorChat({
                             remarkPlugins={[remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeKatex]}
                           >
-                            {message.supplement}
+                            {normalizeLatexDelimiters(message.supplement)}
                           </ReactMarkdown>
                         </div>
                       </div>

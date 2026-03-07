@@ -23,6 +23,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { normalizeLatexDelimiters } from "@/lib/utils";
 import {
   SourceChatMessage,
   SourceChatContextIndicator,
@@ -518,7 +519,7 @@ function AIMessageContent({
           ),
         }}
       >
-        {markdownWithCompactRefs}
+        {normalizeLatexDelimiters(markdownWithCompactRefs)}
       </ReactMarkdown>
     </div>
   );

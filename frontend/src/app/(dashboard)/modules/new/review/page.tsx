@@ -344,14 +344,24 @@ export default function ModuleReviewPage() {
   };
 
   // Per-section pulse state for AI refinement animation
-  const [refinePulse, setRefinePulse] = useState({ overview: false, goals: false });
+  const [refinePulse, setRefinePulse] = useState<{ overview: boolean; goalIndices: Set<number> }>({ overview: false, goalIndices: new Set() });
   const refinePulseTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleRefinementApply = (newOverview: string, newGoals: LearningGoalPreview[]) => {
-    const overviewChanged = newOverview !== overview;
-    const goalsChanged =
-      newGoals.length !== learningGoals.length ||
-      newGoals.some((g, i) => g.description !== learningGoals[i]?.description);
+    const normalize = (s: string) => (s || '').trim().replace(/\s+/g, ' ')
+    const overviewChanged = normalize(newOverview) !== normalize(overview);
+    const changedGoalIndices = new Set<number>();
+    newGoals.forEach((g, i) => {
+      const existing = learningGoals[i]
+      if (
+        !existing ||
+        g.description !== existing.description ||
+        (g.takeaways || '') !== (existing.takeaways || '') ||
+        (g.competencies || '') !== (existing.competencies || '')
+      ) {
+        changedGoalIndices.add(i)
+      }
+    });
 
     setGeneratedContent(
       newOverview,
@@ -364,9 +374,9 @@ export default function ModuleReviewPage() {
     );
 
     if (refinePulseTimeout.current) clearTimeout(refinePulseTimeout.current);
-    setRefinePulse({ overview: overviewChanged, goals: goalsChanged });
+    setRefinePulse({ overview: overviewChanged, goalIndices: changedGoalIndices });
     refinePulseTimeout.current = setTimeout(
-      () => setRefinePulse({ overview: false, goals: false }),
+      () => setRefinePulse({ overview: false, goalIndices: new Set() }),
       1600
     );
   };
@@ -446,7 +456,7 @@ export default function ModuleReviewPage() {
                     <LearningGoalsPanel
                       isGenerating={isGeneratingGoals}
                       onRegenerateLearningGoals={handleRegenerateLearningGoals}
-                      isPulsingGoals={refinePulse.goals}
+                      pulsingGoalIndices={refinePulse.goalIndices}
                     />
                   </motion.div>
 

@@ -1,9 +1,9 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { MarkdownViewEdit } from "@/components/ui/markdown-view-edit";
 import { useModuleDraftStore } from "@/lib/stores/module-draft-store";
 import { Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -83,19 +83,28 @@ export function ModuleInfoPanel({
             )}
           </Button>
         </div>
-        <Textarea
-          id="draft-overview"
-          value={overview || ""}
-          onChange={(e) => setModuleField("overview", e.target.value)}
-          placeholder={
-            isGenerating ? "Generating overview..." : "Enter module overview..."
-          }
-          disabled={isGenerating}
-          className={cn(
-            "min-h-[361px] max-h-[361px] resize-none",
-            (isGenerating || isPulsingOverview) && "animate-border-pulse disabled:opacity-100"
-          )}
-        />
+        {isGenerating ? (
+          <div
+            className={cn(
+              "flex items-center justify-center rounded-md border border-input bg-white px-3 py-2 text-sm text-muted-foreground italic",
+              "min-h-[361px]",
+              (isGenerating || isPulsingOverview) && "animate-border-pulse"
+            )}
+          >
+            Generating overview...
+          </div>
+        ) : (
+          <MarkdownViewEdit
+            value={overview || ""}
+            onChange={(val) => setModuleField("overview", val)}
+            placeholder="Enter module overview..."
+            minHeight="361px"
+            className={cn(
+              "min-h-[361px]",
+              isPulsingOverview && "animate-border-pulse"
+            )}
+          />
+        )}
       </div>
 
       {/* Due Date */}
