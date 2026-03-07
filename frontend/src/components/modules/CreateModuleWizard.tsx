@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { LinkIcon, FileIcon, FileTextIcon, LoaderIcon, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 
 import { useModuleDraftStore } from "@/lib/stores/module-draft-store";
@@ -268,16 +269,28 @@ export function CreateModuleWizard({
             ))}
           </div>
 
-          {/* Done button — always rendered, variant swaps light→accent when input is non-empty */}
-          <Button
-            type="button"
-            variant={showDoneButton ? "accent" : "light"}
-            onClick={handleDone}
-            disabled={!showDoneButton || isSubmitting}
-            className="w-full"
-          >
-            Done
-          </Button>
+          <AnimatePresence initial={false}>
+            {mode !== "upload" && (
+              <motion.div
+                key="done-button"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: "easeInOut" }}
+                className="overflow-hidden"
+              >
+                <Button
+                  type="button"
+                  variant={showDoneButton ? "accent" : "light"}
+                  onClick={handleDone}
+                  disabled={!showDoneButton || isSubmitting}
+                  className="w-full"
+                >
+                  Done
+                </Button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </DialogContent>
     </Dialog>
