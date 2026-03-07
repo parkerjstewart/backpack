@@ -190,10 +190,9 @@ export default function SearchPage() {
                     value={askQuestion}
                     onChange={(e) => setAskQuestion(e.target.value)}
                     onKeyDown={(e) => {
-                      // Submit on Cmd/Ctrl+Enter
                       if (
-                        (e.metaKey || e.ctrlKey) &&
                         e.key === "Enter" &&
+                        !e.shiftKey &&
                         !ask.isStreaming &&
                         askQuestion.trim()
                       ) {

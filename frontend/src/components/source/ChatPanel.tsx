@@ -133,23 +133,13 @@ export function ChatPanel({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Detect platform for correct modifier key
-    const isMac =
-      typeof navigator !== "undefined" &&
-      navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
-    const isModifierPressed = isMac ? e.metaKey : e.ctrlKey;
-
-    if (e.key === "Enter" && isModifierPressed) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
-  // Detect platform for placeholder text
-  const isMac =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
-  const keyHint = isMac ? "⌘+Enter" : "Ctrl+Enter";
+  const keyHint = "Enter";
 
   const {
     isRecording,

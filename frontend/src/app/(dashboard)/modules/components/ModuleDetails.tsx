@@ -47,6 +47,16 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
   const [editingGoals, setEditingGoals] = useState<Record<string, { description: string; takeaways: string; competencies: string }>>({})
   const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null)
 
+  // Per-section pulse state for AI refinement animation
+  const [refinePulse, setRefinePulse] = useState({ overview: false, goals: false })
+  const refinePulseTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const triggerRefinePulse = (overview: boolean, goals: boolean) => {
+    if (refinePulseTimeout.current) clearTimeout(refinePulseTimeout.current)
+    setRefinePulse({ overview, goals })
+    refinePulseTimeout.current = setTimeout(() => setRefinePulse({ overview: false, goals: false }), 1600)
+  }
+
   const metadata = getModuleMetadata(module.id)
   // Use overview from API (module.overview) as primary source, fall back to local store
   const [overview, setOverview] = useState(module.overview || metadata.overview || '')
@@ -192,6 +202,11 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
   const handleRefinementApply = async (newOverview: string, newGoals: LearningGoalPreview[]) => {
     if (!canEdit) return
 
+    const overviewChanged = newOverview !== overview
+    const goalsChanged =
+      newGoals.length !== learningGoals.length ||
+      newGoals.some((g, i) => g.description !== learningGoals[i]?.description)
+
     // Update overview
     setOverview(newOverview)
     updateModule.mutate({ id: module.id, data: { overview: newOverview } })
@@ -212,6 +227,8 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
 
     // Refresh the learning goals query
     queryClient.invalidateQueries({ queryKey: QUERY_KEYS.learningGoals(module.id) })
+
+    triggerRefinePulse(overviewChanged, goalsChanged)
   }
 
   const isGeneratingGoals = generateLearningGoals.isPending
@@ -275,6 +292,7 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
               rows={6}
               disabled={generateOverview.isPending || !canEdit}
               readOnly={!canEdit}
+              className={cn(refinePulse.overview && 'animate-border-pulse disabled:opacity-100')}
             />
           </div>
 
@@ -309,7 +327,7 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
       </Card>
 
       {/* Learning Goals Section */}
-      <Card>
+      <Card className={cn(refinePulse.goals && 'animate-border-pulse')}>
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Learning Goals</CardTitle>

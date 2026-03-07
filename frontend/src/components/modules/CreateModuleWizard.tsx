@@ -27,12 +27,15 @@ interface CreateModuleWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   courseId?: string;
+  /** When true, skips draft reset and closes instead of navigating to the review page. */
+  addMoreMode?: boolean;
 }
 
 export function CreateModuleWizard({
   open,
   onOpenChange,
   courseId,
+  addMoreMode = false,
 }: CreateModuleWizardProps) {
   const router = useRouter();
   const { addPendingSource, setTargetCourseId, reset } = useModuleDraftStore();
@@ -60,13 +63,15 @@ export function CreateModuleWizard({
   useEffect(() => {
     if (open && !hasInitialized.current) {
       hasInitialized.current = true;
-      reset();
-      if (courseId) setTargetCourseId(courseId);
+      if (!addMoreMode) {
+        reset();
+        if (courseId) setTargetCourseId(courseId);
+      }
     }
     if (!open) {
       hasInitialized.current = false;
     }
-  }, [open, courseId, reset, setTargetCourseId]);
+  }, [open, courseId, reset, setTargetCourseId, addMoreMode]);
 
   const handleClose = () => {
     setMode("upload");
@@ -78,7 +83,9 @@ export function CreateModuleWizard({
 
   const navigateToReview = () => {
     handleClose();
-    router.push("/modules/new/review");
+    if (!addMoreMode) {
+      router.push("/modules/new/review");
+    }
   };
 
   const handleFilesChange = async (newFiles: File[]) => {
@@ -190,7 +197,9 @@ export function CreateModuleWizard({
         </DialogClose>
 
         {/* Title centered */}
-        <DialogTitle className="text-center">Create Module</DialogTitle>
+        <DialogTitle className="text-center">
+          {addMoreMode ? "Add More Files" : "Create Module"}
+        </DialogTitle>
 
         {/* Content area */}
         <div className="space-y-8">

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 interface LearningGoalsPanelProps {
   isGenerating: boolean;
   onRegenerateLearningGoals: () => void;
+  isPulsingGoals?: boolean;
 }
 
 interface ExpandableGoalProps {
@@ -129,6 +130,7 @@ function ExpandableGoal({
 export function LearningGoalsPanel({
   isGenerating,
   onRegenerateLearningGoals,
+  isPulsingGoals = false,
 }: LearningGoalsPanelProps) {
   const {
     learningGoals,
@@ -150,7 +152,7 @@ export function LearningGoalsPanel({
   };
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col min-h-0">
+    <div className="flex-1 min-w-0 flex flex-col">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between mb-4">
         <Label className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800">
@@ -181,8 +183,8 @@ export function LearningGoalsPanel({
       {/* Goals list - scrollable (p-1 -m-1 to prevent border/ring clipping) */}
       <div
         className={cn(
-          "flex-1 min-h-0 overflow-y-auto space-y-3 p-4 -m-1 border rounded-[16px] transition-all",
-          isGenerating ? "animate-border-pulse" : "border-input"
+          "flex-1 space-y-3 p-4 -m-1 border-2 rounded-[16px] transition-all",
+          (isGenerating || isPulsingGoals) ? "animate-border-pulse" : "border-input"
         )}
       >
         {/* Add new goal button */}

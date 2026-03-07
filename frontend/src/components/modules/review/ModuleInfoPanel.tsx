@@ -11,11 +11,13 @@ import { cn } from "@/lib/utils";
 interface ModuleInfoPanelProps {
   isGenerating: boolean;
   onRegenerateOverview: () => void;
+  isPulsingOverview?: boolean;
 }
 
 export function ModuleInfoPanel({
   isGenerating,
   onRegenerateOverview,
+  isPulsingOverview = false,
 }: ModuleInfoPanelProps) {
   const { name, overview, dueDate, prerequisites, setModuleField } =
     useModuleDraftStore();
@@ -24,7 +26,7 @@ export function ModuleInfoPanel({
   const isNameGenerating = isGenerating && !name;
 
   return (
-    <div className="w-[236px] flex-shrink-0 overflow-y-auto space-y-6">
+    <div className="w-[236px] flex-shrink-0 space-y-6">
       {/* Name */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -91,7 +93,7 @@ export function ModuleInfoPanel({
           disabled={isGenerating}
           className={cn(
             "min-h-[361px] max-h-[361px] resize-none",
-            isGenerating && "animate-border-pulse disabled:opacity-100"
+            (isGenerating || isPulsingOverview) && "animate-border-pulse disabled:opacity-100"
           )}
         />
       </div>

@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
+import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 
 import { Button, IconButton } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useModuleDraftStore } from "@/lib/stores/module-draft-store";
 import { useSourcePolling } from "@/lib/hooks/use-source-polling";
 import {
@@ -15,7 +15,7 @@ import {
   useGenerateLearningGoals,
   useCreateModule,
 } from "@/lib/hooks/use-modules";
-import { useBatchDeleteSources } from "@/lib/hooks/use-sources";
+import { useBatchDeleteSources, useDeleteSource } from "@/lib/hooks/use-sources";
 import { modulesApi } from "@/lib/api/modules";
 import { useCoursesStore } from "@/lib/stores/courses-store";
 
@@ -23,10 +23,13 @@ import { ModuleInfoPanel } from "@/components/modules/review/ModuleInfoPanel";
 import { LearningGoalsPanel } from "@/components/modules/review/LearningGoalsPanel";
 import { FilesSidebar } from "@/components/modules/review/FilesSidebar";
 import { DeleteDraftModal } from "@/components/modules/review/DeleteDraftModal";
-import { SourceDetailContent } from "@/components/source/SourceDetailContent";
-import { AddFilesDialog } from "@/components/modules/review/AddFilesDialog";
+import { SourceDialog } from "@/components/source/SourceDialog";
+import { CreateModuleWizard } from "@/components/modules/CreateModuleWizard";
 import { RefinementChat } from "@/components/modules/RefinementChat";
+import { UploadStage } from "@/components/modules/review/UploadStage";
 import { LearningGoalPreview } from "@/lib/types/api";
+
+type ReviewPhase = "uploading" | "revealed";
 
 export default function ModuleReviewPage() {
   const router = useRouter();
@@ -40,6 +43,7 @@ export default function ModuleReviewPage() {
     setModuleField,
     setGeneratedContent,
     setDraftModuleId,
+    removePendingSource,
     reset,
   } = useModuleDraftStore();
 
@@ -56,8 +60,10 @@ export default function ModuleReviewPage() {
   const generateLearningGoals = useGenerateLearningGoals();
   const createModule = useCreateModule();
   const batchDelete = useBatchDeleteSources();
+  const deleteSource = useDeleteSource();
 
   // Local state
+  const [phase, setPhase] = useState<ReviewPhase>("uploading");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showAddFilesDialog, setShowAddFilesDialog] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -80,7 +86,6 @@ export default function ModuleReviewPage() {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (pendingSourceIds.length > 0) {
         e.preventDefault();
-        // Modern browsers show a generic message, but we set returnValue for compatibility
         e.returnValue =
           "You have unsaved changes. Are you sure you want to leave?";
         return e.returnValue;
@@ -92,6 +97,16 @@ export default function ModuleReviewPage() {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [pendingSourceIds.length]);
+
+  // Transition to revealed phase after all sources complete (with delay for UX)
+  useEffect(() => {
+    if (allComplete && phase === "uploading") {
+      const timer = setTimeout(() => {
+        setPhase("revealed");
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [allComplete, phase]);
 
   // Auto-generate content when all sources complete
   useEffect(() => {
@@ -125,7 +140,6 @@ export default function ModuleReviewPage() {
         }
       );
     }
-    // Note: previewContent.mutate is stable, we only need isPending for the condition
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     allComplete,
@@ -137,7 +151,6 @@ export default function ModuleReviewPage() {
   // Detect when new files are added and track them
   useEffect(() => {
     if (pendingSourceIds.length > previousSourceCountRef.current) {
-      // New files were added - track the new ones
       const newFiles = pendingSourceIds.slice(previousSourceCountRef.current);
       newFiles.forEach((id) => pendingNewFilesRef.current.add(id));
     }
@@ -149,17 +162,14 @@ export default function ModuleReviewPage() {
     if (pendingNewFilesRef.current.size === 0) return;
     if (previewContent.isPending) return;
 
-    // Check if all new files have completed
     const newFilesComplete = Array.from(pendingNewFilesRef.current).every(
       (id) =>
         sourceStatuses[id] === "completed" || sourceStatuses[id] === "failed"
     );
 
     if (newFilesComplete && allComplete) {
-      // Clear the pending new files set
       pendingNewFilesRef.current.clear();
 
-      // Regenerate content with all sources
       previewContent.mutate(
         { source_ids: pendingSourceIds, name: name || "" },
         {
@@ -222,11 +232,9 @@ export default function ModuleReviewPage() {
   // Handle cancel/delete draft
   const handleDeleteDraft = async () => {
     try {
-      // Delete all uploaded sources
       if (pendingSourceIds.length > 0) {
         await batchDelete.mutateAsync(pendingSourceIds);
       }
-      // Reset store and navigate away
       reset();
       router.push("/courses");
     } catch (error) {
@@ -234,7 +242,6 @@ export default function ModuleReviewPage() {
     }
   };
 
-  // Handle X button click
   const handleClose = () => {
     setShowDeleteModal(true);
   };
@@ -247,7 +254,6 @@ export default function ModuleReviewPage() {
 
     setIsConfirming(true);
     try {
-      // 1. Create the module as a draft
       const createdModule = await createModule.mutateAsync({
         name: name.trim(),
         description: overview || undefined,
@@ -255,14 +261,12 @@ export default function ModuleReviewPage() {
         status: "draft",
       });
 
-      // 2. Link sources to the module
       await Promise.allSettled(
         pendingSourceIds.map((sourceId) =>
           modulesApi.addSource(createdModule.id, sourceId)
         )
       );
 
-      // 3. Create learning goals if any
       for (const goal of learningGoals) {
         await modulesApi.createLearningGoal(createdModule.id, {
           description: goal.description,
@@ -272,17 +276,14 @@ export default function ModuleReviewPage() {
         });
       }
 
-      // 4. Update overview if set
       if (overview) {
         await modulesApi.update(createdModule.id, { overview });
       }
 
-      // 5. Assign to course if created from course page
       if (targetCourseId) {
         assignModuleToCourse(createdModule.id, targetCourseId);
       }
 
-      // 6. Store draft module ID and navigate to try-tutor page
       setDraftModuleId(createdModule.id);
       router.push(`/modules/${encodeURIComponent(createdModule.id)}/try-tutor`);
     } catch (error: unknown) {
@@ -296,18 +297,62 @@ export default function ModuleReviewPage() {
     }
   };
 
-  // Handle adding more files
+  const handleRemoveSource = async (sourceIdWithPrefix: string) => {
+    const fullId = sourceIdWithPrefix.includes(':')
+      ? sourceIdWithPrefix
+      : `source:${sourceIdWithPrefix}`;
+
+    setSelectedSourceId(null);
+    try {
+      await deleteSource.mutateAsync(fullId);
+    } catch {
+      // ignore — source may already be deleted
+    }
+    removePendingSource(fullId);
+
+    // Re-trigger generation with remaining sources
+    const remaining = pendingSourceIds.filter((id) => id !== fullId);
+    if (remaining.length > 0) {
+      previewContent.mutate(
+        { source_ids: remaining, name: name || "" },
+        {
+          onSuccess: (data) => {
+            setGeneratedContent(
+              data.overview,
+              data.learning_goals.map((g, i) => ({
+                description: g.description,
+                takeaways: g.takeaways || "",
+                competencies: g.competencies || "",
+                order: i,
+              }))
+            );
+            if (!name && data.name) {
+              setModuleField("name", data.name);
+            }
+          },
+        }
+      );
+    }
+  };
+
   const handleAddMore = () => {
     setShowAddFilesDialog(true);
   };
 
-  // Handle source click (view source details)
   const handleSourceClick = (sourceId: string) => {
     setSelectedSourceId(sourceId);
   };
 
-  // Handle refinement chat changes
+  // Per-section pulse state for AI refinement animation
+  const [refinePulse, setRefinePulse] = useState({ overview: false, goals: false });
+  const refinePulseTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleRefinementApply = (newOverview: string, newGoals: LearningGoalPreview[]) => {
+    const overviewChanged = newOverview !== overview;
+    const goalsChanged =
+      newGoals.length !== learningGoals.length ||
+      newGoals.some((g, i) => g.description !== learningGoals[i]?.description);
+
     setGeneratedContent(
       newOverview,
       newGoals.map((g, i) => ({
@@ -317,6 +362,13 @@ export default function ModuleReviewPage() {
         order: i,
       }))
     );
+
+    if (refinePulseTimeout.current) clearTimeout(refinePulseTimeout.current);
+    setRefinePulse({ overview: overviewChanged, goals: goalsChanged });
+    refinePulseTimeout.current = setTimeout(
+      () => setRefinePulse({ overview: false, goals: false }),
+      1600
+    );
   };
 
   const isGeneratingAll = previewContent.isPending;
@@ -325,13 +377,12 @@ export default function ModuleReviewPage() {
   const isGenerating = isGeneratingOverview || isGeneratingGoals;
   const canConfirm = name.trim().length > 0 && !isGenerating && !isConfirming;
 
-  // Don't render if no sources (will redirect)
   if (pendingSourceIds.length === 0) {
     return null;
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-screen bg-background">
       {/* Header */}
       <header className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b">
         <div className="flex items-center gap-4">
@@ -344,75 +395,134 @@ export default function ModuleReviewPage() {
         </div>
       </header>
 
-      {/* Content - 3 column layout */}
-      <main className="flex-1 min-h-0 overflow-hidden p-6">
-        <div className="flex flex-col gap-6 h-full">
-          <div className="flex gap-6 flex-1 min-h-0">
-            {/* Left column - Module info */}
-            <ModuleInfoPanel
-              isGenerating={isGeneratingOverview}
-              onRegenerateOverview={handleRegenerateOverview}
-            />
+      {/* Content */}
+      <LayoutGroup>
+        <main className="flex-1 min-h-0 overflow-y-auto p-6 flex flex-col">
+          <AnimatePresence mode="popLayout" initial={false}>
+            {phase === "uploading" ? (
+              <motion.div
+                key="upload-stage"
+                className="flex-1"
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.35, ease: "easeIn" }}
+              >
+                <UploadStage
+                  sourceIds={pendingSourceIds}
+                  sourceStatuses={sourceStatuses}
+                  progressPercentage={progressPercentage}
+                  onAddMore={handleAddMore}
+                  onSourceClick={handleSourceClick}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="review-stage"
+                className="flex flex-col gap-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="flex gap-6">
+                  {/* Left column - Module info */}
+                  <motion.div
+                    initial={{ opacity: 0, x: -16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.4, delay: 0.15, ease: "easeOut" }}
+                  >
+                    <ModuleInfoPanel
+                      isGenerating={isGeneratingOverview}
+                      onRegenerateOverview={handleRegenerateOverview}
+                      isPulsingOverview={refinePulse.overview}
+                    />
+                  </motion.div>
 
-            {/* Center column - Learning goals */}
-            <LearningGoalsPanel
-              isGenerating={isGeneratingGoals}
-              onRegenerateLearningGoals={handleRegenerateLearningGoals}
-            />
+                  {/* Center column - Learning goals */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 0.25, ease: "easeOut" }}
+                    className="flex-1 min-w-0 flex flex-col min-h-0"
+                  >
+                    <LearningGoalsPanel
+                      isGenerating={isGeneratingGoals}
+                      onRegenerateLearningGoals={handleRegenerateLearningGoals}
+                      isPulsingGoals={refinePulse.goals}
+                    />
+                  </motion.div>
 
-            {/* Right column - Files sidebar */}
-            <FilesSidebar
-              sourceIds={pendingSourceIds}
-              sourceStatuses={sourceStatuses}
-              onAddMore={handleAddMore}
-              onSourceClick={handleSourceClick}
-            />
-          </div>
+                  {/* Right column - Files sidebar (thumbnails animate here via layoutId) */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.3, delay: 0.1 }}
+                  >
+                    <FilesSidebar
+                      sourceIds={pendingSourceIds}
+                      sourceStatuses={sourceStatuses}
+                      onAddMore={handleAddMore}
+                      onSourceClick={handleSourceClick}
+                    />
+                  </motion.div>
+                </div>
 
-          {/* Refinement Chat */}
-          {allComplete && hasGeneratedContent && (
-            <div className="flex-shrink-0">
-              <RefinementChat
-                currentOverview={overview || ""}
-                currentGoals={learningGoals.map((g) => ({
-                  description: g.description,
-                  takeaways: g.takeaways || "",
-                  competencies: g.competencies || "",
-                }))}
-                onApplyChanges={handleRefinementApply}
-                sourceIds={pendingSourceIds}
-              />
-            </div>
-          )}
-        </div>
-      </main>
+                {/* Refinement Chat */}
+                {allComplete && hasGeneratedContent && (
+                  <motion.div
+                    className="flex-shrink-0"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 0.4 }}
+                  >
+                    <RefinementChat
+                      currentOverview={overview || ""}
+                      currentGoals={learningGoals.map((g) => ({
+                        description: g.description,
+                        takeaways: g.takeaways || "",
+                        competencies: g.competencies || "",
+                      }))}
+                      onApplyChanges={handleRefinementApply}
+                      sourceIds={pendingSourceIds}
+                    />
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </main>
+      </LayoutGroup>
 
-      {/* Footer with progress and confirm */}
-      <footer className="flex-shrink-0 px-6 py-4 border-t bg-background">
-        <div className="flex items-center gap-4">
-          {/* Progress bar */}
-          <div className="flex-1">
-            <Progress
-              value={allComplete ? 100 : progressPercentage}
-              className="h-2"
-            />
-          </div>
-
-          {/* Progress percentage */}
-          <span className="font-sans text-[14px] font-normal text-teal-800 w-12 text-right">
-            {allComplete ? 100 : progressPercentage}%
-          </span>
-
-          {/* Confirm button */}
-          <Button
-            variant="accent"
-            onClick={handleConfirm}
-            disabled={!canConfirm}
+      {/* Footer - hidden during upload phase, slides in on reveal */}
+      <AnimatePresence>
+        {phase === "revealed" && (
+          <motion.footer
+            className="flex-shrink-0 px-6 py-4 border-t bg-background"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.1, ease: "easeOut" }}
           >
-            {isConfirming ? "Creating..." : "Try Tutor"}
-          </Button>
-        </div>
-      </footer>
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <Progress
+                  value={allComplete ? 100 : progressPercentage}
+                  className="h-2"
+                />
+              </div>
+
+              <span className="font-sans text-[14px] font-normal text-teal-800 w-12 text-right">
+                {allComplete ? 100 : progressPercentage}%
+              </span>
+
+              <Button
+                variant="accent"
+                onClick={handleConfirm}
+                disabled={!canConfirm}
+              >
+                {isConfirming ? "Creating..." : "Try Tutor"}
+              </Button>
+            </div>
+          </motion.footer>
+        )}
+      </AnimatePresence>
 
       {/* Delete draft confirmation modal */}
       <DeleteDraftModal
@@ -423,26 +533,20 @@ export default function ModuleReviewPage() {
       />
 
       {/* Source detail dialog */}
-      <Dialog
+      <SourceDialog
         open={selectedSourceId !== null}
         onOpenChange={(open) => {
           if (!open) setSelectedSourceId(null);
         }}
-      >
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-          {selectedSourceId && (
-            <SourceDetailContent
-              sourceId={selectedSourceId}
-              onClose={() => setSelectedSourceId(null)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+        sourceId={selectedSourceId}
+        onRemove={handleRemoveSource}
+      />
 
-      {/* Add more files dialog */}
-      <AddFilesDialog
+      {/* Add more files — reuses the create-module wizard without resetting state */}
+      <CreateModuleWizard
         open={showAddFilesDialog}
         onOpenChange={setShowAddFilesDialog}
+        addMoreMode
       />
     </div>
   );
