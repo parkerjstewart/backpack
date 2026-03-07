@@ -145,7 +145,8 @@ async def repo_create(table: str, data: Dict[str, Any]) -> Dict[str, Any]:
     data["updated"] = datetime.now(timezone.utc)
     async def _execute():
         async with db_connection() as connection:
-            return parse_record_ids(await connection.insert(table, data))
+            result = parse_record_ids(await connection.insert(table, data))
+            return result[0] if isinstance(result, list) else result
 
     try:
         return await _run_with_transient_db_retry(_execute, "repo_create")
