@@ -46,7 +46,7 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
   const generateLearningGoals = useGenerateLearningGoals()
 
   // Local state for editing goals
-  const [editingGoals, setEditingGoals] = useState<Record<string, { description: string; takeaways: string; competencies: string }>>({})
+  const [editingGoals, setEditingGoals] = useState<Record<string, { description: string; title: string; takeaways: string; competencies: string }>>({})
   const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null)
 
   // Per-section pulse state for AI refinement animation
@@ -116,11 +116,12 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
 
   // Initialize editing state when goals load
   useEffect(() => {
-    const newEditingState: Record<string, { description: string; takeaways: string; competencies: string }> = {}
+    const newEditingState: Record<string, { description: string; title: string; takeaways: string; competencies: string }> = {}
     learningGoals.forEach((goal) => {
       if (!(goal.id in editingGoals)) {
         newEditingState[goal.id] = {
           description: goal.description,
+          title: goal.title || '',
           takeaways: goal.takeaways || '',
           competencies: goal.competencies || '',
         }
@@ -185,6 +186,7 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
     if (!editing) return
     const updates: Record<string, string> = {}
     if (editing.description !== goal.description) updates.description = editing.description
+    if (editing.title !== (goal.title || '')) updates.title = editing.title
     if (editing.takeaways !== (goal.takeaways || '')) updates.takeaways = editing.takeaways
     if (editing.competencies !== (goal.competencies || '')) updates.competencies = editing.competencies
     if (Object.keys(updates).length > 0) {
@@ -231,6 +233,7 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
     for (let i = 0; i < newGoals.length; i++) {
       await modulesApi.createLearningGoal(module.id, {
         description: newGoals[i].description,
+        title: newGoals[i].title || undefined,
         takeaways: newGoals[i].takeaways,
         competencies: newGoals[i].competencies,
         order: i,
@@ -405,40 +408,39 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
                       />
                       {isExpanded ? (
                         <Input
-                          value={editing?.description ?? goal.description}
+                          value={editing?.title ?? goal.title ?? ''}
                           onChange={(e) =>
                             setEditingGoals((prev) => ({
                               ...prev,
-                              [goal.id]: { ...(prev[goal.id] || { description: goal.description, takeaways: goal.takeaways || '', competencies: goal.competencies || '' }), description: e.target.value },
+                              [goal.id]: { ...(prev[goal.id] || { description: goal.description, title: goal.title || '', takeaways: goal.takeaways || '', competencies: goal.competencies || '' }), title: e.target.value },
                             }))
                           }
                           onBlur={() => handleUpdateLearningGoal(goal)}
                           onClick={(e) => e.stopPropagation()}
-                          placeholder="Learning goal description"
-                          className="flex-1"
+                          placeholder="Short title (e.g. Logistic Regression)"
+                          className="flex-1 font-medium"
                           readOnly={!canEdit}
                           disabled={!canEdit}
                         />
                       ) : (
                         <div className="flex-1 min-w-0">
-                          <span className="block text-sm truncate">
-                            {editing?.description || goal.description || 'Untitled goal'}
+                          <span className="block text-sm font-medium truncate">
+                            {editing?.title || goal.title || editing?.description || goal.description || 'Untitled goal'}
                           </span>
                           <div className="flex items-center gap-2 mt-0.5">
+                            {(editing?.description || goal.description) && (
+                              <span className="text-[11px] text-muted-foreground italic truncate">
+                                {editing?.description || goal.description}
+                              </span>
+                            )}
                             {parseCompetencies(editing?.competencies || goal.competencies || '').length > 0 && (
                               <Badge
                                 variant="secondary"
-                                className="text-[11px] px-1.5 py-0 h-4 font-normal text-muted-foreground"
+                                className="flex-shrink-0 text-[11px] px-1.5 py-0 h-4 font-normal text-muted-foreground"
                               >
                                 {parseCompetencies(editing?.competencies || goal.competencies || '').length}{' '}
                                 {parseCompetencies(editing?.competencies || goal.competencies || '').length === 1 ? 'competency' : 'competencies'}
                               </Badge>
-                            )}
-                            {(editing?.takeaways || goal.takeaways) && (
-                              <span className="text-[11px] text-muted-foreground truncate">
-                                {(editing?.takeaways || goal.takeaways || '').replace(/[#*_`]/g, '').split(/\n+/)[0]?.trim().slice(0, 80)}
-                                {(editing?.takeaways || goal.takeaways || '').length > 80 ? '…' : ''}
-                              </span>
                             )}
                           </div>
                         </div>
@@ -459,9 +461,27 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
                       )}
                     </div>
 
-                    {/* Expanded content: takeaways & competencies */}
+                    {/* Expanded content: title, takeaways & competencies */}
                     {isExpanded && (
                       <div className="px-6 pb-4 space-y-4">
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium uppercase text-muted-foreground">
+                            Description
+                          </Label>
+                          <Input
+                            value={editing?.description ?? goal.description}
+                            onChange={(e) =>
+                              setEditingGoals((prev) => ({
+                                ...prev,
+                                [goal.id]: { ...(prev[goal.id] || { description: goal.description, title: goal.title || '', takeaways: goal.takeaways || '', competencies: goal.competencies || '' }), description: e.target.value },
+                              }))
+                            }
+                            onBlur={() => handleUpdateLearningGoal(goal)}
+                            placeholder="Full description of this learning goal..."
+                            readOnly={!canEdit}
+                            disabled={!canEdit}
+                          />
+                        </div>
                         <div className="space-y-2">
                           <Label className="text-xs font-medium uppercase text-muted-foreground">
                             Takeaways

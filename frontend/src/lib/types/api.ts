@@ -9,6 +9,7 @@ export interface ModuleResponse {
   updated: string
   source_count: number
   note_count: number
+  learning_goal_count: number
   course_id?: string | null
 }
 
@@ -83,6 +84,7 @@ export interface LearningGoalResponse {
   id: string
   module: string
   description: string
+  title: string
   takeaways: string
   competencies: string
   order: number
@@ -92,6 +94,7 @@ export interface LearningGoalResponse {
 
 export interface CreateLearningGoalRequest {
   description: string
+  title?: string
   takeaways?: string
   competencies?: string
   order?: number
@@ -99,6 +102,7 @@ export interface CreateLearningGoalRequest {
 
 export interface UpdateLearningGoalRequest {
   description?: string
+  title?: string
   takeaways?: string
   competencies?: string
   order?: number
@@ -315,6 +319,7 @@ export interface PreviewModuleContentRequest {
 
 export interface LearningGoalPreview {
   description: string
+  title: string
   takeaways: string
   competencies: string
 }

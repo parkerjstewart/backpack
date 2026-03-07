@@ -38,9 +38,6 @@ function ExpandableGoal({
   onRemove,
 }: ExpandableGoalProps) {
   const competencyCount = parseCompetencies(goal.competencies || "").length;
-  const takeawayPreview = goal.takeaways
-    ? goal.takeaways.replace(/[#*_`]/g, "").split(/\n+/)[0]?.trim().slice(0, 80)
-    : null;
 
   return (
     <div
@@ -53,14 +50,14 @@ function ExpandableGoal({
       {/* Header — always visible */}
       <div
         className={cn(
-          "flex items-center gap-2 p-4 cursor-pointer",
+          "flex items-start gap-2 p-3 cursor-pointer",
           !isExpanded && "hover:bg-secondary/50 transition-colors duration-200"
         )}
         onClick={onToggle}
       >
         <button
           type="button"
-          className="flex-shrink-0 p-0.5 hover:bg-secondary rounded"
+          className="flex-shrink-0 mt-2 p-0.5 hover:bg-secondary rounded"
           onClick={(e) => {
             e.stopPropagation();
             onToggle();
@@ -74,17 +71,17 @@ function ExpandableGoal({
           />
         </button>
 
-        {/* Title — single Input element, styled as plain text when collapsed */}
+        {/* Title / description */}
         <div className="flex-1 min-w-0">
           <Input
-            value={goal.description}
-            onChange={(e) => onUpdate({ description: e.target.value })}
+            value={goal.title || ""}
+            onChange={(e) => onUpdate({ title: e.target.value })}
             onClick={(e) => isExpanded && e.stopPropagation()}
             readOnly={!isExpanded}
             tabIndex={isExpanded ? 0 : -1}
-            placeholder={isExpanded ? "Goal title" : `Goal ${index + 1}`}
+            placeholder={isExpanded ? "Short title (e.g. Logistic Regression)" : goal.description || `Goal ${index + 1}`}
             className={cn(
-              "flex-1 w-full h-10 px-2 py-2 text-[18px] md:text-[18px] font-medium tracking-[-0.01em] transition-all duration-300",
+              "flex-1 w-full h-8 px-2 py-1 text-[18px] md:text-[18px] font-medium tracking-[-0.01em] transition-all duration-300",
               "placeholder:italic placeholder:text-primary/40 placeholder:font-normal",
               isExpanded
                 ? "border border-border rounded-lg bg-white cursor-text"
@@ -92,26 +89,27 @@ function ExpandableGoal({
             )}
           />
 
-          {/* Collapsed subtitle row — fades out when expanded */}
+          {/* Collapsed subtitle area — fades out when expanded */}
           <div
             className={cn(
-              "flex items-center gap-2 overflow-hidden transition-all duration-300",
-              isExpanded ? "opacity-0 max-h-0 mt-0" : "opacity-100 max-h-6 mt-0.5"
+              "overflow-hidden transition-all duration-300",
+              isExpanded ? "opacity-0 max-h-0" : "opacity-100 max-h-12 mt-0.5"
             )}
           >
-            {competencyCount > 0 && (
-              <Badge
-                variant="secondary"
-                className="text-[11px] px-1.5 py-0 h-4 font-normal text-muted-foreground"
-              >
-                {competencyCount} {competencyCount === 1 ? "competency" : "competencies"}
-              </Badge>
-            )}
-            {takeawayPreview && (
-              <span className="text-[12px] text-muted-foreground truncate">
-                {takeawayPreview}
-                {goal.takeaways && goal.takeaways.length > 80 ? "…" : ""}
+            {goal.description && (
+              <span className="block px-2 text-[13px] text-muted-foreground italic truncate leading-tight">
+                {goal.description}
               </span>
+            )}
+            {competencyCount > 0 && (
+              <div className="px-2 mt-1">
+                <Badge
+                  variant="secondary"
+                  className="text-[11px] px-1.5 py-0 h-4 font-normal text-muted-foreground"
+                >
+                  {competencyCount} {competencyCount === 1 ? "competency" : "competencies"}
+                </Badge>
+              </div>
             )}
           </div>
         </div>
@@ -122,7 +120,7 @@ function ExpandableGoal({
             e.stopPropagation();
             onRemove();
           }}
-          className="flex-shrink-0 p-1 hover:bg-secondary rounded opacity-0 group-hover:opacity-100 transition-opacity"
+          className="flex-shrink-0 mt-1 p-1 hover:bg-secondary rounded opacity-0 group-hover:opacity-100 transition-opacity"
         >
           <X className="h-4 w-4 text-muted-foreground hover:text-destructive" />
         </button>
@@ -137,6 +135,19 @@ function ExpandableGoal({
       >
         <div className="overflow-hidden">
           <div className="px-6 pb-8 space-y-4">
+            {/* Description */}
+            <div className="space-y-1">
+              <h4 className="font-sans text-[14px] font-normal text-primary">
+                DESCRIPTION
+              </h4>
+              <Input
+                value={goal.description}
+                onChange={(e) => onUpdate({ description: e.target.value })}
+                placeholder="Full description of this learning goal..."
+                className="text-sm"
+              />
+            </div>
+
             {/* Takeaways section */}
             <div className="space-y-2">
               <h4 className="font-sans text-[14px] font-normal text-primary">

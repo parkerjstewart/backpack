@@ -127,6 +127,7 @@ export default function ModuleReviewPage() {
               data.overview,
               data.learning_goals.map((g, i) => ({
                 description: g.description,
+                title: g.title || "",
                 takeaways: g.takeaways || "",
                 competencies: g.competencies || "",
                 order: i,
@@ -181,6 +182,7 @@ export default function ModuleReviewPage() {
               data.overview,
               data.learning_goals.map((g, i) => ({
                 description: g.description,
+                title: g.title || "",
                 takeaways: g.takeaways || "",
                 competencies: g.competencies || "",
                 order: i,
@@ -219,6 +221,7 @@ export default function ModuleReviewPage() {
             overview,
             data.learning_goals.map((g, i) => ({
               description: g.description,
+              title: g.title || "",
               takeaways: g.takeaways || "",
               competencies: g.competencies || "",
               order: i,
@@ -270,6 +273,7 @@ export default function ModuleReviewPage() {
       for (const goal of learningGoals) {
         await modulesApi.createLearningGoal(createdModule.id, {
           description: goal.description,
+          title: goal.title || undefined,
           takeaways: goal.takeaways || undefined,
           competencies: goal.competencies || undefined,
           order: goal.order,
@@ -321,6 +325,7 @@ export default function ModuleReviewPage() {
               data.overview,
               data.learning_goals.map((g, i) => ({
                 description: g.description,
+                title: g.title || "",
                 takeaways: g.takeaways || "",
                 competencies: g.competencies || "",
                 order: i,
@@ -367,6 +372,7 @@ export default function ModuleReviewPage() {
       newOverview,
       newGoals.map((g, i) => ({
         description: g.description,
+        title: g.title || "",
         takeaways: g.takeaways || "",
         competencies: g.competencies || "",
         order: i,

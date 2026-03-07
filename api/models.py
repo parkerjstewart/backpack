@@ -35,12 +35,14 @@ class ModuleResponse(BaseModel):
     updated: str
     source_count: int
     note_count: int
+    learning_goal_count: int = 0
     course_id: Optional[str] = None
 
 
 # Learning Goals models
 class LearningGoalPreview(BaseModel):
     description: str = Field(..., description="Action-verb learning goal statement")
+    title: str = Field(default="", description="Short 2-4 word topic label for badge display")
     takeaways: str = Field(default="", description="Key concepts or ideas")
     competencies: str = Field(default="", description="Demonstrable skills")
     anchor_examples: str = Field(
@@ -55,6 +57,7 @@ class LearningGoalCreate(LearningGoalPreview):
 
 class LearningGoalUpdate(BaseModel):
     description: Optional[str] = Field(None, description="Learning goal description")
+    title: Optional[str] = Field(None, description="Short 2-4 word topic label for badge display")
     takeaways: Optional[str] = Field(
         None, description="Key concepts or skills to be learned"
     )
@@ -71,6 +74,7 @@ class LearningGoalResponse(BaseModel):
     id: str
     module: str
     description: str
+    title: str = ""
     takeaways: str = ""
     competencies: str = ""
     anchor_examples: str = ""
