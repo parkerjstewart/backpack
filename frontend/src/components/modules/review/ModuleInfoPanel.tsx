@@ -28,7 +28,7 @@ export function ModuleInfoPanel({
   return (
     <div className="w-[236px] flex-shrink-0 space-y-6">
       {/* Name */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <Label
             htmlFor="draft-name"
@@ -54,7 +54,7 @@ export function ModuleInfoPanel({
       </div>
 
       {/* Overview */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <Label
             htmlFor="draft-overview"
@@ -108,7 +108,7 @@ export function ModuleInfoPanel({
       </div>
 
       {/* Due Date */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         <Label
           htmlFor="draft-due-date"
           className="text-title text-teal-800"
@@ -124,7 +124,7 @@ export function ModuleInfoPanel({
       </div>
 
       {/* Prerequisites */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         <Label
           htmlFor="draft-prerequisites"
           className="text-title text-teal-800"

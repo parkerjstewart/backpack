@@ -204,7 +204,7 @@ export function LearningGoalsPanel({
   };
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col">
+    <div className="h-full min-w-0 flex flex-col min-h-0">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between mb-4">
         <Label className="text-title text-teal-800">
@@ -232,14 +232,8 @@ export function LearningGoalsPanel({
         </Button>
       </div>
 
-      {/* Goals list - scrollable (p-1 -m-1 to prevent border/ring clipping) */}
-      <div
-        className={cn(
-          "flex-1 space-y-3 p-4 -m-1 border-2 rounded-md transition-all",
-          isGenerating ? "animate-border-pulse" : "border-input"
-        )}
-      >
-        {/* Add new goal button */}
+      {/* Add new goal button - fixed above scroll area */}
+      <div className="flex-shrink-0 mb-3">
         <Button
           type="button"
           variant="outline"
@@ -250,42 +244,50 @@ export function LearningGoalsPanel({
           <Plus className="h-4 w-4" />
           Add new goal
         </Button>
+      </div>
 
-        {/* Loading state - empty */}
-        {isGenerating && learningGoals.length === 0 && (
-          <div className="flex items-center justify-center py-8 font-sans text-[16px] font-normal tracking-[-0.01em] text-teal-800">
-            <Loader2 className="h-5 w-5 mr-2 animate-spin text-sage-700" />
-            Generating learning goals...
-          </div>
-        )}
+      {/* Goals list - scrollable */}
+      <div className="relative flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 overflow-y-auto space-y-3">
+          {/* Loading state - empty */}
+          {isGenerating && learningGoals.length === 0 && (
+            <div className="flex items-center justify-center py-8 font-sans text-[16px] font-normal tracking-[-0.01em] text-teal-800">
+              <Loader2 className="h-5 w-5 mr-2 animate-spin text-sage-700" />
+              Generating learning goals...
+            </div>
+          )}
 
-        {/* Goal cards */}
-        {learningGoals.map((goal, index) => (
-          <div key={`goal-${index}`} className={cn("group", pulsingGoalIndices.has(index) && "animate-border-pulse rounded-md")}>
-            <ExpandableGoal
-              goal={goal}
-              index={index}
-              isExpanded={expandedIndex === index}
-              onToggle={() => handleToggle(index)}
-              onUpdate={(updates) => updateLearningGoal(index, updates)}
-              onRemove={() => {
-                removeLearningGoal(index);
-                if (expandedIndex === index) {
-                  setExpandedIndex(null);
-                } else if (expandedIndex !== null && expandedIndex > index) {
-                  setExpandedIndex(expandedIndex - 1);
-                }
-              }}
-            />
-          </div>
-        ))}
+          {/* Goal cards */}
+          {learningGoals.map((goal, index) => (
+            <div key={`goal-${index}`} className={cn("group", pulsingGoalIndices.has(index) && "animate-border-pulse rounded-md")}>
+              <ExpandableGoal
+                goal={goal}
+                index={index}
+                isExpanded={expandedIndex === index}
+                onToggle={() => handleToggle(index)}
+                onUpdate={(updates) => updateLearningGoal(index, updates)}
+                onRemove={() => {
+                  removeLearningGoal(index);
+                  if (expandedIndex === index) {
+                    setExpandedIndex(null);
+                  } else if (expandedIndex !== null && expandedIndex > index) {
+                    setExpandedIndex(expandedIndex - 1);
+                  }
+                }}
+              />
+            </div>
+          ))}
 
-        {/* Empty state */}
-        {!isGenerating && learningGoals.length === 0 && (
-          <p className="font-sans text-[16px] font-normal tracking-[-0.01em] text-teal-800 text-center py-4">
-            No learning goals yet. Add a goal or wait for auto-generation.
-          </p>
-        )}
+          {/* Empty state */}
+          {!isGenerating && learningGoals.length === 0 && (
+            <p className="font-sans text-[16px] font-normal tracking-[-0.01em] text-teal-800 text-center py-4">
+              No learning goals yet. Add a goal or wait for auto-generation.
+            </p>
+          )}
+        </div>
+
+        {/* Scroll fade indicator */}
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent" />
       </div>
     </div>
   );
