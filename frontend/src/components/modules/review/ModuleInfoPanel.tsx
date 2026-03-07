@@ -32,7 +32,7 @@ export function ModuleInfoPanel({
         <div className="flex items-center justify-between">
           <Label
             htmlFor="draft-name"
-            className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+            className="text-title text-teal-800"
           >
             Name
           </Label>
@@ -58,7 +58,7 @@ export function ModuleInfoPanel({
         <div className="flex items-center justify-between">
           <Label
             htmlFor="draft-overview"
-            className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+            className="text-title text-teal-800"
           >
             Overview
           </Label>
@@ -111,7 +111,7 @@ export function ModuleInfoPanel({
       <div className="space-y-2">
         <Label
           htmlFor="draft-due-date"
-          className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+          className="text-title text-teal-800"
         >
           Due Date
         </Label>
@@ -127,7 +127,7 @@ export function ModuleInfoPanel({
       <div className="space-y-2">
         <Label
           htmlFor="draft-prerequisites"
-          className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+          className="text-title text-teal-800"
         >
           Prerequisites
         </Label>

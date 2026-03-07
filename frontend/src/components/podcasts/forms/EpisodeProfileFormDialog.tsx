@@ -201,7 +201,7 @@ export function EpisodeProfileFormDialog({
                 {...register("name")}
               />
               {errors.name ? (
-                <p className="text-xs text-red-600">{errors.name.message}</p>
+                <p className="text-xs text-destructive">{errors.name.message}</p>
               ) : null}
             </div>
 
@@ -216,7 +216,7 @@ export function EpisodeProfileFormDialog({
                 autoComplete="off"
               />
               {errors.num_segments ? (
-                <p className="text-xs text-red-600">
+                <p className="text-xs text-destructive">
                   {errors.num_segments.message}
                 </p>
               ) : null}
@@ -264,7 +264,7 @@ export function EpisodeProfileFormDialog({
                     </SelectContent>
                   </Select>
                   {errors.speaker_config ? (
-                    <p className="text-xs text-red-600">
+                    <p className="text-xs text-destructive">
                       {errors.speaker_config.message}
                     </p>
                   ) : null}
@@ -290,7 +290,7 @@ export function EpisodeProfileFormDialog({
                   autoComplete="off"
                 />
                 {errors.outline_provider ? (
-                  <p className="text-xs text-red-600">
+                  <p className="text-xs text-destructive">
                     {errors.outline_provider.message}
                   </p>
                 ) : null}
@@ -305,7 +305,7 @@ export function EpisodeProfileFormDialog({
                   autoComplete="off"
                 />
                 {errors.outline_model ? (
-                  <p className="text-xs text-red-600">
+                  <p className="text-xs text-destructive">
                     {errors.outline_model.message}
                   </p>
                 ) : null}
@@ -332,7 +332,7 @@ export function EpisodeProfileFormDialog({
                   autoComplete="off"
                 />
                 {errors.transcript_provider ? (
-                  <p className="text-xs text-red-600">
+                  <p className="text-xs text-destructive">
                     {errors.transcript_provider.message}
                   </p>
                 ) : null}
@@ -347,7 +347,7 @@ export function EpisodeProfileFormDialog({
                   autoComplete="off"
                 />
                 {errors.transcript_model ? (
-                  <p className="text-xs text-red-600">
+                  <p className="text-xs text-destructive">
                     {errors.transcript_model.message}
                   </p>
                 ) : null}
@@ -366,7 +366,7 @@ export function EpisodeProfileFormDialog({
               {...register("default_briefing")}
             />
             {errors.default_briefing ? (
-              <p className="text-xs text-red-600">
+              <p className="text-xs text-destructive">
                 {errors.default_briefing.message}
               </p>
             ) : null}

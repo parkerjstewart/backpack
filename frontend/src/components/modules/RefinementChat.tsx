@@ -49,7 +49,7 @@ export function RefinementChat({
 
   return (
     <div className={cn(
-      'border rounded-[16px] p-4 flex flex-col gap-3 overflow-hidden',
+      'border rounded-md p-4 flex flex-col gap-3 overflow-hidden',
       isPending ? 'animate-border-pulse' : 'border-border'
     )}>
       <div className="flex items-center gap-1.5 text-lg font-medium text-foreground">

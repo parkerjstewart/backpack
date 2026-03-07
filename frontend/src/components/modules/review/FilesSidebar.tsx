@@ -31,7 +31,7 @@ export function FilesSidebar({
 
   return (
     <div className="w-16 flex-shrink-0 flex flex-col">
-      <Label className="flex-shrink-0 font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800 mb-4 block">
+      <Label className="flex-shrink-0 text-title text-teal-800 mb-4 block">
         Files
       </Label>
 

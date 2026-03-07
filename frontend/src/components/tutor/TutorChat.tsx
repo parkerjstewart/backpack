@@ -208,7 +208,7 @@ export function TutorChat({
                       }`}
                     >
                       {message.type === 'tutor' ? (
-                        <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words">
+                        <div className="prose prose-sm prose-neutral max-w-none break-words">
                           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                             {normalizeLatexDelimiters(message.content)}
                           </ReactMarkdown>
@@ -221,7 +221,7 @@ export function TutorChat({
                     </div>
                     {message.type === 'tutor' && message.supplement && (
                       <div className="rounded-lg border bg-background px-4 py-3 text-sm">
-                        <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                        <div className="prose prose-sm prose-neutral max-w-none">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeKatex]}
@@ -309,7 +309,7 @@ export function TutorChat({
         <div className="flex-shrink-0 p-4 space-y-3 border-t">
           {isSessionComplete ? (
             <div className="text-center text-muted-foreground py-2">
-              <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-green-600" />
+              <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-success-fg" />
               <p className="text-sm">{t.tutor.sessionComplete}</p>
             </div>
           ) : (

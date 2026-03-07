@@ -173,7 +173,7 @@ function FinalAnswerContent({
   const LinkComponent = createReferenceLinkComponent(onReferenceClick)
 
   return (
-    <div className="prose prose-sm max-w-none dark:prose-invert break-words prose-a:break-all prose-p:leading-relaxed prose-headings:mt-4 prose-headings:mb-2">
+    <div className="prose prose-sm max-w-none break-words prose-a:break-all prose-p:leading-relaxed prose-headings:mt-4 prose-headings:mb-2">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

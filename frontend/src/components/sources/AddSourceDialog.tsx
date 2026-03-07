@@ -16,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { WizardContainer, WizardStep } from '@/components/ui/wizard-container'
 import { SourceTypeStep, parseAndValidateUrls } from './steps/SourceTypeStep'
-import { ModulesStep } from './steps/NotebooksStep'
+import { ModulesStep } from './steps/ModulesStep'
 import { ProcessingStep } from './steps/ProcessingStep'
 import { useModules } from '@/lib/hooks/use-modules'
 import { useTransformations } from '@/lib/hooks/use-transformations'
@@ -513,7 +513,7 @@ export function AddSourceDialog({
 
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-4">
-                    <span className="flex items-center gap-1.5 text-green-600">
+                    <span className="flex items-center gap-1.5 text-success-fg">
                       <CheckCircleIcon className="h-4 w-4" />
                       {batchProgress.completed} {t.common.completed}
                     </span>

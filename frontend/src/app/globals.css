@@ -46,6 +46,10 @@
   --color-sage-700: var(--sage-700);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-success-fg: var(--success-fg);
+  --color-warning-fg: var(--warning-fg);
+  --color-info: var(--info);
+  --color-info-fg: var(--info-fg);
   --color-teal-800: var(--teal-800);
   --color-teal-300: var(--teal-300);
   --color-teal-200: var(--teal-200);
@@ -99,7 +103,7 @@
   --sidebar-foreground: #14302e;
   --sidebar-primary: #14302e;
   --sidebar-primary-foreground: #fefcf6;
-  --sidebar-accent: #ecf1d5;
+  --sidebar-accent: #dce9b1;
   --sidebar-accent-foreground: #14302e;
   --sidebar-border: rgba(20, 48, 46, 0.4);
   --sidebar-ring: #d4e297;
@@ -107,6 +111,10 @@
   /* Semantic colors */
   --success: #97e2a1;
   --warning: #f7c99d;
+  --success-fg: #16a34a;
+  --warning-fg: #d97706;
+  --info: #2563eb;
+  --info-fg: #2563eb;
   --sage-300: #ade297;
   --sage-500: #d4e297;
   --sage-700: #445956;
@@ -147,12 +155,6 @@
   --text-2xl: 1.75rem;   /* 28px */
   --text-3xl: 2rem;      /* 32px */
   --text-4xl: 3rem;      /* 48px - Hero titles */
-  
-  /* Layout spacing tokens */
-  --page-padding: 32px;
-  --section-gap: 32px;
-  --card-gap: 24px;
-  --item-gap: 12px;
   
   /* Hero spacing */
   --hero-padding-top: 48px;
@@ -217,17 +219,40 @@
     cursor: pointer !important;
   }
 
-  /* Typography utility classes */
-  .heading {
-    font-family: var(--font-heading);
-  }
-
   h1, h2, h3 {
     font-family: var(--font-heading);
     letter-spacing: -0.02em;
   }
 
-  /* Typography scale from Figma */
+
+  /* Generating/loading state animation for input borders */
+  @keyframes border-pulse {
+    0%, 100% {
+      border-color: var(--sage-700);
+      box-shadow: 0 0 0 0 rgba(212, 226, 151, 0), 0 0 8px 0 rgba(88, 143, 88, 0.3);
+    }
+    50% {
+      border-color: var(--sage-300);
+      box-shadow: 0 0 0 6px rgba(212, 226, 151, 0.5), 0 0 20px 4px rgba(173, 226, 151, 0.4);
+    }
+  }
+
+  .animate-border-pulse {
+    animation: border-pulse 1.5s ease-in-out infinite;
+    border-width: 2px !important;
+    border-color: var(--sage-500) !important;
+  }
+
+  /* Excalidraw: suppress welcome-screen robot illustration */
+  .excalidraw .welcome-screen-decor-bottom-left,
+  .excalidraw .welcome-screen-decor-bottom-right {
+    display: none;
+  }
+}
+
+/* Typography scale from Figma — in @layer utilities so these override
+   component base styles like the Label's built-in text-sm */
+@layer utilities {
   .text-hero {
     font-family: var(--font-heading);
     font-size: var(--text-4xl);
@@ -256,24 +281,10 @@
     letter-spacing: -0.01em;
   }
 
-  .text-subtitle {
-    font-family: var(--font-heading);
-    font-size: var(--text-lg);
-    font-weight: 400;
-    letter-spacing: -0.01em;
-  }
-
   .text-title-sm {
     font-family: var(--font-sans);
     font-size: var(--text-lg);
     font-weight: 500;
-    letter-spacing: -0.01em;
-  }
-
-  .text-body-lg {
-    font-family: var(--font-sans);
-    font-size: var(--text-lg);
-    font-weight: 400;
     letter-spacing: -0.01em;
   }
 
@@ -289,29 +300,5 @@
     font-size: var(--text-sm);
     font-weight: 400;
     letter-spacing: 0;
-  }
-
-  /* Generating/loading state animation for input borders */
-  @keyframes border-pulse {
-    0%, 100% {
-      border-color: var(--sage-700);
-      box-shadow: 0 0 0 0 rgba(212, 226, 151, 0), 0 0 8px 0 rgba(88, 143, 88, 0.3);
-    }
-    50% {
-      border-color: var(--sage-300);
-      box-shadow: 0 0 0 6px rgba(212, 226, 151, 0.5), 0 0 20px 4px rgba(173, 226, 151, 0.4);
-    }
-  }
-
-  .animate-border-pulse {
-    animation: border-pulse 1.5s ease-in-out infinite;
-    border-width: 2px !important;
-    border-color: var(--sage-500) !important;
-  }
-
-  /* Excalidraw: suppress welcome-screen robot illustration */
-  .excalidraw .welcome-screen-decor-bottom-left,
-  .excalidraw .welcome-screen-decor-bottom-right {
-    display: none;
   }
 }

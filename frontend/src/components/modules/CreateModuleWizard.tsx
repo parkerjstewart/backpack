@@ -186,9 +186,9 @@ export function CreateModuleWizard({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      {/* Match CreateCourseDialog shell: rounded-[32px], direct padding, custom top-left X */}
+      {/* Match CreateCourseDialog shell: rounded-xl, direct padding, custom top-left X */}
       <DialogContent
-        className="max-w-[806px] rounded-[32px] px-16 pt-8 pb-16"
+        className="max-w-[806px] rounded-xl px-16 pt-8 pb-16"
         showCloseButton={false}
       >
         {/* Custom top-left close button — matches CreateCourseDialog pattern */}
@@ -257,7 +257,7 @@ export function CreateModuleWizard({
                 onClick={() => setMode(value)}
                 disabled={isSubmitting}
                 className={cn(
-                  "inline-flex flex-1 items-center justify-center gap-2 h-12 px-8 rounded-[16px] text-base font-medium tracking-[-0.01em] transition-colors disabled:pointer-events-none disabled:opacity-50",
+                  "inline-flex flex-1 items-center justify-center gap-2 h-12 px-8 rounded-md text-base font-medium tracking-[-0.01em] transition-colors disabled:pointer-events-none disabled:opacity-50",
                   value === mode
                     ? "bg-primary text-primary-foreground"
                     : "border border-border text-teal-800 hover:bg-secondary"

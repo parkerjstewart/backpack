@@ -42,7 +42,7 @@ function ExpandableGoal({
   return (
     <div
       className={cn(
-        "border rounded-[16px] overflow-hidden transition-[background-color] duration-300",
+        "border rounded-md overflow-hidden transition-[background-color] duration-300",
         "border-border",
         isExpanded ? "bg-white" : "bg-transparent"
       )}
@@ -207,7 +207,7 @@ export function LearningGoalsPanel({
     <div className="flex-1 min-w-0 flex flex-col">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between mb-4">
-        <Label className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800">
+        <Label className="text-title text-teal-800">
           Learning Goals
         </Label>
         <Button
@@ -235,7 +235,7 @@ export function LearningGoalsPanel({
       {/* Goals list - scrollable (p-1 -m-1 to prevent border/ring clipping) */}
       <div
         className={cn(
-          "flex-1 space-y-3 p-4 -m-1 border-2 rounded-[16px] transition-all",
+          "flex-1 space-y-3 p-4 -m-1 border-2 rounded-md transition-all",
           isGenerating ? "animate-border-pulse" : "border-input"
         )}
       >
@@ -261,7 +261,7 @@ export function LearningGoalsPanel({
 
         {/* Goal cards */}
         {learningGoals.map((goal, index) => (
-          <div key={`goal-${index}`} className={cn("group", pulsingGoalIndices.has(index) && "animate-border-pulse rounded-[16px]")}>
+          <div key={`goal-${index}`} className={cn("group", pulsingGoalIndices.has(index) && "animate-border-pulse rounded-md")}>
             <ExpandableGoal
               goal={goal}
               index={index}

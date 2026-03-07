@@ -111,7 +111,7 @@ function ExpandedCard({
     >
       {/* Title row: module name left, source count right */}
       <div className="flex items-baseline justify-between gap-4">
-        <h3 className="text-title-sm">
+        <h3 className="text-title-sm text-teal-800">
           {module.name}
         </h3>
         <span className="shrink-0 text-body-sm text-teal-800">
@@ -175,7 +175,7 @@ function CollapsedCard({
     >
       {/* Title row: module name left, struggling badge + source/goal counts right */}
       <div className="flex items-baseline justify-between gap-4">
-        <h3 className="text-title-sm">
+        <h3 className="text-title-sm text-teal-800">
           {module.name}
         </h3>
         <div className="flex items-center gap-3 shrink-0">

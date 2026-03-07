@@ -56,7 +56,7 @@ const SOURCE_TYPE_ICONS = {
 const getStatusConfig = (t: TranslationKeys) => ({
   new: {
     icon: Clock,
-    color: 'text-blue-600',
+    color: 'text-info',
     bgColor: 'bg-blue-50',
     borderColor: 'border-blue-200',
     label: t.sources.statusProcessing,
@@ -64,7 +64,7 @@ const getStatusConfig = (t: TranslationKeys) => ({
   },
   queued: {
     icon: Clock,
-    color: 'text-blue-600',
+    color: 'text-info',
     bgColor: 'bg-blue-50',
     borderColor: 'border-blue-200',
     label: t.sources.statusQueued,
@@ -72,7 +72,7 @@ const getStatusConfig = (t: TranslationKeys) => ({
   },
   running: {
     icon: Loader2,
-    color: 'text-blue-600',
+    color: 'text-info',
     bgColor: 'bg-blue-50',
     borderColor: 'border-blue-200',
     label: t.sources.statusProcessing,
@@ -80,7 +80,7 @@ const getStatusConfig = (t: TranslationKeys) => ({
   },
   completed: {
     icon: CheckCircle,
-    color: 'text-green-600',
+    color: 'text-success-fg',
     bgColor: 'bg-green-50',
     borderColor: 'border-green-200',
     label: t.sources.statusCompleted,
@@ -88,7 +88,7 @@ const getStatusConfig = (t: TranslationKeys) => ({
   },
   failed: {
     icon: AlertTriangle,
-    color: 'text-red-600',
+    color: 'text-destructive',
     bgColor: 'bg-red-50',
     borderColor: 'border-red-200',
     label: t.sources.statusFailed,
@@ -248,7 +248,7 @@ export function SourceCard({
   return (
     <Card
       className={cn(
-        'transition-all duration-200 hover:shadow-md group relative cursor-pointer border border-border/60 dark:border-border/40',
+        'transition-all duration-200 hover:shadow-md group relative cursor-pointer border border-border/60',
         className
       )}
       onClick={handleCardClick}
@@ -396,7 +396,7 @@ export function SourceCard({
                   handleDelete()
                 }}
                 disabled={!onDelete}
-                className="text-red-600 focus:text-red-600"
+                className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 {t.sources.deleteSource}

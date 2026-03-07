@@ -215,7 +215,7 @@ export function SourceDetailContent({
   if (error || !source) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
-        <p className="text-red-500">{error || t.sources.notFound}</p>
+        <p className="text-destructive">{error || t.sources.notFound}</p>
       </div>
     )
   }
@@ -291,7 +291,7 @@ export function SourceDetailContent({
                   href={source.asset.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:underline text-blue-600 truncate"
+                  className="hover:underline text-info truncate"
                 >
                   {source.asset.url}
                 </a>
@@ -306,7 +306,7 @@ export function SourceDetailContent({
                     : undefined
                 }
               >
-                <div className="prose prose-sm prose-neutral max-w-none prose-headings:font-semibold prose-a:text-blue-600 prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
+                <div className="prose prose-sm prose-neutral max-w-none prose-headings:font-semibold prose-a:text-info prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
