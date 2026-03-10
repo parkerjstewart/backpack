@@ -41,6 +41,8 @@ interface TutorChatProps {
   onAppendVoiceTurn?: (studentText: string, tutorText: string, supplement?: string | null, imageUrl?: string | null) => void
   canAttachDrawing?: boolean
   getWhiteboardPng?: () => Promise<string | null>
+  suggestions?: string[]
+  isSuggestionsLoading?: boolean
   className?: string
 }
 
@@ -59,6 +61,8 @@ export function TutorChat({
   onAppendVoiceTurn,
   canAttachDrawing = false,
   getWhiteboardPng,
+  suggestions = [],
+  isSuggestionsLoading = false,
   className,
 }: TutorChatProps) {
   const { t } = useTranslation()
@@ -314,6 +318,30 @@ export function TutorChat({
             </div>
           ) : (
             <>
+              {/* Quick reply suggestion pills */}
+              {(isSuggestionsLoading || suggestions.length > 0) && !isSending && (
+                <div className="flex flex-wrap gap-2">
+                  {isSuggestionsLoading && suggestions.length === 0
+                    ? [1, 2, 3].map(i => (
+                        <div
+                          key={i}
+                          className="h-7 w-24 rounded-full bg-muted animate-pulse"
+                          style={{ width: `${60 + i * 20}px` }}
+                        />
+                      ))
+                    : suggestions.map((s, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => onSendMessage(s)}
+                          className="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs text-foreground hover:bg-secondary transition-colors"
+                        >
+                          {s}
+                        </button>
+                      ))
+                  }
+                </div>
+              )}
               {(isRecording || voiceTranscript) && (
                 <p className="text-xs text-muted-foreground">
                   {isRecording ? 'Recording...' : voiceTranscript}

@@ -41,6 +41,16 @@ export const tutorApi = {
     )
     return response.data
   },
+
+  // Generate quick reply suggestions based on recent conversation messages.
+  getSuggestions: async (sessionId: string, messages: { role: string; content: string }[], signal?: AbortSignal) => {
+    const response = await apiClient.post<{ suggestions: string[] }>(
+      `/tutor/sessions/${sessionId}/suggestions`,
+      { messages },
+      { signal }
+    )
+    return response.data.suggestions
+  },
 }
 
 export default tutorApi

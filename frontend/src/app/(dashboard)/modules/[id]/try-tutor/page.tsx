@@ -81,6 +81,8 @@ export default function TryTutorPage() {
     latestDebugInfo,
     setExportCanvas,
     getWhiteboardPng,
+    suggestions,
+    isSuggestionsLoading,
     initializeSession,
     sendMessage,
     resetSession,
@@ -265,6 +267,8 @@ export default function TryTutorPage() {
               onAppendVoiceTurn={appendVoiceTurn}
               canAttachDrawing={showCanvas}
               getWhiteboardPng={showCanvas ? getWhiteboardPng : undefined}
+              suggestions={suggestions}
+              isSuggestionsLoading={isSuggestionsLoading}
               className="flex-1 min-w-0"
             />
           </div>

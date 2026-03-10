@@ -19,6 +19,9 @@ from langgraph.types import Command
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from backpack.ai.provision import provision_langchain_model
 from backpack.domain.module import Module
 from backpack.graphs.tutor import tutor_graph
 
@@ -91,6 +94,23 @@ class TutorResponsePayload(BaseModel):
     # Progress summary
     goals_completed: int = Field(default=0, description="Number of goals completed")
     goals_remaining: int = Field(default=0, description="Number of goals remaining")
+
+
+class SuggestionsRequest(BaseModel):
+    """Request to generate quick reply suggestions."""
+    messages: List[Dict[str, str]] = Field(
+        ..., description="Recent conversation messages with 'role' and 'content' keys"
+    )
+
+
+class SuggestionsResponse(BaseModel):
+    """Response with generated quick reply suggestions."""
+    suggestions: List[str] = Field(..., description="2-4 short conversational responses")
+
+
+class _SuggestionsOutput(BaseModel):
+    """Structured output for the suggestions LLM call."""
+    suggestions: List[str] = Field(..., description="2-4 short student responses")
 
 
 class SessionStateResponse(BaseModel):
@@ -727,3 +747,47 @@ async def export_session(session_id: str):
     except Exception as e:
         logger.error(f"Error exporting session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tutor/sessions/{session_id}/suggestions", response_model=SuggestionsResponse)
+async def get_suggestions(session_id: str, request: SuggestionsRequest):
+    """Generate 2-4 quick reply suggestions based on recent conversation.
+
+    These are short conversational reactions (not substantive answers) that the
+    student can tap to respond immediately, e.g. 'I forgot the formula' or
+    'Can you give me a hint?'. The session_id is accepted but not used — all
+    context comes from the messages passed in the request body.
+    """
+    logger.info(f"Generating suggestions for session: {session_id}")
+
+    try:
+        system_prompt = (
+            "You are helping a student in a Socratic tutoring session. "
+            "Based on the conversation so far, generate 2-4 short, honest conversational "
+            "reactions the student might naturally say next. These should NOT be substantive "
+            "answers to the tutor's question — they should be authentic student reactions like "
+            "'I forgot the formula', 'Can you give me a hint?', 'I think I understand now', "
+            "'Wait, can you explain that part again?', 'I'm not sure where to start', "
+            "'Oh, I see — so it's like...', 'That makes sense', 'I'm confused about X'. "
+            "Keep each suggestion under 10 words. Return 2-4 suggestions as a JSON list."
+        )
+
+        # Format the last few messages for context
+        conversation = "\n".join(
+            f"{m['role'].upper()}: {m['content']}" for m in request.messages
+        )
+        human_prompt = f"Conversation:\n{conversation}\n\nGenerate suggestions for the student's next reply."
+
+        model = await provision_langchain_model(conversation, None, "chat", max_tokens=200)
+        structured = model.with_structured_output(_SuggestionsOutput)
+        result: _SuggestionsOutput = await structured.ainvoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=human_prompt),
+        ])
+
+        return SuggestionsResponse(suggestions=result.suggestions)
+
+    except Exception as e:
+        logger.warning(f"Failed to generate suggestions for {session_id}: {e}")
+        # Non-fatal — return empty list so UI degrades gracefully
+        return SuggestionsResponse(suggestions=[])

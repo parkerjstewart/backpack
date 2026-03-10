@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
@@ -36,6 +36,8 @@ export function useTutor({ moduleId }: UseTutorParams) {
   const [goalsCompleted, setGoalsCompleted] = useState(0)
   const [goalsRemaining, setGoalsRemaining] = useState(0)
   const [latestDebugInfo, setLatestDebugInfo] = useState<TutorDebugInfo | null>(null)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false)
 
   // Holds the async PNG export function provided by ExcalidrawCanvas.
   // Using a ref avoids re-renders while still being accessible in sendMessage.
@@ -98,7 +100,34 @@ export function useTutor({ moduleId }: UseTutorParams) {
     setGoalsCompleted(0)
     setGoalsRemaining(0)
     setLatestDebugInfo(null)
+    setSuggestions([])
   }, [])
+
+  // Fetch suggestions whenever the last message is from the tutor and we're idle.
+  // This covers session init, text turns, and voice turns in one place.
+  useEffect(() => {
+    if (!sessionId || isSending || isInitializing) return
+    if (sessionPhase === 'session_complete') return
+    if (messages.length === 0) return
+    const lastMsg = messages[messages.length - 1]
+    if (lastMsg.type !== 'tutor') return
+
+    const controller = new AbortController()
+    const last4 = messages.slice(-4).map(m => ({
+      role: m.type === 'tutor' ? 'tutor' : 'student',
+      content: m.content,
+    }))
+    setIsSuggestionsLoading(true)
+    tutorApi.getSuggestions(sessionId, last4, controller.signal)
+      .then(setSuggestions)
+      .catch((err) => {
+        if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+          setSuggestions([])
+        }
+      })
+      .finally(() => setIsSuggestionsLoading(false))
+    return () => controller.abort()
+  }, [messages, sessionId, isSending, isInitializing, sessionPhase])
 
   // Send response to tutor.
   // When attachDrawing=true, the current canvas state is exported as a PNG
@@ -108,6 +137,9 @@ export function useTutor({ moduleId }: UseTutorParams) {
       toast.error('No active session')
       return
     }
+
+    // Clear suggestions immediately when student sends
+    setSuggestions([])
 
     // Add student message optimistically
     const studentMessage: Message = {
@@ -163,6 +195,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
   }, [sessionId, t])
 
   const appendVoiceTurn = useCallback((studentText: string, tutorText: string, supplement?: string | null, imageUrl?: string | null) => {
+    setSuggestions([])
     const studentMessage: Message = {
       id: `student-${Date.now()}`,
       type: 'student',
@@ -196,6 +229,10 @@ export function useTutor({ moduleId }: UseTutorParams) {
     // Canvas export function setter (ref-based — updates don't cause re-renders)
     setExportCanvas,
     getWhiteboardPng,
+
+    // Quick reply suggestions
+    suggestions,
+    isSuggestionsLoading,
 
     // Actions
     initializeSession,
