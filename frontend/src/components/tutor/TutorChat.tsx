@@ -43,6 +43,7 @@ interface TutorChatProps {
   getWhiteboardPng?: () => Promise<string | null>
   suggestions?: string[]
   isSuggestionsLoading?: boolean
+  streamingMessage?: string
   className?: string
 }
 
@@ -63,6 +64,7 @@ export function TutorChat({
   getWhiteboardPng,
   suggestions = [],
   isSuggestionsLoading = false,
+  streamingMessage = '',
   className,
 }: TutorChatProps) {
   const { t } = useTranslation()
@@ -86,7 +88,7 @@ export function TutorChat({
         viewport.scrollTop = viewport.scrollHeight
       }
     }
-  }, [messages])
+  }, [messages, streamingMessage])
 
   const handleSend = () => {
     if (input.trim() && !isSending && !isSessionComplete) {
@@ -262,9 +264,19 @@ export function TutorChat({
                     <GraduationCap className="h-4 w-4" />
                   </div>
                 </div>
-                <div className="rounded-lg px-4 py-2 bg-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </div>
+                {streamingMessage ? (
+                  <div className="rounded-lg px-4 py-2 bg-muted max-w-[80%]">
+                    <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                        {streamingMessage}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg px-4 py-2 bg-muted">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                )}
               </div>
             )}
             {voiceTranscript && (
@@ -300,8 +312,12 @@ export function TutorChat({
                     <GraduationCap className="h-4 w-4" />
                   </div>
                 </div>
-                <div className="rounded-lg px-4 py-2 bg-muted text-sm">
-                  {assistantStreamingText}
+                <div className="rounded-lg px-4 py-2 bg-muted max-w-[80%]">
+                  <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      {assistantStreamingText}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               </div>
             )}

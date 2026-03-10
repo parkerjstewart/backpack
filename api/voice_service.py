@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
+import queue as _queue
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Optional
 
@@ -35,6 +37,7 @@ def _iter_text_deltas(text: str, chunk_size: int = 32) -> list[str]:
     if not text:
         return []
     return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+
 
 
 class VoiceService:
@@ -100,12 +103,82 @@ class VoiceService:
         yield VoiceServerEvent(type="final_transcript", payload={"text": transcript})
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "start"})
 
-        assistant_text, supplement, image_url = await self._dispatch_to_agent(state.context, transcript, whiteboard_png)
-        display_text, speech_text = format_for_voice(assistant_text)
+        async for event in self._dispatch_to_agent_streaming(state.context, transcript, whiteboard_png):
+            yield event
+
+    async def _dispatch_to_agent_streaming(
+        self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
+    ) -> AsyncIterator[VoiceServerEvent]:
+        if context.surface == "tutor":
+            async for event in self._stream_tutor(context, text, whiteboard_png):
+                yield event
+        else:
+            assistant_text = await self._run_module_chat(context, text)
+            display_text, speech_text = format_for_voice(assistant_text)
+            yield VoiceServerEvent(type="assistant_thinking", payload={"status": "end"})
+            for delta in _iter_text_deltas(display_text):
+                yield VoiceServerEvent(type="assistant_text_delta", payload={"text": delta})
+            final_payload: dict[str, Any] = {"text": display_text}
+            yield VoiceServerEvent(type="assistant_text_final", payload=final_payload)
+            audio_output = await self._synthesize(speech_text)
+            if audio_output:
+                for i in range(0, len(audio_output), 16_000):
+                    chunk = audio_output[i : i + 16_000]
+                    yield VoiceServerEvent(
+                        type="assistant_audio_chunk",
+                        payload={
+                            "audio_base64": base64.b64encode(chunk).decode("ascii"),
+                            "mime_type": "audio/mpeg",
+                        },
+                    )
+                yield VoiceServerEvent(type="assistant_audio_end", payload={})
+
+    async def _stream_tutor(
+        self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
+    ) -> AsyncIterator[VoiceServerEvent]:
+        session_id = context.session_id
+        from langgraph.types import Command
+
+        token_queue: _queue.Queue = _queue.Queue()
+        config = {"configurable": {"thread_id": session_id, "token_queue": token_queue}}
+
+        current_state = tutor_graph.get_state(config=RunnableConfig(**{"configurable": {"thread_id": session_id}}))
+        if not current_state or not current_state.values:
+            raise ValueError("Tutor session not found")
+
+        resume_value: str | dict = {"text": text, "whiteboard_png": whiteboard_png} if whiteboard_png else text
+
+        loop = asyncio.get_event_loop()
+        graph_task = asyncio.ensure_future(
+            loop.run_in_executor(None, tutor_graph.invoke, Command(resume=resume_value), config)
+        )
+
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "end"})
 
-        for delta in _iter_text_deltas(display_text):
-            yield VoiceServerEvent(type="assistant_text_delta", payload={"text": delta})
+        display_text = ""
+        while True:
+            try:
+                item = await loop.run_in_executor(None, lambda: token_queue.get(timeout=0.1))
+                if item is None:
+                    break
+                display_text += item
+                yield VoiceServerEvent(type="assistant_text_delta", payload={"text": item})
+            except _queue.Empty:
+                if graph_task.done():
+                    break
+                continue
+
+        result = await graph_task
+        interrupt_data = _extract_interrupt_data(result)
+        supplement: Optional[str] = None
+        image_url: Optional[str] = None
+        if interrupt_data:
+            # Use the full message from interrupt (display_text may differ after clean_thinking_content)
+            display_text = str(interrupt_data.get("message", display_text)).strip()
+            supplement = interrupt_data.get("supplement") or None
+            image_url = interrupt_data.get("image_url") or None
+
+        _, speech_text = format_for_voice(display_text)
         final_payload: dict[str, Any] = {"text": display_text}
         if supplement:
             final_payload["supplement"] = supplement
@@ -131,42 +204,6 @@ class VoiceService:
         async for event in self.stream_end_turn(state):
             events.append(event)
         return events
-
-    async def _dispatch_to_agent(
-        self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
-    ) -> tuple[str, Optional[str], Optional[str]]:
-        if context.surface == "tutor":
-            return await self._run_tutor(context, text, whiteboard_png)
-        return await self._run_module_chat(context, text), None, None
-
-    async def _run_tutor(
-        self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
-    ) -> tuple[str, Optional[str], Optional[str]]:
-        session_id = context.session_id
-        from langgraph.types import Command
-
-        config = {"configurable": {"thread_id": session_id}}
-        current_state = tutor_graph.get_state(config=RunnableConfig(**config))
-        if not current_state or not current_state.values:
-            raise ValueError("Tutor session not found")
-
-        resume_value: str | dict = {"text": text, "whiteboard_png": whiteboard_png} if whiteboard_png else text
-        result = tutor_graph.invoke(Command(resume=resume_value), config=config)
-        interrupt_data = _extract_interrupt_data(result)
-        if interrupt_data:
-            message = str(interrupt_data.get("message", "")).strip()
-            supplement = interrupt_data.get("supplement") or None
-            image_url = interrupt_data.get("image_url") or None
-            return message, supplement, image_url
-
-        updated = tutor_graph.get_state(config=RunnableConfig(**config))
-        state_values = updated.values if updated else result
-        for msg in reversed(state_values.get("messages", [])):
-            if isinstance(msg, AIMessage) or (
-                hasattr(msg, "type") and getattr(msg, "type", "") == "ai"
-            ):
-                return str(getattr(msg, "content", "")).strip(), None, None
-        return "I am ready for your next response.", None, None
 
     async def _run_module_chat(self, context: VoiceContextPayload, text: str) -> str:
         full_session_id = (

@@ -8,11 +8,15 @@ Provides endpoints for:
 - Getting session summaries when complete
 """
 
+import asyncio
+import json
+import queue
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
@@ -425,6 +429,118 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
         logger.error(f"Error submitting response: {e}")
         logger.exception(e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tutor/sessions/{session_id}/respond/stream")
+async def stream_tutor_response(session_id: str, request: StudentResponseRequest):
+    """Submit a student response and stream the tutor's reply token-by-token via SSE.
+
+    Events emitted:
+      data: {"type": "token", "text": "..."}        — one per token chunk
+      data: {"type": "complete", "session_id": ..., "phase": ..., ...}  — full payload at end
+      data: {"type": "error", "message": "..."}     — on failure
+    """
+    logger.info(f"Streaming response for session: {session_id}")
+
+    token_queue: queue.Queue = queue.Queue()
+
+    if request.whiteboard_png:
+        resume_value: Any = {"text": request.message, "whiteboard_png": request.whiteboard_png}
+    else:
+        resume_value = request.message
+
+    config = {
+        "configurable": {
+            "thread_id": session_id,
+            "token_queue": token_queue,
+        }
+    }
+
+    async def generate():
+        loop = asyncio.get_event_loop()
+
+        # Validate session exists before starting the graph
+        try:
+            current_state = tutor_graph.get_state(config=RunnableConfig(**{"configurable": {"thread_id": session_id}}))
+            if not current_state or not current_state.values:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Session not found'})}\n\n"
+                return
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            return
+
+        # Run the graph in a thread so the sync invoke() doesn't block the event loop
+        graph_task = asyncio.ensure_future(
+            loop.run_in_executor(None, tutor_graph.invoke, Command(resume=resume_value), config)
+        )
+
+        # Relay tokens as they arrive from tutor_turn
+        while True:
+            try:
+                item = await loop.run_in_executor(
+                    None, lambda: token_queue.get(timeout=0.1)
+                )
+                if item is None:  # sentinel from tutor_turn finally block
+                    break
+                yield f"data: {json.dumps({'type': 'token', 'text': item})}\n\n"
+            except queue.Empty:
+                if graph_task.done():
+                    break
+                continue
+
+        # Await the graph result and build the complete payload
+        try:
+            result = await graph_task
+        except Exception as e:
+            logger.error(f"Graph error during streaming: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            return
+
+        updated_state = tutor_graph.get_state(config=RunnableConfig(**{"configurable": {"thread_id": session_id}}))
+        state_values = updated_state.values if updated_state else result
+
+        completed, remaining = count_goals(state_values)
+        current_goal_id, current_goal_description = get_current_goal_info(state_values)
+        interrupt_data = extract_interrupt_data(result)
+        latest_eval = state_values.get("latest_evaluation", {})
+
+        if interrupt_data:
+            phase = "in_progress"
+            tutor_message = interrupt_data.get("message", "")
+            tutor_supplement = interrupt_data.get("supplement")
+            tutor_image_url = interrupt_data.get("image_url")
+        else:
+            messages = state_values.get("messages", [])
+            tutor_message = ""
+            for msg in reversed(messages):
+                if hasattr(msg, "type") and msg.type == "ai":
+                    tutor_message = msg.content
+                    break
+                elif isinstance(msg, AIMessage):
+                    tutor_message = msg.content
+                    break
+            tutor_supplement = state_values.get("latest_supplement")
+            tutor_image_url = state_values.get("latest_image_url")
+            phase = "session_complete" if remaining == 0 else ("goal_complete" if not current_goal_id else "in_progress")
+
+        payload = {
+            "type": "complete",
+            "session_id": session_id,
+            "phase": phase,
+            "current_goal_id": current_goal_id,
+            "current_goal_description": current_goal_description,
+            "anchor_problem": state_values.get("anchor_problem"),
+            "tutor_message": tutor_message,
+            "tutor_supplement": tutor_supplement,
+            "tutor_image_url": tutor_image_url,
+            "latest_understanding_score": latest_eval.get("score"),
+            "competency_scores": latest_eval.get("competency_score_dict"),
+            "goals_completed": completed,
+            "goals_remaining": remaining,
+        }
+        yield f"data: {json.dumps(payload)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.get("/tutor/sessions/{session_id}/trajectory", response_model=TrajectoryResponse)

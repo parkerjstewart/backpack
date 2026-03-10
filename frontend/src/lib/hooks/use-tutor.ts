@@ -38,6 +38,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
   const [latestDebugInfo, setLatestDebugInfo] = useState<TutorDebugInfo | null>(null)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false)
+  const [streamingMessage, setStreamingMessage] = useState('')
 
   // Holds the async PNG export function provided by ExcalidrawCanvas.
   // Using a ref avoids re-renders while still being accessible in sendMessage.
@@ -101,6 +102,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     setGoalsRemaining(0)
     setLatestDebugInfo(null)
     setSuggestions([])
+    setStreamingMessage('')
   }, [])
 
   // Fetch suggestions whenever the last message is from the tutor and we're idle.
@@ -129,7 +131,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     return () => controller.abort()
   }, [messages, sessionId, isSending, isInitializing, sessionPhase])
 
-  // Send response to tutor.
+  // Send response to tutor using streaming SSE.
   // When attachDrawing=true, the current canvas state is exported as a PNG
   // and sent alongside the text so the model can see what the student drew.
   const sendMessage = useCallback(async (message: string, attachDrawing = false) => {
@@ -150,6 +152,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     }
     setMessages(prev => [...prev, studentMessage])
     setIsSending(true)
+    setStreamingMessage('')
 
     // Export canvas as PNG data URL if attachment was requested
     let whiteboardPng: string | undefined = undefined
@@ -162,30 +165,46 @@ export function useTutor({ moduleId }: UseTutorParams) {
     }
 
     try {
-      const response: TutorResponsePayload = await tutorApi.sendResponse(sessionId, message, whiteboardPng)
+      let finalPayload: TutorResponsePayload | null = null
 
-      // Add tutor response
+      for await (const event of tutorApi.streamResponse(sessionId, message, whiteboardPng)) {
+        if (event.type === 'token') {
+          setStreamingMessage(prev => prev + event.text)
+        } else if (event.type === 'complete') {
+          finalPayload = event as TutorResponsePayload
+        } else if (event.type === 'error') {
+          throw new Error(event.message)
+        }
+      }
+
+      if (!finalPayload) {
+        throw new Error('Stream ended without a complete event')
+      }
+
+      // Commit the final message to the conversation
       const tutorMessage: Message = {
         id: `tutor-${Date.now()}`,
         type: 'tutor',
-        content: response.tutor_message,
-        supplement: response.tutor_supplement,
-        image_url: response.tutor_image_url,
+        content: finalPayload.tutor_message,
+        supplement: finalPayload.tutor_supplement,
+        image_url: finalPayload.tutor_image_url,
         timestamp: new Date().toISOString(),
       }
+      setStreamingMessage('')
       setMessages(prev => [...prev, tutorMessage])
 
       // Fire-and-forget: fetch debug state after each exchange
       tutorApi.getDebugState(sessionId).then(setLatestDebugInfo).catch(() => {})
 
       // Update session state
-      setSessionPhase(response.phase)
-      setCurrentGoal(response.current_goal_description)
-      setGoalsCompleted(response.goals_completed)
-      setGoalsRemaining(response.goals_remaining)
+      setSessionPhase(finalPayload.phase)
+      setCurrentGoal(finalPayload.current_goal_description)
+      setGoalsCompleted(finalPayload.goals_completed)
+      setGoalsRemaining(finalPayload.goals_remaining)
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string } }, message?: string }
       console.error('Error sending response:', error)
+      setStreamingMessage('')
       toast.error(t(getApiErrorKey(error.response?.data?.detail || error.message, 'apiErrors.failedToSendMessage')))
       // Remove optimistic message on error
       setMessages(prev => prev.filter(msg => msg.id !== studentMessage.id))
@@ -225,6 +244,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     goalsRemaining,
     isSessionComplete: sessionPhase === 'session_complete',
     latestDebugInfo,
+    streamingMessage,
 
     // Canvas export function setter (ref-based — updates don't cause re-renders)
     setExportCanvas,

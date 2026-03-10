@@ -66,6 +66,7 @@ export default function ReviewPage() {
     getWhiteboardPng,
     suggestions,
     isSuggestionsLoading,
+    streamingMessage,
     initializeSession,
     sendMessage,
     resetSession,
@@ -186,6 +187,7 @@ export default function ReviewPage() {
               getWhiteboardPng={showCanvas ? getWhiteboardPng : undefined}
               suggestions={suggestions}
               isSuggestionsLoading={isSuggestionsLoading}
+              streamingMessage={streamingMessage}
               className="flex-1 min-w-0"
             />
           </div>

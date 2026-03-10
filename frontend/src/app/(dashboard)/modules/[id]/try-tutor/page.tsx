@@ -83,6 +83,7 @@ export default function TryTutorPage() {
     getWhiteboardPng,
     suggestions,
     isSuggestionsLoading,
+    streamingMessage,
     initializeSession,
     sendMessage,
     resetSession,
@@ -269,6 +270,7 @@ export default function TryTutorPage() {
               getWhiteboardPng={showCanvas ? getWhiteboardPng : undefined}
               suggestions={suggestions}
               isSuggestionsLoading={isSuggestionsLoading}
+              streamingMessage={streamingMessage}
               className="flex-1 min-w-0"
             />
           </div>

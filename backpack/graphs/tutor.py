@@ -18,6 +18,7 @@ Graph flow (per goal):
 
 import asyncio
 import concurrent.futures
+import json
 import os
 import sqlite3
 from datetime import datetime
@@ -650,6 +651,55 @@ def _generate_image(prompt: str) -> Optional[str]:
         return None
 
 
+def _extract_raw_chunk_text(chunk) -> str:
+    """Extract raw tool-call argument delta from an AIMessageChunk."""
+    if hasattr(chunk, "tool_call_chunks") and chunk.tool_call_chunks:
+        parts = []
+        for tc in chunk.tool_call_chunks:
+            if isinstance(tc, dict):
+                parts.append(tc.get("args", "") or "")
+            else:
+                parts.append(getattr(tc, "args", "") or "")
+        return "".join(parts)
+    content = getattr(chunk, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(p.get("text", "") if isinstance(p, dict) else "" for p in content)
+    return ""
+
+
+def _extract_field_from_partial_json(json_buffer: str, field_name: str, prev_sent: int) -> str:
+    """Extract new characters of a string field from partially-streamed JSON tool args."""
+    key = f'"{field_name}"'
+    key_pos = json_buffer.find(key)
+    if key_pos == -1:
+        return ""
+    i = key_pos + len(key)
+    while i < len(json_buffer) and json_buffer[i] in (' ', '\t', '\n', '\r', ':'):
+        i += 1
+    if i >= len(json_buffer) or json_buffer[i] != '"':
+        return ""
+    i += 1
+    value_chars: list[str] = []
+    while i < len(json_buffer):
+        c = json_buffer[i]
+        if c == '\\' and i + 1 < len(json_buffer):
+            nc = json_buffer[i + 1]
+            escapes = {'"': '"', 'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', '/': '/'}
+            value_chars.append(escapes.get(nc, nc))
+            i += 2
+        elif c == '"':
+            break
+        else:
+            value_chars.append(c)
+            i += 1
+    full_value = "".join(value_chars)
+    if len(full_value) > prev_sent:
+        return full_value[prev_sent:]
+    return ""
+
+
 def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     """Generate a tutor message and wait for student response.
 
@@ -746,8 +796,40 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     message = ""
     supplement = None
     image_prompt = None
+    token_queue = config.get("configurable", {}).get("token_queue", None)
     try:
-        result: TutorResponse = model.with_structured_output(TutorResponse).invoke(model_input)
+        result = None
+        if token_queue:
+            # Raw streaming path: bind_tools bypasses PydanticToolsParser so we get
+            # individual JSON argument characters instead of waiting for a full parseable object.
+            # Only stream the message field in real-time; supplement is emitted in small chunks
+            # after the full response is parsed (supplement arrives in large chunks from the LLM
+            # regardless of model, so real-time extraction produces no benefit).
+            accumulated_args = ""
+            prev_sent_message = 0
+            stream_ok = False
+            try:
+                bound = model.bind_tools([TutorResponse], tool_choice="TutorResponse")
+                for chunk in bound.stream(model_input):
+                    delta = _extract_raw_chunk_text(chunk)
+                    if delta:
+                        accumulated_args += delta
+                        new_msg = _extract_field_from_partial_json(accumulated_args, "message", prev_sent_message)
+                        if new_msg:
+                            token_queue.put(new_msg)
+                            prev_sent_message += len(new_msg)
+                if accumulated_args:
+                    data = json.loads(accumulated_args)
+                    result = TutorResponse.model_validate(data)
+                    stream_ok = True
+            except Exception as stream_err:
+                logger.warning(f"Raw streaming failed, falling back to invoke: {stream_err}")
+            if not stream_ok:
+                result = model.with_structured_output(TutorResponse).invoke(model_input)
+        else:
+            result = model.with_structured_output(TutorResponse).invoke(model_input)
+        if result is None:
+            raise ValueError("Model invocation returned no result")
         message = clean_thinking_content(result.message or "")
         supplement = result.supplement or None
         image_prompt = result.image_prompt or None
@@ -758,6 +840,9 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     except Exception as e:
         logger.error(f"tutor_turn structured output failed: {e}")
         raise
+    finally:
+        if token_queue:
+            token_queue.put(None)  # sentinel — always signals end, even on exception
 
     if not message:
         message = "What are your thoughts on this?"
