@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from ai_prompter import Prompter
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -26,8 +27,34 @@ _splitter = RecursiveCharacterTextSplitter(
 )
 
 
+def _get_jinja_template_path(transformation: Transformation) -> str | None:
+    """Return the Jinja template path for a built-in transformation, or None if no file exists.
+
+    Checks for a file at prompts/transformation/{id_suffix}.jinja (e.g.
+    prompts/transformation/dense_summary.jinja for transformation:dense_summary).
+    This lets built-in prompts live as version-controlled Jinja files rather than
+    raw text stored in the database.
+    """
+    if not transformation.id:
+        return None
+    suffix = str(transformation.id).split(":")[-1]
+    template_path = f"transformation/{suffix}"
+    file_path = os.path.join("prompts", f"{template_path}.jinja")
+    if os.path.exists(file_path):
+        return template_path
+    return None
+
+
 def _build_system_prompt(transformation: Transformation, state: dict) -> str:
-    """Build the system prompt for a transformation."""
+    """Build the system prompt for a transformation.
+
+    Prefers a Jinja file at prompts/transformation/{id_suffix}.jinja if one exists,
+    falling back to the prompt text stored in the database record.
+    """
+    template_path = _get_jinja_template_path(transformation)
+    if template_path:
+        return Prompter(prompt_template=template_path).render(data=state)
+
     transformation_template_text = transformation.prompt
     default_prompts: DefaultPrompts = DefaultPrompts(transformation_instructions=None)
     if default_prompts.transformation_instructions:
@@ -50,7 +77,7 @@ def _build_merge_prompt(transformation: Transformation, num_parts: int) -> str:
 
 
 async def _invoke_model(
-    system_prompt: str, content: str, model_id: str | None, max_tokens: int = 5055
+    system_prompt: str, content: str, model_id: str | None, max_tokens: int = 8192
 ) -> str:
     """Invoke the LLM with a system prompt and content, return cleaned response."""
     payload = [SystemMessage(content=system_prompt), HumanMessage(content=content)]

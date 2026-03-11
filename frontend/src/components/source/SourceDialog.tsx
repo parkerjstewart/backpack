@@ -33,7 +33,7 @@ export function SourceDialog({ open, onOpenChange, sourceId, onRemove }: SourceD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-4xl h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader className="sr-only">
           <DialogTitle>{t.sources.detailsTitle}</DialogTitle>
         </DialogHeader>

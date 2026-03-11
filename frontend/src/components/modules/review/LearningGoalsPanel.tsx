@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { MarkdownViewEdit } from "@/components/ui/markdown-view-edit";
-import { CompetencyList, parseCompetencies } from "@/components/ui/competency-list";
+import {
+  CompetencyList,
+  parseCompetencies,
+} from "@/components/ui/competency-list";
 import {
   useModuleDraftStore,
   DraftLearningGoal,
@@ -44,14 +47,14 @@ function ExpandableGoal({
       className={cn(
         "border rounded-md overflow-hidden transition-[background-color] duration-300",
         "border-border",
-        isExpanded ? "bg-white" : "bg-transparent"
+        isExpanded ? "bg-white" : "bg-transparent",
       )}
     >
       {/* Header — always visible */}
       <div
         className={cn(
           "flex items-start gap-2 p-3 cursor-pointer",
-          !isExpanded && "hover:bg-secondary/50 transition-colors duration-200"
+          !isExpanded && "hover:bg-secondary/50 transition-colors duration-200",
         )}
         onClick={onToggle}
       >
@@ -66,7 +69,7 @@ function ExpandableGoal({
           <ChevronDown
             className={cn(
               "h-4 w-4 text-muted-foreground transition-transform duration-300",
-              isExpanded && "rotate-180"
+              isExpanded && "rotate-180",
             )}
           />
         </button>
@@ -79,13 +82,17 @@ function ExpandableGoal({
             onClick={(e) => isExpanded && e.stopPropagation()}
             readOnly={!isExpanded}
             tabIndex={isExpanded ? 0 : -1}
-            placeholder={isExpanded ? "Short title (e.g. Logistic Regression)" : goal.description || `Goal ${index + 1}`}
+            placeholder={
+              isExpanded
+                ? "Short title (e.g. Logistic Regression)"
+                : goal.description || `Goal ${index + 1}`
+            }
             className={cn(
               "flex-1 w-full h-8 px-2 py-1 text-[18px] md:text-[18px] font-medium tracking-[-0.01em] transition-all duration-300",
               "placeholder:italic placeholder:text-primary/40 placeholder:font-normal",
               isExpanded
                 ? "border border-border rounded-lg bg-white cursor-text"
-                : "border-transparent bg-transparent rounded-lg cursor-pointer pointer-events-none select-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                : "border-transparent bg-transparent rounded-lg cursor-pointer pointer-events-none select-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0",
             )}
           />
 
@@ -93,7 +100,7 @@ function ExpandableGoal({
           <div
             className={cn(
               "overflow-hidden transition-all duration-300",
-              isExpanded ? "opacity-0 max-h-0" : "opacity-100 max-h-12 mt-0.5"
+              isExpanded ? "opacity-0 max-h-0" : "opacity-100 max-h-12 mt-0.5",
             )}
           >
             {goal.description && (
@@ -107,7 +114,8 @@ function ExpandableGoal({
                   variant="secondary"
                   className="text-[11px] px-1.5 py-0 h-4 font-normal text-muted-foreground"
                 >
-                  {competencyCount} {competencyCount === 1 ? "competency" : "competencies"}
+                  {competencyCount}{" "}
+                  {competencyCount === 1 ? "competency" : "competencies"}
                 </Badge>
               </div>
             )}
@@ -130,7 +138,7 @@ function ExpandableGoal({
       <div
         className={cn(
           "grid transition-[grid-template-rows] duration-300 ease-in-out",
-          isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
         )}
       >
         <div className="overflow-hidden">
@@ -207,9 +215,7 @@ export function LearningGoalsPanel({
     <div className="h-full min-w-0 flex flex-col min-h-0">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between mb-4">
-        <Label className="text-title text-teal-800">
-          Learning Goals
-        </Label>
+        <Label className="text-title text-teal-800">Learning Goals</Label>
         <Button
           type="button"
           variant="ghost"
@@ -248,10 +254,10 @@ export function LearningGoalsPanel({
 
       {/* Goals list - scrollable */}
       <div className="relative flex-1 min-h-0 flex flex-col">
-        <div className="flex-1 overflow-y-auto space-y-3">
+        <div className="flex-1 overflow-y-auto space-y-3 p-2 -m-2">
           {/* Loading state - empty */}
           {isGenerating && learningGoals.length === 0 && (
-            <div className="flex items-center justify-center py-8 font-sans text-[16px] font-normal tracking-[-0.01em] text-teal-800">
+            <div className="animate-border-pulse flex items-center justify-center rounded-md border border-input bg-white py-8 font-sans text-[16px] font-normal tracking-[-0.01em] text-muted-foreground italic">
               <Loader2 className="h-5 w-5 mr-2 animate-spin text-sage-700" />
               Generating learning goals...
             </div>
@@ -259,7 +265,14 @@ export function LearningGoalsPanel({
 
           {/* Goal cards */}
           {learningGoals.map((goal, index) => (
-            <div key={`goal-${index}`} className={cn("group", pulsingGoalIndices.has(index) && "animate-border-pulse rounded-md")}>
+            <div
+              key={`goal-${index}`}
+              className={cn(
+                "group",
+                pulsingGoalIndices.has(index) &&
+                  "animate-border-pulse rounded-md",
+              )}
+            >
               <ExpandableGoal
                 goal={goal}
                 index={index}

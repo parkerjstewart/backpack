@@ -1,0 +1,7 @@
+-- Migration 23: Dense Summary prompt moved to Jinja template
+-- The dense_summary transformation prompt now lives at:
+--   prompts/transformation/dense_summary.jinja
+-- The transformation graph checks for that file first and uses it when present,
+-- falling back to the prompt field in this record only if no Jinja file exists.
+-- No database changes are needed; this migration is intentionally a no-op.
+SELECT 1;

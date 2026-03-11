@@ -664,3 +664,12 @@ class InvitationResponse(BaseModel):
     invite_url: Optional[str] = None
     expires_at: Optional[str] = None
     created: Optional[str] = None
+
+
+# ============================================
+# Study Tools API models
+# ============================================
+
+class StudyToolResponse(BaseModel):
+    content: str
+    module_id: str
