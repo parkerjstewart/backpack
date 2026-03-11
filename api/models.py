@@ -673,3 +673,16 @@ class InvitationResponse(BaseModel):
 class StudyToolResponse(BaseModel):
     content: str
     module_id: str
+
+
+class EnrollmentRequestResponse(BaseModel):
+    """Response model for a student-initiated enrollment request."""
+    id: str
+    course_id: str
+    course_title: Optional[str] = None
+    student_name: Optional[str] = None
+    student_email: str
+    student_id: str  # The user who requested (invitation.invited_by)
+    role: str        # Always "student" for self-initiated requests
+    status: str      # "requested" | "accepted" | "declined"
+    created: Optional[str] = None

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Copy, Trash2 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
   AlertDialogDescription,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CourseHeader } from "@/components/courses";
+import { CourseHeader, LeaveCourseDialog } from "@/components/courses";
 import {
   useCourse,
   useUpdateCourse,
@@ -37,15 +37,12 @@ export default function CourseSettingsPage() {
   const updateCourse = useUpdateCourse(courseId);
   const deleteCourse = useDeleteCourse();
 
-  // Form state for course details
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-
-  // Confirmation dialog state
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
 
-  // Sync form state when course data loads
   useEffect(() => {
     if (course) {
       setTitle(course.title);
@@ -53,7 +50,6 @@ export default function CourseSettingsPage() {
     }
   }, [course]);
 
-  // Track whether the form has been modified
   const isDirty =
     course !== undefined &&
     (title !== course.title || description !== (course.description ?? ""));
@@ -105,6 +101,9 @@ export default function CourseSettingsPage() {
   }
 
   const permissions = getCoursePermissions(course.membership_role);
+  const isStudent = course.membership_role === "student";
+
+  // Students see a limited view with only the Leave Course option
   if (!permissions.canManageCourseSettings) {
     return (
       <AppShell>
@@ -115,22 +114,56 @@ export default function CourseSettingsPage() {
               courseName={course.title}
               membershipRole={course.membership_role}
             />
-            <Card className="max-w-2xl">
-              <CardHeader>
-                <CardTitle>Settings are instructor-only</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-end">
-                  <Button asChild variant="outline">
-                    <Link href={`/courses/${encodeURIComponent(courseId)}`}>
-                      Back to course
-                    </Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            {isStudent ? (
+              <Card className="max-w-2xl border-destructive/20">
+                <CardHeader>
+                  <CardTitle>Leave Course</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col gap-4">
+                    <p className="text-sm text-muted-foreground">
+                      Leaving this course will remove your access to all course
+                      materials. You can request to rejoin later with the course
+                      ID.
+                    </p>
+                    <div className="flex items-center justify-end">
+                      <Button
+                        variant="destructive"
+                        onClick={() => setLeaveDialogOpen(true)}
+                      >
+                        Leave Course
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="max-w-2xl">
+                <CardHeader>
+                  <CardTitle>Settings are instructor-only</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-end">
+                    <Button asChild variant="outline">
+                      <Link href={`/courses/${encodeURIComponent(courseId)}`}>
+                        Back to course
+                      </Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
+
+        {isStudent && (
+          <LeaveCourseDialog
+            open={leaveDialogOpen}
+            onOpenChange={setLeaveDialogOpen}
+            courseId={courseId}
+            courseTitle={course.title}
+          />
+        )}
       </AppShell>
     );
   }
@@ -139,15 +172,41 @@ export default function CourseSettingsPage() {
     <AppShell>
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-8 p-8">
-          {/* Course Header with tabs */}
           <CourseHeader
             courseId={courseId}
             courseName={course.title}
             membershipRole={course.membership_role}
           />
 
-          {/* Settings content */}
           <div className="flex flex-col gap-8 max-w-2xl">
+            {/* Course ID — share this with students */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Course ID</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    Share this ID with students so they can request to join your course.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <code className="flex-1 rounded-lg bg-secondary px-4 py-2 text-sm font-mono text-primary select-all">
+                      {courseId}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigator.clipboard.writeText(courseId)}
+                      className="shrink-0 gap-1.5"
+                    >
+                      <Copy className="h-4 w-4" />
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Course Details form */}
             <Card>
               <CardHeader>

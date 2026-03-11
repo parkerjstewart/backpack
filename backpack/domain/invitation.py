@@ -76,11 +76,16 @@ class Invitation(ObjectModel):
         return data
 
     async def save(self) -> None:
-        """Save the invitation, generating a token if new."""
-        if not self.token:
-            self.token = str(uuid.uuid4())
-        if not self.expires_at:
-            self.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+        """Save the invitation, generating a token and expiry if new.
+
+        Enrollment requests (status='requested') are instructor-approved flows
+        and don't use token-based links, so token/expires_at are left empty.
+        """
+        if self.status != "requested":
+            if not self.token:
+                self.token = str(uuid.uuid4())
+            if not self.expires_at:
+                self.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
         await super().save()
 
     # ------------------------------------------------------------------
@@ -102,6 +107,57 @@ class Invitation(ObjectModel):
             return None
         except Exception as e:
             logger.error(f"Error fetching invitation by token: {str(e)}")
+            return None
+
+    @classmethod
+    async def get_requests_for_course(cls, course_id: str) -> List["Invitation"]:
+        """Get all student-initiated enrollment requests (status='requested') for a course."""
+        try:
+            result = await repo_query(
+                """
+                SELECT * FROM invitation
+                WHERE course_id = $course_id AND status = 'requested'
+                ORDER BY created DESC
+                """,
+                {"course_id": ensure_record_id(course_id)},
+            )
+            return [cls(**r) for r in result] if result else []
+        except Exception as e:
+            logger.error(
+                f"Error fetching enrollment requests for course {course_id}: {str(e)}"
+            )
+            raise DatabaseOperationError(e)
+
+    @classmethod
+    async def get_request_by_user_and_course(
+        cls, user_id: str, course_id: str
+    ) -> Optional["Invitation"]:
+        """Get an active enrollment request or pending invitation for a user in a course.
+
+        Checks both 'requested' (student-initiated) and 'pending' (instructor-sent) so
+        that a student who already has an instructor invitation cannot also submit a
+        self-enrollment request for the same course.
+        """
+        if not user_id or not course_id:
+            return None
+        try:
+            result = await repo_query(
+                """
+                SELECT * FROM invitation
+                WHERE invited_by = $user_id AND course_id = $course_id
+                  AND status IN ['requested', 'pending']
+                LIMIT 1
+                """,
+                {
+                    "user_id": ensure_record_id(user_id),
+                    "course_id": ensure_record_id(course_id),
+                },
+            )
+            return cls(**result[0]) if result else None
+        except Exception as e:
+            logger.error(
+                f"Error fetching enrollment request for user {user_id} in course {course_id}: {str(e)}"
+            )
             return None
 
     @classmethod
@@ -155,6 +211,38 @@ class Invitation(ObjectModel):
     # Instance methods
     # ------------------------------------------------------------------
 
+    async def _create_membership(self, user_id: str) -> dict:
+        """
+        Create a course_membership edge for the given user, or return the existing one.
+
+        Shared by accept() and approve() to avoid code duplication.
+        """
+        existing = await repo_query(
+            """
+            SELECT * FROM course_membership
+            WHERE in = $user_id AND out = $course_id
+            """,
+            {
+                "user_id": ensure_record_id(user_id),
+                "course_id": ensure_record_id(self.course_id),
+            },
+        )
+        if existing:
+            return existing[0]
+
+        result = await repo_query(
+            """
+            RELATE $user_id->course_membership->$course_id
+            SET role = $role, enrolled_at = time::now()
+            """,
+            {
+                "user_id": ensure_record_id(user_id),
+                "course_id": ensure_record_id(self.course_id),
+                "role": self.role,
+            },
+        )
+        return result[0] if result else {}
+
     async def accept(self, user_id: str) -> dict:
         """
         Accept the invitation: create course_membership and update status.
@@ -177,46 +265,49 @@ class Invitation(ObjectModel):
             raise InvalidInputError("This invitation has expired")
 
         try:
-            # Check if already a member
-            existing = await repo_query(
-                """
-                SELECT * FROM course_membership
-                WHERE in = $user_id AND out = $course_id
-                """,
-                {
-                    "user_id": ensure_record_id(user_id),
-                    "course_id": ensure_record_id(self.course_id),
-                },
-            )
-            if existing:
-                # Already a member — just mark invitation as accepted
-                self.status = "accepted"
-                await self.save()
-                return existing[0]
-
-            # Create course membership
-            result = await repo_query(
-                """
-                RELATE $user_id->course_membership->$course_id
-                SET role = $role, enrolled_at = time::now()
-                """,
-                {
-                    "user_id": ensure_record_id(user_id),
-                    "course_id": ensure_record_id(self.course_id),
-                    "role": self.role,
-                },
-            )
-
-            # Mark invitation as accepted
+            membership = await self._create_membership(user_id)
             self.status = "accepted"
             await self.save()
-
-            return result[0] if result else {}
+            return membership
         except InvalidInputError:
             raise
         except Exception as e:
             logger.error(f"Error accepting invitation {self.id}: {str(e)}")
             raise DatabaseOperationError(e)
+
+    async def approve(self) -> dict:
+        """
+        Approve a student enrollment request (teaching staff action).
+        Creates course_membership for the requesting student and marks as accepted.
+
+        Note: self.invited_by holds the requesting student's user ID.
+        """
+        if self.status != "requested":
+            raise InvalidInputError(
+                f"Cannot approve request with status '{self.status}'"
+            )
+        if not self.invited_by:
+            raise InvalidInputError("Enrollment request has no associated student")
+
+        try:
+            membership = await self._create_membership(self.invited_by)
+            self.status = "accepted"
+            await self.save()
+            return membership
+        except InvalidInputError:
+            raise
+        except Exception as e:
+            logger.error(f"Error approving enrollment request {self.id}: {str(e)}")
+            raise DatabaseOperationError(e)
+
+    async def deny(self) -> None:
+        """Deny a student enrollment request (teaching staff action)."""
+        if self.status != "requested":
+            raise InvalidInputError(
+                f"Cannot deny request with status '{self.status}'"
+            )
+        self.status = "declined"
+        await self.save()
 
     async def decline(self) -> None:
         """Decline the invitation."""

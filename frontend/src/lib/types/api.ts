@@ -454,6 +454,18 @@ export interface CreateInvitationRequest {
   role?: 'student' | 'instructor' | 'ta'
 }
 
+export interface EnrollmentRequestResponse {
+  id: string
+  course_id: string
+  course_title?: string
+  student_name?: string
+  student_email: string
+  student_id: string
+  role: string
+  status: 'requested' | 'accepted' | 'declined'
+  created?: string
+}
+
 export type MasteryStatus = 'mastered' | 'progressing' | 'struggling' | 'incomplete'
 
 export interface ModuleMasteryResponse {

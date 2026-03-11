@@ -1,0 +1,5 @@
+-- Rollback migration 24: Remove 'requested' status from invitation
+-- Mark any pending enrollment requests as declined before removing the status value
+UPDATE invitation SET status = 'declined' WHERE status = 'requested';
+DEFINE FIELD status ON invitation TYPE string
+  ASSERT $value IN ["pending", "accepted", "declined", "cancelled", "expired"];

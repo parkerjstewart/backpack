@@ -9,6 +9,7 @@ import { Button, IconButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   CourseHeader,
+  EnrollmentRequestRow,
   InviteDialog,
   StudentListRow,
   StudentProfileCard,
@@ -24,6 +25,9 @@ import {
   useCourseInvitations,
   useCancelInvitation,
   useCreateInvitation,
+  useCourseEnrollmentRequests,
+  useApproveEnrollmentRequest,
+  useDenyEnrollmentRequest,
 } from "@/lib/hooks/use-invitations";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { getCoursePermissions } from "@/lib/permissions/course";
@@ -50,6 +54,15 @@ export default function CourseStudentsPage() {
   const cancelInvitation = useCancelInvitation(courseId);
   const resendInvitation = useCreateInvitation(courseId);
 
+  // Enrollment requests (student-initiated)
+  const { data: enrollmentRequests } = useCourseEnrollmentRequests(
+    permissions.canManageMembers ? courseId : undefined
+  );
+  const approveRequest = useApproveEnrollmentRequest(courseId);
+  const denyRequest = useDenyEnrollmentRequest(courseId);
+  // Track which request ID is being acted on for per-row loading state
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<"student" | "instructor" | "ta">(
@@ -59,7 +72,6 @@ export default function CourseStudentsPage() {
   const isLoading =
     courseLoading || studentsLoading || teamLoading || attentionLoading;
 
-  // Filter students by search query
   const filteredStudents = students?.filter((student) => {
     const query = searchQuery.toLowerCase();
     return (
@@ -97,14 +109,12 @@ export default function CourseStudentsPage() {
     <AppShell>
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-8 p-8">
-          {/* Course Header with tabs */}
           <CourseHeader
             courseId={courseId}
             courseName={course.title}
             membershipRole={course.membership_role}
           />
 
-          {/* Search bar */}
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -115,6 +125,35 @@ export default function CourseStudentsPage() {
               className="pl-10"
             />
           </div>
+
+          {/* Pending enrollment requests (student-initiated) */}
+          {permissions.canManageMembers &&
+            enrollmentRequests &&
+            enrollmentRequests.length > 0 && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-title text-teal-800">
+                Pending Requests ({enrollmentRequests.length})
+              </h2>
+              <div className="flex flex-col divide-y divide-border rounded-xl border border-border overflow-hidden">
+                {enrollmentRequests.map((req) => (
+                  <EnrollmentRequestRow
+                    key={req.id}
+                    request={req}
+                    onApprove={(id) => {
+                      setPendingRequestId(id)
+                      approveRequest.mutate(id, { onSettled: () => setPendingRequestId(null) })
+                    }}
+                    onDeny={(id) => {
+                      setPendingRequestId(id)
+                      denyRequest.mutate(id, { onSettled: () => setPendingRequestId(null) })
+                    }}
+                    isApproving={approveRequest.isPending && pendingRequestId === req.id}
+                    isDenying={denyRequest.isPending && pendingRequestId === req.id}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Needs Attention section */}
           {permissions.canManageMembers &&
@@ -147,7 +186,6 @@ export default function CourseStudentsPage() {
                   avatarUrl={member.avatar_url}
                 />
               ))}
-              {/* Add Teacher button with dotted outline */}
               {permissions.canManageMembers && (
                 <button
                   onClick={() => openInviteDialog("instructor")}
@@ -197,7 +235,6 @@ export default function CourseStudentsPage() {
                     }
                   />
                 ))}
-                {/* Pending invitation rows (Figma: faded italic style) */}
                 {permissions.canManageMembers &&
                   pendingInvitations?.map((inv) => (
                   <StudentListRow
@@ -238,7 +275,6 @@ export default function CourseStudentsPage() {
         </div>
       </div>
 
-      {/* Invite Dialog */}
       {permissions.canManageMembers && (
         <InviteDialog
           open={inviteDialogOpen}

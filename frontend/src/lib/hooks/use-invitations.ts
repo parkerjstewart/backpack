@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/stores/auth-store'
 import type {
   InvitationResponse,
   CreateInvitationRequest,
+  EnrollmentRequestResponse,
 } from '@/lib/types/api'
 
 // ============================================
@@ -141,6 +142,103 @@ export function useCancelInvitation(courseId: string) {
     },
     onError: (error) => {
       toast.error(`Failed to cancel invitation: ${error.message}`)
+    },
+  })
+}
+
+// ============================================
+// Enrollment Request Query Keys
+// ============================================
+export const ENROLLMENT_REQUEST_QUERY_KEYS = {
+  all: ['enrollment-requests'] as const,
+  forCourse: (courseId: string) =>
+    [...ENROLLMENT_REQUEST_QUERY_KEYS.all, 'course', courseId] as const,
+  mine: () => [...ENROLLMENT_REQUEST_QUERY_KEYS.all, 'mine'] as const,
+}
+
+// ============================================
+// Enrollment Request Query Hooks
+// ============================================
+
+/**
+ * Hook to fetch pending enrollment requests for a course (teaching staff view).
+ */
+export function useCourseEnrollmentRequests(
+  courseId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery<EnrollmentRequestResponse[]>({
+    queryKey: ENROLLMENT_REQUEST_QUERY_KEYS.forCourse(courseId ?? ''),
+    queryFn: () => invitationsApi.getEnrollmentRequests(courseId!),
+    enabled: !!courseId && (options?.enabled ?? true),
+  })
+}
+
+/**
+ * Hook to fetch the current user's own enrollment requests.
+ */
+export function useMyEnrollmentRequests() {
+  const { isAuthenticated, currentUser } = useAuthStore()
+
+  return useQuery<EnrollmentRequestResponse[]>({
+    queryKey: ENROLLMENT_REQUEST_QUERY_KEYS.mine(),
+    queryFn: () => invitationsApi.getMyEnrollmentRequests(),
+    enabled: isAuthenticated && !!currentUser,
+  })
+}
+
+// ============================================
+// Enrollment Request Mutation Hooks
+// ============================================
+
+/**
+ * Hook to approve a student enrollment request (teaching staff action).
+ */
+export function useApproveEnrollmentRequest(courseId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<{ status: string; message: string }, Error, string>({
+    mutationFn: (requestId) => invitationsApi.approveRequest(requestId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ENROLLMENT_REQUEST_QUERY_KEYS.forCourse(courseId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: ENROLLMENT_REQUEST_QUERY_KEYS.mine(),
+      })
+      queryClient.invalidateQueries({
+        queryKey: COURSE_QUERY_KEYS.students(courseId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: COURSE_QUERY_KEYS.detail(courseId),
+      })
+      toast.success('Student enrolled successfully')
+    },
+    onError: (error) => {
+      toast.error(`Failed to approve request: ${error.message}`)
+    },
+  })
+}
+
+/**
+ * Hook to deny a student enrollment request (teaching staff action).
+ */
+export function useDenyEnrollmentRequest(courseId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<{ status: string; message: string }, Error, string>({
+    mutationFn: (requestId) => invitationsApi.denyRequest(requestId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ENROLLMENT_REQUEST_QUERY_KEYS.forCourse(courseId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: ENROLLMENT_REQUEST_QUERY_KEYS.mine(),
+      })
+      toast.success('Enrollment request denied')
+    },
+    onError: (error) => {
+      toast.error(`Failed to deny request: ${error.message}`)
     },
   })
 }
