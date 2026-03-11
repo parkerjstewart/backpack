@@ -54,11 +54,11 @@ function ReadOnlyGoal({ goal }: ReadOnlyGoalProps) {
             expanded && "rotate-180"
           )}
         />
-        <span className="shrink-0 text-sm font-medium">
+        <span className="flex-1 text-sm font-medium">
           {goal.title || goal.description}
         </span>
         {goal.description && goal.title && (
-          <span className="flex-1 min-w-0 text-xs text-muted-foreground truncate hidden sm:block">
+          <span className="text-xs text-muted-foreground truncate max-w-[200px] hidden sm:block">
             {goal.description}
           </span>
         )}
