@@ -14,14 +14,16 @@ import { useModuleSources } from "@/lib/hooks/use-sources";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { SourceCard } from "@/components/sources/SourceCard";
 import { useDeleteSource, useRetrySource } from "@/lib/hooks/use-sources";
+import { sourcesApi } from "@/lib/api/sources";
 import { getCoursePermissions } from "@/lib/permissions/course";
 import { cn } from "@/lib/utils";
 import {
   GraduationCap,
   Pencil,
   ChevronDown,
-  BookOpen,
   MessageSquare,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { StudyToolsPanel } from "@/components/modules/StudyToolsPanel";
 import ReactMarkdown from "react-markdown";
@@ -40,7 +42,7 @@ function ReadOnlyGoal({ goal }: ReadOnlyGoalProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="border border-border rounded-md overflow-hidden">
+    <div className="border border-border rounded-md overflow-hidden bg-card">
       <button
         type="button"
         className="w-full flex items-center gap-2 p-3 text-left hover:bg-secondary transition-colors"
@@ -52,11 +54,11 @@ function ReadOnlyGoal({ goal }: ReadOnlyGoalProps) {
             expanded && "rotate-180"
           )}
         />
-        <span className="flex-1 text-sm font-medium">
+        <span className="shrink-0 text-sm font-medium">
           {goal.title || goal.description}
         </span>
         {goal.description && goal.title && (
-          <span className="text-xs text-muted-foreground truncate max-w-[200px] hidden sm:block">
+          <span className="flex-1 min-w-0 text-xs text-muted-foreground truncate hidden sm:block">
             {goal.description}
           </span>
         )}
@@ -118,6 +120,7 @@ interface TeacherViewProps {
   sourcesLoading: boolean;
   canEdit: boolean;
   onRefetchSources: () => void;
+  onToggleStudentView: () => void;
 }
 
 function TeacherView({
@@ -132,6 +135,7 @@ function TeacherView({
   sourcesLoading,
   canEdit,
   onRefetchSources,
+  onToggleStudentView,
 }: TeacherViewProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sourceToDelete, setSourceToDelete] = useState<string | null>(null);
@@ -146,13 +150,22 @@ function TeacherView({
     setSourceToDelete(null);
   };
 
+  const handleRenameSource = async (sourceId: string, newTitle: string) => {
+    try {
+      await sourcesApi.update(sourceId, { title: newTitle });
+      onRefetchSources();
+    } catch (error) {
+      console.error("Failed to rename source:", error);
+    }
+  };
+
   const overviewContent = moduleOverview || moduleDescription;
 
   return (
     <div className="flex flex-col gap-8 pb-8">
       {/* Module header */}
       <div className="flex items-start justify-between gap-4">
-        <h2 className="text-title text-teal-800">{moduleName}</h2>
+        <h2 className="text-title text-primary">{moduleName}</h2>
         <div className="flex items-center gap-2 flex-shrink-0">
           {canEdit && (
             <Button variant="secondary" size="sm" asChild>
@@ -170,16 +183,17 @@ function TeacherView({
               Test Tutor
             </Link>
           </Button>
+          <Button variant="secondary" size="sm" onClick={onToggleStudentView}>
+            <Eye className="h-4 w-4" />
+            Student View
+          </Button>
         </div>
       </div>
 
       {/* Overview */}
       {overviewContent && (
         <section className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-title-sm text-teal-800">Overview</h3>
-          </div>
+          <h3 className="text-title-sm text-primary">Overview</h3>
           <div className="prose prose-sm max-w-none bg-secondary rounded-md p-4">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {overviewContent}
@@ -188,75 +202,80 @@ function TeacherView({
         </section>
       )}
 
-      {/* Learning Goals */}
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-title-sm text-teal-800">Learning Goals</h3>
-          <Badge variant="secondary" className="text-xs">
-            {learningGoals.length}
-          </Badge>
-        </div>
-        {goalsLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <LoadingSpinner size="sm" />
+      {/* Two-column: Sources (1/4) + Learning Goals (3/4) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_3fr] gap-8 items-start">
+        {/* Sources column */}
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-title-sm text-primary">Sources</h3>
+            <Badge variant="secondary" className="text-xs">
+              {sources.length}
+            </Badge>
           </div>
-        ) : learningGoals.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">
-            No learning goals defined for this module.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {learningGoals.map((goal) => (
-              <ReadOnlyGoal key={goal.id} goal={goal} />
-            ))}
-          </div>
-        )}
-      </section>
+          {sourcesLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <LoadingSpinner size="sm" />
+            </div>
+          ) : sources.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">
+              No sources attached to this module.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {sources.map((source) => (
+                <SourceCard
+                  key={source.id}
+                  source={source}
+                  onClick={() => openModal("source", source.id)}
+                  className="bg-transparent"
+                  onDelete={
+                    canEdit
+                      ? (id) => {
+                          setSourceToDelete(id);
+                          setDeleteDialogOpen(true);
+                        }
+                      : undefined
+                  }
+                  onRetry={canEdit ? (id) => retrySource.mutate(id) : undefined}
+                  onRename={canEdit ? handleRenameSource : undefined}
+                  showRemoveFromModule={canEdit}
+                  editModuleHref={
+                    canEdit
+                      ? `/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(moduleId)}/edit`
+                      : undefined
+                  }
+                  onRefresh={onRefetchSources}
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
-      {/* Sources */}
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-title-sm text-teal-800">Sources</h3>
-          <Badge variant="secondary" className="text-xs">
-            {sources.length}
-          </Badge>
-        </div>
-        {sourcesLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <LoadingSpinner size="sm" />
+        {/* Learning Goals column */}
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-title-sm text-primary">Learning Goals</h3>
+            <Badge variant="secondary" className="text-xs">
+              {learningGoals.length}
+            </Badge>
           </div>
-        ) : sources.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">
-            No sources attached to this module.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {sources.map((source) => (
-              <SourceCard
-                key={source.id}
-                source={source}
-                onClick={() => openModal("source", source.id)}
-                onDelete={
-                  canEdit
-                    ? (id) => {
-                        setSourceToDelete(id);
-                        setDeleteDialogOpen(true);
-                      }
-                    : undefined
-                }
-                onRetry={canEdit ? (id) => retrySource.mutate(id) : undefined}
-                showRemoveFromModule={canEdit}
-                editModuleHref={
-                  canEdit
-                    ? `/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(moduleId)}/edit`
-                    : undefined
-                }
-                onRefresh={onRefetchSources}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+          {goalsLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <LoadingSpinner size="sm" />
+            </div>
+          ) : learningGoals.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">
+              No learning goals defined for this module.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {learningGoals.map((goal) => (
+                <ReadOnlyGoal key={goal.id} goal={goal} />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
 
       <ConfirmDialog
         open={deleteDialogOpen}
@@ -300,7 +319,7 @@ function StudentView({
     <div className="flex flex-col gap-8 pb-8">
       {/* Module header + actions */}
       <div className="flex flex-col gap-4">
-        <h2 className="text-title text-teal-800">{moduleName}</h2>
+        <h2 className="text-title text-primary">{moduleName}</h2>
 
         {overviewContent && (
           <div className="prose prose-sm max-w-none bg-secondary rounded-md p-4">
@@ -329,42 +348,44 @@ function StudentView({
         </div>
       </div>
 
-      {/* Sources */}
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-title-sm text-teal-800">Sources</h3>
-          <Badge variant="secondary" className="text-xs">
-            {sources.length}
-          </Badge>
-        </div>
-        {sourcesLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <LoadingSpinner size="sm" />
+      {/* Two-column: Sources (1/3) + Study Tools (2/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_3fr] gap-8 items-start">
+        {/* Sources column */}
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-title-sm text-primary">Sources</h3>
+            <Badge variant="secondary" className="text-xs">
+              {sources.length}
+            </Badge>
           </div>
-        ) : sources.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">
-            No sources in this module yet.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {sources.map((source) => (
-              <SourceCard
-                key={source.id}
-                source={source}
-                onClick={() => openModal("source", source.id)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+          {sourcesLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <LoadingSpinner size="sm" />
+            </div>
+          ) : sources.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">
+              No sources in this module yet.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {sources.map((source) => (
+                <SourceCard
+                  key={source.id}
+                  source={source}
+                  onClick={() => openModal("source", source.id)}
+                  className="bg-transparent"
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
-      {/* Study Tools */}
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-title-sm text-teal-800">Study Tools</h3>
-        </div>
-        <StudyToolsPanel moduleId={moduleId} moduleName={moduleName} />
-      </section>
+        {/* Study Tools column */}
+        <section className="flex flex-col gap-3">
+          <h3 className="text-title-sm text-primary">Study Tools</h3>
+          <StudyToolsPanel moduleId={moduleId} moduleName={moduleName} />
+        </section>
+      </div>
     </div>
   );
 }
@@ -379,6 +400,8 @@ export default function CourseModuleOverviewPage() {
   const moduleId = params?.moduleId
     ? decodeURIComponent(params.moduleId as string)
     : "";
+
+  const [studentViewPreview, setStudentViewPreview] = useState(false);
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: module, isLoading: moduleLoading } = useModule(moduleId);
@@ -405,7 +428,7 @@ export default function CourseModuleOverviewPage() {
     return (
       <AppShell>
         <div className="p-8">
-          <h1 className="text-title text-teal-800 mb-2">Module not found</h1>
+          <h1 className="text-title text-primary mb-2">Module not found</h1>
           <p className="text-muted-foreground mb-4">
             This module could not be loaded. It may have been deleted or is
             unavailable.
@@ -445,6 +468,32 @@ export default function CourseModuleOverviewPage() {
               sources={sources}
               sourcesLoading={sourcesLoading}
             />
+          ) : studentViewPreview ? (
+            <div className="flex flex-col gap-6">
+              <div className="flex items-center justify-between rounded-md border border-border bg-secondary px-4 py-2">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Eye className="h-4 w-4" />
+                  Previewing as student
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setStudentViewPreview(false)}
+                >
+                  <EyeOff className="h-4 w-4" />
+                  Exit Student View
+                </Button>
+              </div>
+              <StudentView
+                courseId={courseId}
+                moduleId={moduleId}
+                moduleName={module.name}
+                moduleOverview={module.overview}
+                moduleDescription={module.description}
+                sources={sources}
+                sourcesLoading={sourcesLoading}
+              />
+            </div>
           ) : (
             <TeacherView
               courseId={courseId}
@@ -458,6 +507,7 @@ export default function CourseModuleOverviewPage() {
               sourcesLoading={sourcesLoading}
               canEdit={permissions.canEditModuleContent}
               onRefetchSources={refetchSources}
+              onToggleStudentView={() => setStudentViewPreview(true)}
             />
           )}
         </div>

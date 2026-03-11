@@ -137,9 +137,8 @@ async def generate_podcast_command(
             episode_profile=episode_profile.name,
         )
 
-        episode.audio_file = (
-            str(result.get("final_output_file_path")) if result else None
-        )
+        raw_path = result.get("final_output_file_path") if result else None
+        episode.audio_file = str(raw_path) if raw_path is not None else None
         episode.transcript = {
             "transcript": full_model_dump(result["transcript"]) if result else None
         }
@@ -154,9 +153,7 @@ async def generate_podcast_command(
         return PodcastGenerationOutput(
             success=True,
             episode_id=str(episode.id),
-            audio_file_path=str(result.get("final_output_file_path"))
-            if result
-            else None,
+            audio_file_path=episode.audio_file,
             transcript={"transcript": full_model_dump(result["transcript"])}
             if result.get("transcript")
             else None,

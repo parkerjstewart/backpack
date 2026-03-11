@@ -12,6 +12,35 @@ from backpack.domain.base import ObjectModel
 from backpack.exceptions import DatabaseOperationError, InvalidInputError
 
 
+class StudyToolResult(ObjectModel):
+    """Stores a generated study tool result (flashcards, quiz, mind map, podcast)."""
+
+    table_name: ClassVar[str] = "study_tool_result"
+    module: str  # record<module> reference
+    tool_type: str  # "flashcards" | "quiz" | "mind_map" | "podcast"
+    title: str
+    data: dict  # structured payload
+    status: str = "completed"  # "generating" | "completed" | "failed"
+    command_id: Optional[str] = None  # surreal-commands job ID for podcast
+
+    @field_validator("module", mode="before")
+    @classmethod
+    def parse_module(cls, value):
+        """Parse module field to ensure string format from RecordID."""
+        if value is None:
+            return value
+        if isinstance(value, RecordID):
+            return str(value)
+        return str(value) if value else None
+
+    def _prepare_save_data(self) -> dict:
+        """Override to ensure module field is always RecordID format for database."""
+        data = super()._prepare_save_data()
+        if data.get("module") is not None:
+            data["module"] = ensure_record_id(data["module"])
+        return data
+
+
 class LearningGoal(ObjectModel):
     """Represents a learning goal for a module."""
 
@@ -84,6 +113,21 @@ class Module(ObjectModel):
         if data.get("course") is not None:
             data["course"] = ensure_record_id(data["course"])
         return data
+
+    async def get_study_tool_results(self) -> List["StudyToolResult"]:
+        """Get all study tool results for this module, ordered by created DESC."""
+        try:
+            results = await repo_query(
+                """
+                SELECT * FROM study_tool_result WHERE module = $id ORDER BY created DESC
+                """,
+                {"id": ensure_record_id(self.id)},
+            )
+            return [StudyToolResult(**r) for r in results] if results else []
+        except Exception as e:
+            logger.error(f"Error fetching study tool results for module {self.id}: {str(e)}")
+            logger.exception(e)
+            raise DatabaseOperationError(e)
 
     async def get_learning_goals(self) -> List["LearningGoal"]:
         """Get all learning goals for this module, ordered by order field."""

@@ -180,7 +180,7 @@ export default function StudentChatPage() {
     return (
       <AppShell>
         <div className="p-8">
-          <h1 className="text-title text-teal-800 mb-2">Module not found</h1>
+          <h1 className="text-title text-primary mb-2">Module not found</h1>
           <Button asChild>
             <Link href={`/courses/${encodeURIComponent(courseId)}`}>
               Back to course
@@ -218,7 +218,7 @@ export default function StudentChatPage() {
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Back to module
               </Link>
-              <h3 className="text-sm font-medium text-teal-800 truncate">{module.name}</h3>
+              <h3 className="text-sm font-medium text-primary truncate">{module.name}</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {includedCount} of {sources.length} sources in context
               </p>

@@ -68,8 +68,8 @@ export function CourseHeader({ courseId, courseName, membershipRole }: CourseHea
             className={cn(
               "px-4 py-1 rounded-3xl text-[18px] leading-normal font-medium transition-colors",
               isActiveTab(tab.href)
-                ? "bg-sidebar-accent text-teal-800 tracking-[-0.18px]"
-                : "border border-border text-teal-800 hover:bg-secondary tracking-[-0.36px]",
+                ? "bg-sidebar-accent text-primary tracking-[-0.18px]"
+                : "border border-border text-primary hover:bg-secondary tracking-[-0.36px]",
             )}
           >
             {tab.label}

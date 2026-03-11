@@ -121,7 +121,7 @@ export default function CourseStudentsPage() {
             needsAttention &&
             needsAttention.length > 0 && (
             <section className="flex flex-col gap-4">
-              <h2 className="text-title text-teal-800">Needs Attention</h2>
+              <h2 className="text-title text-primary">Needs Attention</h2>
               <div className="flex flex-wrap gap-6">
                 {needsAttention.map((student) => (
                   <StudentProfileCard
@@ -137,7 +137,7 @@ export default function CourseStudentsPage() {
 
           {/* Teaching Team section */}
           <section className="flex flex-col gap-4">
-            <h2 className="text-title text-teal-800">Teaching Team</h2>
+            <h2 className="text-title text-primary">Teaching Team</h2>
             <div className="flex flex-wrap gap-6">
               {teachingTeam?.map((member) => (
                 <StudentProfileCard
@@ -167,7 +167,7 @@ export default function CourseStudentsPage() {
           {/* All Students section */}
           <section className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-title text-teal-800">
+              <h2 className="text-title text-primary">
                 All Students ({filteredStudents?.length ?? 0})
               </h2>
               {permissions.canManageMembers && (
@@ -175,7 +175,7 @@ export default function CourseStudentsPage() {
                   onClick={() => openInviteDialog("student")}
                   aria-label="Add student"
                 >
-                  <Plus className="h-6 w-6 text-teal-800" />
+                  <Plus className="h-6 w-6 text-primary" />
                 </IconButton>
               )}
             </div>

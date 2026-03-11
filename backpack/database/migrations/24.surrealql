@@ -1,0 +1,8 @@
+DEFINE TABLE study_tool_result SCHEMAFULL;
+DEFINE FIELD module ON study_tool_result TYPE record<module>;
+DEFINE FIELD tool_type ON study_tool_result TYPE string;
+DEFINE FIELD title ON study_tool_result TYPE string;
+DEFINE FIELD data ON study_tool_result FLEXIBLE TYPE object;
+DEFINE FIELD created ON study_tool_result TYPE datetime DEFAULT time::now();
+DEFINE FIELD updated ON study_tool_result TYPE datetime DEFAULT time::now();
+DEFINE INDEX idx_study_tool_module ON study_tool_result FIELDS module;

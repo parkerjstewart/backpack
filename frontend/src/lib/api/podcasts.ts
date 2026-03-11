@@ -29,6 +29,51 @@ export async function resolvePodcastAssetUrl(path?: string | null): Promise<stri
   return `${base}/${path}`
 }
 
+/**
+ * Resolve a podcast audio path to an absolute URL, fetch it with the user's
+ * auth token, and return a local blob URL that the browser can play without
+ * any further auth headers.  The caller is responsible for calling
+ * URL.revokeObjectURL() on the returned string when done.
+ *
+ * Returns undefined if the path is empty, the fetch fails, or no URL could be
+ * resolved.
+ */
+export async function fetchProtectedAudioBlobUrl(path?: string | null): Promise<string | undefined> {
+  const resolvedUrl = await resolvePodcastAssetUrl(path)
+  if (!resolvedUrl) return undefined
+
+  try {
+    let token: string | undefined
+    if (typeof window !== 'undefined') {
+      const raw = window.localStorage.getItem('auth-storage')
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as { state?: { token?: string } }
+          token = parsed?.state?.token
+        } catch {
+          // ignore malformed storage
+        }
+      }
+    }
+
+    const headers: HeadersInit = {}
+    if (token) {
+      headers.Authorization = `Bearer ${token}`
+    }
+
+    const response = await fetch(resolvedUrl, { headers })
+    if (!response.ok) {
+      throw new Error(`Audio fetch failed: ${response.status}`)
+    }
+
+    const blob = await response.blob()
+    return URL.createObjectURL(blob)
+  } catch (error) {
+    console.error('Unable to load podcast audio', error)
+    return undefined
+  }
+}
+
 export const podcastsApi = {
   listEpisodes: async () => {
     const response = await apiClient.get<PodcastEpisode[]>('/podcasts/episodes')

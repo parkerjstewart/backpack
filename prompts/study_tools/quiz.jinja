@@ -38,17 +38,10 @@ No source content is available for this module.
 
 # YOUR TASK
 
-Generate a **10-question multiple-choice quiz** to test understanding of this module.
+Generate a **10-question multiple-choice quiz** to test understanding of this module. Cover the major concepts and all learning goals. Include a mix of difficulty: ~3 recall, ~4 comprehension, ~3 application questions. Distractors should be plausible but clearly wrong on reflection. Base all questions strictly on the provided content — never invent facts.
 
-Format:
-- Number questions 1–10
-- Each question has exactly 4 options: A) B) C) D)
-- After all 10 questions, include a section: **Answer Key** with the correct answer letter for each question followed by a brief (1-sentence) explanation
-
-Rules:
-- Cover the major concepts and all learning goals
-- Include a mix of difficulty: ~3 recall, ~4 comprehension, ~3 application questions
-- Distractors should be plausible but clearly wrong on reflection
-- Base all questions strictly on the provided content — never invent facts
-- Use plain markdown only
-- Put the answer key at the very end, after all questions
+Return a JSON object with a `questions` array. Each question must have:
+- `question`: the question text
+- `options`: array of 4 objects, each with `letter` (A, B, C, or D) and `text`
+- `correct_answer`: one of "A", "B", "C", or "D"
+- `explanation`: a brief (1-sentence) explanation of the correct answer

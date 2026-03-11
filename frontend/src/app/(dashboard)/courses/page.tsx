@@ -116,7 +116,7 @@ export default function CoursesPage() {
           {/* Pending invitations */}
           {pendingInvitations && pendingInvitations.length > 0 && (
             <div className="flex flex-col gap-4 mt-4">
-              <h2 className="text-title text-teal-800">
+              <h2 className="text-title text-primary">
                 Pending Invitations
               </h2>
               <div className="flex flex-col gap-3">
@@ -144,7 +144,7 @@ export default function CoursesPage() {
                     key={section.label}
                     className="flex flex-col gap-4 mt-4"
                   >
-                    <h2 className="text-title text-teal-800">
+                    <h2 className="text-title text-primary">
                       {section.label}
                     </h2>
                     <div className="flex flex-wrap gap-6">
@@ -158,7 +158,7 @@ export default function CoursesPage() {
           ) : (
             // Unsectioned fallback (no membership data)
             <div className="flex flex-col gap-4 mt-4">
-              <h2 className="text-title text-teal-800">Courses</h2>
+              <h2 className="text-title text-primary">Courses</h2>
 
               {activeCourses.length > 0 ? (
                 <div className="flex flex-wrap gap-6">
