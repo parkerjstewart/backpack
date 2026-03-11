@@ -557,7 +557,7 @@ export default function ModuleReviewPage() {
                 />
               </div>
 
-              <span className="font-sans text-[14px] font-normal text-teal-800 w-12 text-right">
+              <span className="font-sans text-[14px] font-normal text-primary w-12 text-right">
                 {allComplete ? 100 : progressPercentage}%
               </span>
 

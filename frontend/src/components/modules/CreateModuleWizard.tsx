@@ -272,7 +272,7 @@ export function CreateModuleWizard({
                   "inline-flex flex-1 items-center justify-center gap-2 h-12 px-8 rounded-md text-base font-medium tracking-[-0.01em] transition-colors disabled:pointer-events-none disabled:opacity-50",
                   value === mode
                     ? "bg-primary text-primary-foreground"
-                    : "border border-border text-teal-800 hover:bg-secondary"
+                    : "border border-border text-primary hover:bg-secondary"
                 )}
               >
                 <Icon className="h-4 w-4" />

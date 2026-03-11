@@ -214,7 +214,7 @@ export function AppSidebar() {
                   href="/settings"
                   className={cn(
                     "flex items-center justify-center w-8 h-8 rounded-lg transition-all",
-                    "text-teal-800 hover:bg-secondary hover:text-foreground",
+                    "text-primary hover:bg-secondary hover:text-foreground",
                     pathname === "/settings" &&
                       "bg-sidebar-accent text-foreground",
                   )}

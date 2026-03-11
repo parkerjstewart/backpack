@@ -74,7 +74,7 @@ function ProgressBar({
   return (
     <div className="flex items-center gap-3 mt-4">
       {leftLabel && (
-        <span className="shrink-0 text-body-sm text-teal-800 whitespace-nowrap">
+        <span className="shrink-0 text-body-sm text-primary whitespace-nowrap">
           {leftLabel}
         </span>
       )}
@@ -84,7 +84,7 @@ function ProgressBar({
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="shrink-0 text-body-sm text-teal-800 whitespace-nowrap">
+      <span className="shrink-0 text-body-sm text-primary whitespace-nowrap">
         {completed}/{total} Completed
       </span>
     </div>
@@ -127,10 +127,10 @@ function ExpandedCard({
       >
         {/* Title row: module name left, source count right */}
         <div className="flex items-baseline justify-between gap-4">
-          <h3 className="text-title-sm text-teal-800">
+          <h3 className="text-title-sm text-primary">
             {module.name}
           </h3>
-          <span className="shrink-0 text-body-sm text-teal-800">
+          <span className="shrink-0 text-body-sm text-primary">
             {module.source_count} {module.source_count === 1 ? "source" : "sources"}
           </span>
         </div>
@@ -147,7 +147,7 @@ function ExpandedCard({
                 <Tooltip key={goal.id}>
                   <TooltipTrigger asChild>
                     <span
-                      className="inline-block rounded-lg bg-muted px-2.5 py-1.5 text-body-sm text-teal-800 cursor-default whitespace-nowrap"
+                      className="inline-block rounded-lg bg-muted px-2.5 py-1.5 text-body-sm text-primary cursor-default whitespace-nowrap"
                       style={score !== undefined ? { backgroundColor: goalBadgeColor(score) } : undefined}
                     >
                       {label}{pctLabel}
@@ -162,7 +162,7 @@ function ExpandedCard({
               );
             })}
             {extraCount > 0 && (
-              <span className="inline-block rounded-lg bg-muted px-2.5 py-1.5 text-body-sm text-teal-800">
+              <span className="inline-block rounded-lg bg-muted px-2.5 py-1.5 text-body-sm text-primary">
                 +{extraCount} more
               </span>
             )}
@@ -223,7 +223,7 @@ function CollapsedCard({
       >
         {/* Title row: module name left, struggling badge + source/goal counts right */}
         <div className="flex items-baseline justify-between gap-4">
-          <h3 className="text-title-sm text-teal-800">
+          <h3 className="text-title-sm text-primary">
             {module.name}
           </h3>
           <div className="flex items-center gap-3 shrink-0">
@@ -232,7 +232,7 @@ function CollapsedCard({
                 {stats.struggling} struggling
               </span>
             )}
-            <span className="text-body-sm text-teal-800">
+            <span className="text-body-sm text-primary">
               {module.source_count} {module.source_count === 1 ? "source" : "sources"}
               {module.learning_goal_count > 0 && (
                 <> · {module.learning_goal_count} {module.learning_goal_count === 1 ? "goal" : "goals"}</>

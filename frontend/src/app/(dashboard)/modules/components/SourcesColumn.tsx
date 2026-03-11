@@ -17,6 +17,7 @@ import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
 import { AddExistingSourceDialog } from '@/components/sources/AddExistingSourceDialog'
 import { SourceCard } from '@/components/sources/SourceCard'
 import { useDeleteSource, useRetrySource, useRemoveSourceFromModule } from '@/lib/hooks/use-sources'
+import { sourcesApi } from '@/lib/api/sources'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { CollapsibleColumn, createCollapseButton } from '@/components/modules/CollapsibleColumn'
@@ -138,6 +139,15 @@ export function SourcesColumn({
     }
   }
 
+  const handleRename = async (sourceId: string, newTitle: string) => {
+    try {
+      await sourcesApi.update(sourceId, { title: newTitle })
+      onRefresh?.()
+    } catch (error) {
+      console.error('Failed to rename source:', error)
+    }
+  }
+
   const handleSourceClick = (sourceId: string) => {
     openModal('source', sourceId)
   }
@@ -202,6 +212,7 @@ export function SourcesColumn({
                     onDelete={canEdit ? handleDeleteClick : undefined}
                     onRetry={handleRetry}
                     onRemoveFromModule={canEdit ? handleRemoveFromModule : undefined}
+                    onRename={canEdit ? handleRename : undefined}
                     onRefresh={onRefresh}
                     showRemoveFromModule={canEdit}
                   />

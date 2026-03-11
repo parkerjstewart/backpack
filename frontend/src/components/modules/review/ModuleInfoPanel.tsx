@@ -32,12 +32,12 @@ export function ModuleInfoPanel({
         <div className="flex items-center justify-between">
           <Label
             htmlFor="draft-name"
-            className="text-title text-teal-800"
+            className="text-title text-primary"
           >
             Name
           </Label>
           {isNameGenerating && (
-            <span className="flex items-center font-sans text-[14px] font-normal text-teal-800">
+            <span className="flex items-center font-sans text-[14px] font-normal text-primary">
               <Loader2 className="h-3 w-3 mr-1 animate-spin" />
               Generating...
             </span>
@@ -58,7 +58,7 @@ export function ModuleInfoPanel({
         <div className="flex items-center justify-between">
           <Label
             htmlFor="draft-overview"
-            className="text-title text-teal-800"
+            className="text-title text-primary"
           >
             Overview
           </Label>
@@ -111,7 +111,7 @@ export function ModuleInfoPanel({
       <div className="space-y-4">
         <Label
           htmlFor="draft-due-date"
-          className="text-title text-teal-800"
+          className="text-title text-primary"
         >
           Due Date
         </Label>
@@ -127,7 +127,7 @@ export function ModuleInfoPanel({
       <div className="space-y-4">
         <Label
           htmlFor="draft-prerequisites"
-          className="text-title text-teal-800"
+          className="text-title text-primary"
         >
           Prerequisites
         </Label>

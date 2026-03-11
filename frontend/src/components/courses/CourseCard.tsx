@@ -99,7 +99,7 @@ export function CourseCard({ course, className }: CourseCardProps) {
             {course.name}
           </h3>
           {course.description && (
-            <p className="text-body text-teal-800 min-h-[38px] w-full line-clamp-2">
+            <p className="text-body text-primary min-h-[38px] w-full line-clamp-2">
               {course.description}
             </p>
           )}

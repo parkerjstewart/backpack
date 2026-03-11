@@ -680,9 +680,15 @@ class InvitationResponse(BaseModel):
 # Study Tools API models
 # ============================================
 
-class StudyToolResponse(BaseModel):
-    content: str
+class StudyToolResultResponse(BaseModel):
+    id: str
     module_id: str
+    tool_type: str
+    title: str
+    data: dict
+    status: str = "completed"  # "generating" | "completed" | "failed"
+    created: str
+    updated: str
 
 
 class EnrollmentRequestResponse(BaseModel):

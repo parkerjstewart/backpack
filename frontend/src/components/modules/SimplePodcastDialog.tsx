@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -23,7 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useEpisodeProfiles, useGeneratePodcast, useSpeakerProfiles } from "@/lib/hooks/use-podcasts";
+import { useEpisodeProfiles, useSpeakerProfiles } from "@/lib/hooks/use-podcasts";
+import { useGeneratePodcastStudyTool } from "@/lib/hooks/use-study-tools";
 
 interface SimplePodcastDialogProps {
   open: boolean;
@@ -45,33 +46,50 @@ export function SimplePodcastDialog({
   const [briefingSuffix, setBriefingSuffix] = useState("");
 
   const { episodeProfiles, isLoading: profilesLoading } = useEpisodeProfiles();
-  const { speakerProfiles, isLoading: speakersLoading } = useSpeakerProfiles();
-  const generatePodcast = useGeneratePodcast();
+  const { speakerProfiles, isLoading: speakersLoading } = useSpeakerProfiles(episodeProfiles);
+  const podcastMutation = useGeneratePodcastStudyTool();
 
   const hasProfiles = episodeProfiles.length > 0 && speakerProfiles.length > 0;
   const isLoading = profilesLoading || speakersLoading;
+
+  useEffect(() => {
+    if (episodeProfiles.length > 0 && !episodeProfileName) {
+      const preferred = episodeProfiles.find((p) => p.name === "solo_expert") ?? episodeProfiles[0];
+      setEpisodeProfileName(preferred.name);
+    }
+    if (speakerProfiles.length > 0 && !speakerProfileName) {
+      const preferred = speakerProfiles.find((p) => p.name === "solo_expert") ?? speakerProfiles[0];
+      setSpeakerProfileName(preferred.name);
+    }
+  }, [episodeProfiles, speakerProfiles, episodeProfileName, speakerProfileName]);
+
+  useEffect(() => {
+    setEpisodeName(moduleName);
+  }, [moduleName]);
 
   const handleSubmit = async () => {
     if (!episodeProfileName || !speakerProfileName || !episodeName) return;
 
     try {
-      await generatePodcast.mutateAsync({
-        episode_profile: episodeProfileName,
-        speaker_profile: speakerProfileName,
-        episode_name: episodeName,
-        module_id: moduleId,
-        briefing_suffix: briefingSuffix || null,
+      await podcastMutation.mutateAsync({
+        moduleId,
+        body: {
+          episode_profile: episodeProfileName,
+          speaker_profile: speakerProfileName,
+          episode_name: episodeName,
+          briefing_suffix: briefingSuffix || null,
+        },
       });
       onOpenChange(false);
       toast.success("Podcast generation started", {
-        description: "Your podcast is being generated. Check the Podcasts page for progress.",
+        description: "Your podcast is being generated. It will appear in the results when ready.",
         action: {
           label: "Go to Podcasts",
           onClick: () => router.push("/podcasts"),
         },
       });
     } catch {
-      // useGeneratePodcast handles the error toast internally
+      toast.error("Failed to start podcast generation");
     }
   };
 
@@ -177,20 +195,20 @@ export function SimplePodcastDialog({
               <Button
                 variant="ghost"
                 onClick={() => onOpenChange(false)}
-                disabled={generatePodcast.isPending}
+                disabled={podcastMutation.isPending}
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSubmit}
                 disabled={
-                  generatePodcast.isPending ||
+                  podcastMutation.isPending ||
                   !episodeProfileName ||
                   !speakerProfileName ||
                   !episodeName
                 }
               >
-                {generatePodcast.isPending && (
+                {podcastMutation.isPending && (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 )}
                 Generate

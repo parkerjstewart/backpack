@@ -12,7 +12,6 @@ import { sourcesApi } from '@/lib/api/sources'
 import { insightsApi, SourceInsightResponse } from '@/lib/api/insights'
 import { SourceDetailResponse } from '@/lib/types/api'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { InlineEdit } from '@/components/common/InlineEdit'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -296,16 +295,9 @@ export function SourceDetailContent({
       {/* Header */}
       <div className="pb-3 pr-8">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <InlineEdit
-              value={source.title || ''}
-              onSave={handleUpdateTitle}
-              className="text-2xl font-bold"
-              inputClassName="text-2xl font-bold"
-              placeholder={t.sources.titlePlaceholder}
-              emptyText={t.sources.untitledSource}
-            />
-          </div>
+          <h1 className="text-card-title text-primary flex-1 min-w-0 truncate">
+            {source.title || <span className="text-muted-foreground">{t.sources.untitledSource}</span>}
+          </h1>
           <Badge variant="secondary" className="text-base px-3 py-1 flex-shrink-0">
             {getSourceType()}
           </Badge>
@@ -336,9 +328,9 @@ export function SourceDetailContent({
           </TabsList>
 
           {/* Guide Tab — Dense Summary */}
-          <TabsContent value="guide">
+          <TabsContent value="guide" className="flex-1 min-h-0 flex flex-col">
             {denseSummary ? (
-              <div className="mt-3 max-h-[440px] overflow-y-auto pr-1">
+              <div className="mt-3 flex-1 min-h-0 overflow-y-auto pr-1">
                 <div className="prose max-w-none text-primary [&_h1]:font-sans [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-5 [&_h1]:mb-2 [&_h2]:font-sans [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:font-sans [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_h4]:font-sans [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:mb-2 [&_li]:mb-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:my-2 [&_blockquote]:not-italic [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
@@ -365,15 +357,15 @@ export function SourceDetailContent({
           </TabsContent>
 
           {/* Document Tab — PDF for files, raw text for links/text */}
-          <TabsContent value="document" className="mt-3">
+          <TabsContent value="document" className="mt-3 flex-1 min-h-0 flex flex-col">
             {hasFile ? (
               /* File source: PDF iframe */
               pdfLoading ? (
-                <div className="h-[440px] flex items-center justify-center">
+                <div className="flex-1 flex items-center justify-center">
                   <LoadingSpinner />
                 </div>
               ) : fileAvailable === false ? (
-                <div className="h-[440px] flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
                   <p className="text-sm">{t.sources.fileUnavailable}</p>
                   <Button variant="secondary" size="sm" onClick={handleDownloadFile}>
                     <Download className="h-4 w-4" />
@@ -383,17 +375,17 @@ export function SourceDetailContent({
               ) : pdfBlobUrl ? (
                 <iframe
                   src={`${pdfBlobUrl}#toolbar=0&navpanes=0&zoom=130`}
-                  className="w-full h-[440px] rounded-md border border-border"
+                  className="w-full flex-1 rounded-md border border-border"
                   title={source.title || 'Document'}
                 />
               ) : (
-                <div className="h-[440px] flex items-center justify-center">
+                <div className="flex-1 flex items-center justify-center">
                   <LoadingSpinner />
                 </div>
               )
             ) : (
               /* Link / text source: raw extracted content */
-              <div className="max-h-[440px] overflow-y-auto">
+              <div className="flex-1 min-h-0 overflow-y-auto">
                 {/* URL bar for link sources */}
                 {source.asset?.url && !isYouTubeUrl && (
                   <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
@@ -448,7 +440,7 @@ export function SourceDetailContent({
           </TabsContent>
 
           {/* Details Tab */}
-          <TabsContent value="details" className="mt-3 max-h-[440px] overflow-y-auto space-y-4">
+          <TabsContent value="details" className="mt-3 flex-1 min-h-0 overflow-y-auto space-y-4">
             {(hasFile || onRemove) && (
               <div className="flex items-center gap-2">
                 {hasFile && (

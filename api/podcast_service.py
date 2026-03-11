@@ -116,9 +116,11 @@ class PodcastService:
         """Get status of a podcast generation job"""
         try:
             status = await get_command_status(job_id)
+            raw_status = status.status if status else None
+            status_value = str(getattr(raw_status, "value", raw_status)) if raw_status else "unknown"
             return {
                 "job_id": job_id,
-                "status": status.status if status else "unknown",
+                "status": status_value,
                 "result": status.result if status else None,
                 "error_message": getattr(status, "error_message", None)
                 if status
