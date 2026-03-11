@@ -11,8 +11,8 @@ DEFINE FIELD IF NOT EXISTS role ON TABLE user TYPE string DEFAULT 'student';
 DEFINE FIELD IF NOT EXISTS external_id ON TABLE user TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS created ON TABLE user TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS updated ON TABLE user TYPE datetime DEFAULT time::now();
-DEFINE INDEX IF NOT EXISTS idx_user_email ON TABLE user COLUMNS email UNIQUE;
-DEFINE INDEX IF NOT EXISTS idx_user_external ON TABLE user COLUMNS external_id;
+DEFINE INDEX IF NOT EXISTS idx_user_email ON TABLE user FIELDS email UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_user_external ON TABLE user FIELDS external_id;
 
 -- 2. COURSE TABLE
 DEFINE TABLE IF NOT EXISTS course SCHEMAFULL;
@@ -30,8 +30,8 @@ DEFINE FIELD IF NOT EXISTS course ON TABLE module TYPE option<record<course>>;
 DEFINE FIELD IF NOT EXISTS overview ON TABLE module TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS order ON TABLE module TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS due_date ON TABLE module TYPE option<datetime>;
-DEFINE INDEX IF NOT EXISTS idx_module_course ON TABLE module COLUMNS course;
-DEFINE INDEX IF NOT EXISTS idx_module_due_date ON TABLE module COLUMNS due_date;
+DEFINE INDEX IF NOT EXISTS idx_module_course ON TABLE module FIELDS course;
+DEFINE INDEX IF NOT EXISTS idx_module_due_date ON TABLE module FIELDS due_date;
 
 -- 3. MODULE PREREQUISITES (optional, self-referential within/across courses)
 DEFINE TABLE IF NOT EXISTS module_prerequisite TYPE RELATION FROM module TO module;
@@ -51,7 +51,7 @@ DEFINE FIELD IF NOT EXISTS description ON TABLE learning_goal TYPE string;
 DEFINE FIELD IF NOT EXISTS mastery_criteria ON TABLE learning_goal TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS order ON TABLE learning_goal TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS created ON TABLE learning_goal TYPE datetime DEFAULT time::now();
-DEFINE INDEX IF NOT EXISTS idx_goal_module ON TABLE learning_goal COLUMNS module;
+DEFINE INDEX IF NOT EXISTS idx_goal_module ON TABLE learning_goal FIELDS module;
 
 -- 6. MODULE DOCUMENTS (links to existing source table)
 DEFINE TABLE IF NOT EXISTS module_document SCHEMAFULL;
@@ -60,8 +60,8 @@ DEFINE FIELD IF NOT EXISTS source ON TABLE module_document TYPE record<source>;
 DEFINE FIELD IF NOT EXISTS title ON TABLE module_document TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS order ON TABLE module_document TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS created ON TABLE module_document TYPE datetime DEFAULT time::now();
-DEFINE INDEX IF NOT EXISTS idx_moddoc_module ON TABLE module_document COLUMNS module;
-DEFINE INDEX IF NOT EXISTS idx_moddoc_source ON TABLE module_document COLUMNS source;
+DEFINE INDEX IF NOT EXISTS idx_moddoc_module ON TABLE module_document FIELDS module;
+DEFINE INDEX IF NOT EXISTS idx_moddoc_source ON TABLE module_document FIELDS source;
 
 -- 7. DOCUMENT CHUNK LINEAGE (separate from source_embedding for flexibility)
 DEFINE TABLE IF NOT EXISTS document_chunk SCHEMAFULL;
@@ -72,8 +72,8 @@ DEFINE FIELD IF NOT EXISTS content_hash ON TABLE document_chunk TYPE option<stri
 DEFINE FIELD IF NOT EXISTS char_start ON TABLE document_chunk TYPE option<int>;
 DEFINE FIELD IF NOT EXISTS char_end ON TABLE document_chunk TYPE option<int>;
 DEFINE FIELD IF NOT EXISTS created ON TABLE document_chunk TYPE datetime DEFAULT time::now();
-DEFINE INDEX IF NOT EXISTS idx_chunk_doc ON TABLE document_chunk COLUMNS document;
-DEFINE INDEX IF NOT EXISTS idx_chunk_hash ON TABLE document_chunk COLUMNS content_hash;
+DEFINE INDEX IF NOT EXISTS idx_chunk_doc ON TABLE document_chunk FIELDS document;
+DEFINE INDEX IF NOT EXISTS idx_chunk_hash ON TABLE document_chunk FIELDS content_hash;
 
 -- 8. EMBEDDING MODEL CONFIGURATION (multi-model support)
 DEFINE TABLE IF NOT EXISTS embedding_model_config SCHEMAFULL;
@@ -83,7 +83,7 @@ DEFINE FIELD IF NOT EXISTS model_name ON TABLE embedding_model_config TYPE strin
 DEFINE FIELD IF NOT EXISTS dimensions ON TABLE embedding_model_config TYPE int;
 DEFINE FIELD IF NOT EXISTS is_active ON TABLE embedding_model_config TYPE bool DEFAULT true;
 DEFINE FIELD IF NOT EXISTS created ON TABLE embedding_model_config TYPE datetime DEFAULT time::now();
-DEFINE INDEX IF NOT EXISTS idx_emb_config_active ON TABLE embedding_model_config COLUMNS is_active;
+DEFINE INDEX IF NOT EXISTS idx_emb_config_active ON TABLE embedding_model_config FIELDS is_active;
 
 -- 9. CHUNK EMBEDDINGS (with model lineage)
 DEFINE TABLE IF NOT EXISTS chunk_embedding SCHEMAFULL;
@@ -91,8 +91,8 @@ DEFINE FIELD IF NOT EXISTS chunk ON TABLE chunk_embedding TYPE record<document_c
 DEFINE FIELD IF NOT EXISTS model_config ON TABLE chunk_embedding TYPE record<embedding_model_config>;
 DEFINE FIELD IF NOT EXISTS embedding ON TABLE chunk_embedding TYPE array<float>;
 DEFINE FIELD IF NOT EXISTS created ON TABLE chunk_embedding TYPE datetime DEFAULT time::now();
-DEFINE INDEX IF NOT EXISTS idx_chunk_emb_chunk ON TABLE chunk_embedding COLUMNS chunk;
-DEFINE INDEX IF NOT EXISTS idx_chunk_emb_model ON TABLE chunk_embedding COLUMNS model_config;
+DEFINE INDEX IF NOT EXISTS idx_chunk_emb_chunk ON TABLE chunk_embedding FIELDS chunk;
+DEFINE INDEX IF NOT EXISTS idx_chunk_emb_model ON TABLE chunk_embedding FIELDS model_config;
 
 -- 10. STUDENT PROGRESS TRACKING
 DEFINE TABLE IF NOT EXISTS student_progress SCHEMAFULL;
@@ -103,8 +103,8 @@ DEFINE FIELD IF NOT EXISTS confidence_score ON TABLE student_progress TYPE optio
 DEFINE FIELD IF NOT EXISTS notes ON TABLE student_progress TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS last_activity ON TABLE student_progress TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS created ON TABLE student_progress TYPE datetime DEFAULT time::now();
-DEFINE INDEX IF NOT EXISTS idx_progress_user ON TABLE student_progress COLUMNS user;
-DEFINE INDEX IF NOT EXISTS idx_progress_goal ON TABLE student_progress COLUMNS learning_goal;
+DEFINE INDEX IF NOT EXISTS idx_progress_user ON TABLE student_progress FIELDS user;
+DEFINE INDEX IF NOT EXISTS idx_progress_goal ON TABLE student_progress FIELDS learning_goal;
 
 -- 11. CASCADE DELETE EVENTS
 DEFINE EVENT IF NOT EXISTS module_lms_delete ON TABLE module WHEN ($after == NONE) THEN {

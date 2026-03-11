@@ -77,3 +77,24 @@ Typically invoked in Docker Compose or CI/CD pipelines rather than directly:
 # With custom API URL
 INTERNAL_API_URL=http://api:5055 ./scripts/wait-for-api.sh
 ```
+
+---
+
+## Vercel + Render deployment bundle
+
+For a no-domain setup using provider URLs (`*.vercel.app` + `*.onrender.com`), use:
+
+- `deploy/vercel-render/README.md`
+- `deploy/vercel-render/render-api.env.example`
+- `deploy/vercel-render/vercel.env.example`
+- `deploy/vercel-render/smoke-test.sh`
+
+---
+
+## AWS Elastic Beanstalk deployment bundle
+
+For a mostly hands-off single-service deployment using AWS credits, use:
+
+- `deploy/aws-eb/README.md`
+- `deploy/aws-eb/eb.env.example`
+- `deploy/aws-eb/deploy.sh`

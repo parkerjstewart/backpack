@@ -20,7 +20,10 @@ import { useIsDesktop } from "@/lib/hooks/use-media-query";
 import { useTranslation } from "@/lib/hooks/use-translation";
 import { cn } from "@/lib/utils";
 import { FileText, GraduationCap } from "lucide-react";
-import { getCoursePermissions } from "@/lib/permissions/course";
+import {
+  getCoursePermissions,
+  normalizeCourseMembershipRole,
+} from "@/lib/permissions/course";
 
 type ContextMode = "off" | "insights" | "full";
 
@@ -126,7 +129,9 @@ export default function CourseModuleOverviewPage() {
     );
   }
 
-  const permissions = getCoursePermissions(course?.membership_role);
+  const permissions = getCoursePermissions(
+    normalizeCourseMembershipRole(course?.membership_role),
+  );
 
   return (
     <AppShell>
@@ -137,7 +142,9 @@ export default function CourseModuleOverviewPage() {
             <CourseHeader
               courseId={courseId}
               courseName={course.title}
-              membershipRole={course.membership_role}
+                membershipRole={normalizeCourseMembershipRole(
+                  course.membership_role,
+                )}
             />
           )}
         </div>

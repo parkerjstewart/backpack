@@ -15,6 +15,7 @@ import {
   useAcceptInvitation,
   useDeclineInvitation,
 } from "@/lib/hooks/use-invitations";
+import { normalizeCourseMembershipRole } from "@/lib/permissions/course";
 
 function isTeachingRole(role?: string | null): boolean {
   return role === "instructor" || role === "ta";
@@ -45,7 +46,7 @@ export default function CoursesPage() {
         createdAt: c.created,
         updatedAt: c.updated,
         color: getCourseColor(c.id),
-        membershipRole: c.membership_role,
+        membershipRole: normalizeCourseMembershipRole(c.membership_role),
       }));
       setCourses(localCourses);
     }
@@ -63,7 +64,7 @@ export default function CoursesPage() {
     createdAt: c.created,
     updatedAt: c.updated,
     color: getCourseColor(c.id),
-    membershipRole: c.membership_role,
+    membershipRole: normalizeCourseMembershipRole(c.membership_role),
   }));
 
   // Split courses by role

@@ -1,5 +1,12 @@
 export type CourseMembershipRole = 'student' | 'instructor' | 'ta' | null | undefined
 
+export function normalizeCourseMembershipRole(role: string | null | undefined): CourseMembershipRole {
+  if (role === 'student' || role === 'instructor' || role === 'ta') {
+    return role
+  }
+  return undefined
+}
+
 export function isTeachingRole(role: CourseMembershipRole): boolean {
   return role === 'instructor' || role === 'ta'
 }

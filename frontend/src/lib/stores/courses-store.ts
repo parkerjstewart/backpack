@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { CourseMembershipRole } from '@/lib/permissions/course'
 
 export type CourseColor = 'sage' | 'amber' | 'sky' | 'coral'
 
@@ -15,7 +16,7 @@ export interface Course {
   /** Card color variant for visual distinction */
   color?: CourseColor
   /** User's role in this course from course_membership */
-  membershipRole?: string | null
+  membershipRole?: CourseMembershipRole
 }
 
 export interface ModuleMetadata {

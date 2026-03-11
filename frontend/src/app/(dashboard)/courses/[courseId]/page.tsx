@@ -12,7 +12,10 @@ import { useCoursesStore } from "@/lib/stores/courses-store";
 import { useCourse } from "@/lib/hooks/use-courses";
 import { CreateModuleWizard } from "@/components/modules/CreateModuleWizard";
 import { useState, useMemo, useEffect } from "react";
-import { getCoursePermissions } from "@/lib/permissions/course";
+import {
+  getCoursePermissions,
+  normalizeCourseMembershipRole,
+} from "@/lib/permissions/course";
 
 export default function CoursePage() {
   const params = useParams();
@@ -95,7 +98,9 @@ export default function CoursePage() {
     );
   }
 
-  const permissions = getCoursePermissions(course.membership_role);
+  const permissions = getCoursePermissions(
+    normalizeCourseMembershipRole(course.membership_role),
+  );
 
   return (
     <AppShell>
@@ -105,7 +110,9 @@ export default function CoursePage() {
           <CourseHeader
             courseId={courseId}
             courseName={course.title}
-            membershipRole={course.membership_role}
+            membershipRole={normalizeCourseMembershipRole(
+              course.membership_role,
+            )}
           />
 
           {/* Content area */}

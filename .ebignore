@@ -1,0 +1,33 @@
+# Force Elastic Beanstalk Docker platform to use Dockerfile build mode,
+# not docker-compose mode.
+docker-compose*.yml
+
+# Local and secret files
+.env
+docker.env
+deploy/aws-eb/eb.env
+.venv/
+node_modules/
+frontend/node_modules/
+
+# EB/local metadata
+.elasticbeanstalk/
+.git/
+.cursor/
+.claude/
+.pytest_cache/
+
+# Local runtime data (never needed in deploy bundle)
+data/
+notebook_data/
+module_data/
+surreal_data/
+surreal_single_data/
+sqlite-db/
+.uploads/
+
+# Build artifacts
+frontend/.next/
+frontend/out/
+dist/
+build/
