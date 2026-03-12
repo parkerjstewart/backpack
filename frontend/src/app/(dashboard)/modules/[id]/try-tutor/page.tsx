@@ -14,6 +14,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, CheckCircle2, Trash2, RotateCcw, Bug, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -33,6 +34,14 @@ export default function TryTutorPage() {
 
   const moduleId = params?.id ? decodeURIComponent(params.id as string) : ''
   const hasInitializedRef = useRef(false)
+
+  const { isCollapsed, setCollapsed } = useSidebarStore()
+  useEffect(() => {
+    const prev = isCollapsed
+    setCollapsed(true)
+    return () => setCollapsed(prev)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const { reset: resetDraftStore } = useModuleDraftStore()
   const { data: module, isLoading: moduleLoading } = useModule(moduleId)

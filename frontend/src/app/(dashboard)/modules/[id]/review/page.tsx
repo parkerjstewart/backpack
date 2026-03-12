@@ -12,6 +12,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Bug, PanelRightClose, PanelRightOpen, RotateCcw } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useSidebarStore } from '@/lib/stores/sidebar-store'
 
 export default function ReviewPage() {
   const { t } = useTranslation()
@@ -20,6 +21,14 @@ export default function ReviewPage() {
 
   const moduleId = params?.id ? decodeURIComponent(params.id as string) : ''
   const hasInitializedRef = useRef(false)
+
+  const { isCollapsed, setCollapsed } = useSidebarStore()
+  useEffect(() => {
+    const prev = isCollapsed
+    setCollapsed(true)
+    return () => setCollapsed(prev)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const { data: module, isLoading: moduleLoading } = useModule(moduleId)
 
