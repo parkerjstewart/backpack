@@ -15,6 +15,7 @@ class RefinedGoal(BaseModel):
     """A single refined learning goal."""
 
     description: str = Field(..., description="Action-verb learning goal statement")
+    title: str = Field(default="", description="Short 2-4 word topic label for display badges")
     takeaways: str = Field(default="", description="Key concepts as bullet points")
     competencies: str = Field(
         default="", description="Demonstrable skills as bullet points"

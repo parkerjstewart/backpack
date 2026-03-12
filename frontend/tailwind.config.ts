@@ -25,7 +25,11 @@ const config: Config = {
           800: "var(--teal-800)",
         },
         success: "var(--success)",
+        "success-fg": "var(--success-fg)",
         warning: "var(--warning)",
+        "warning-fg": "var(--warning-fg)",
+        info: "var(--info)",
+        "info-fg": "var(--info-fg)",
         // Course card colors (from Figma variables)
         amber: {
           400: "var(--amber-400)",
@@ -46,11 +50,14 @@ const config: Config = {
         lg: "var(--radius-lg)",
         xl: "var(--radius-xl)",
       },
-      spacing: {
-        "page": "var(--page-padding)",
-        "section": "var(--section-gap)",
-        "card-gap": "var(--card-gap)",
-        "item": "var(--item-gap)",
+      typography: {
+        DEFAULT: {
+          css: {
+            "--tw-prose-body": "var(--foreground)",
+            "--tw-prose-links": "var(--info, #2563eb)",
+            "--tw-prose-headings": "var(--primary)",
+          },
+        },
       },
     },
   },

@@ -12,6 +12,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import { normalizeLatexDelimiters } from '@/lib/utils'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useVoiceSession } from '@/lib/hooks/useVoiceSession'
 import { toast } from 'sonner'
@@ -92,17 +93,13 @@ export function TutorChat({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    const isMac = typeof navigator !== 'undefined' && navigator.userAgent.toUpperCase().indexOf('MAC') >= 0
-    const isModifierPressed = isMac ? e.metaKey : e.ctrlKey
-
-    if (e.key === 'Enter' && isModifierPressed) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
   }
 
-  const isMac = typeof navigator !== 'undefined' && navigator.userAgent.toUpperCase().indexOf('MAC') >= 0
-  const keyHint = isMac ? '⌘+Enter' : 'Ctrl+Enter'
+  const keyHint = 'Enter'
 
   const {
     isRecording,
@@ -211,9 +208,9 @@ export function TutorChat({
                       }`}
                     >
                       {message.type === 'tutor' ? (
-                        <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words">
+                        <div className="prose prose-sm prose-neutral max-w-none break-words">
                           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                            {message.content}
+                            {normalizeLatexDelimiters(message.content)}
                           </ReactMarkdown>
                         </div>
                       ) : (
@@ -224,12 +221,12 @@ export function TutorChat({
                     </div>
                     {message.type === 'tutor' && message.supplement && (
                       <div className="rounded-lg border bg-background px-4 py-3 text-sm">
-                        <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                        <div className="prose prose-sm prose-neutral max-w-none">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeKatex]}
                           >
-                            {message.supplement}
+                            {normalizeLatexDelimiters(message.supplement)}
                           </ReactMarkdown>
                         </div>
                       </div>
@@ -312,7 +309,7 @@ export function TutorChat({
         <div className="flex-shrink-0 p-4 space-y-3 border-t">
           {isSessionComplete ? (
             <div className="text-center text-muted-foreground py-2">
-              <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-green-600" />
+              <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-success-fg" />
               <p className="text-sm">{t.tutor.sessionComplete}</p>
             </div>
           ) : (

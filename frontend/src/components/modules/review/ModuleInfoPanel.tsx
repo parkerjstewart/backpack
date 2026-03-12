@@ -1,9 +1,9 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { MarkdownViewEdit } from "@/components/ui/markdown-view-edit";
 import { useModuleDraftStore } from "@/lib/stores/module-draft-store";
 import { Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,11 +11,13 @@ import { cn } from "@/lib/utils";
 interface ModuleInfoPanelProps {
   isGenerating: boolean;
   onRegenerateOverview: () => void;
+  isPulsingOverview?: boolean;
 }
 
 export function ModuleInfoPanel({
   isGenerating,
   onRegenerateOverview,
+  isPulsingOverview = false,
 }: ModuleInfoPanelProps) {
   const { name, overview, dueDate, prerequisites, setModuleField } =
     useModuleDraftStore();
@@ -24,13 +26,13 @@ export function ModuleInfoPanel({
   const isNameGenerating = isGenerating && !name;
 
   return (
-    <div className="w-[236px] flex-shrink-0 overflow-y-auto space-y-6">
+    <div className="w-[236px] flex-shrink-0 space-y-6">
       {/* Name */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <Label
             htmlFor="draft-name"
-            className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+            className="text-title text-teal-800"
           >
             Name
           </Label>
@@ -52,11 +54,11 @@ export function ModuleInfoPanel({
       </div>
 
       {/* Overview */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <Label
             htmlFor="draft-overview"
-            className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+            className="text-title text-teal-800"
           >
             Overview
           </Label>
@@ -81,26 +83,35 @@ export function ModuleInfoPanel({
             )}
           </Button>
         </div>
-        <Textarea
-          id="draft-overview"
-          value={overview || ""}
-          onChange={(e) => setModuleField("overview", e.target.value)}
-          placeholder={
-            isGenerating ? "Generating overview..." : "Enter module overview..."
-          }
-          disabled={isGenerating}
-          className={cn(
-            "min-h-[361px] max-h-[361px] resize-none",
-            isGenerating && "animate-border-pulse disabled:opacity-100"
-          )}
-        />
+        {isGenerating ? (
+          <div
+            className={cn(
+              "flex items-center justify-center rounded-md border border-input bg-white px-3 py-2 text-sm text-muted-foreground italic",
+              "min-h-[361px]",
+              (isGenerating || isPulsingOverview) && "animate-border-pulse"
+            )}
+          >
+            Generating overview...
+          </div>
+        ) : (
+          <MarkdownViewEdit
+            value={overview || ""}
+            onChange={(val) => setModuleField("overview", val)}
+            placeholder="Enter module overview..."
+            minHeight="361px"
+            className={cn(
+              "min-h-[361px]",
+              isPulsingOverview && "animate-border-pulse"
+            )}
+          />
+        )}
       </div>
 
       {/* Due Date */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         <Label
           htmlFor="draft-due-date"
-          className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+          className="text-title text-teal-800"
         >
           Due Date
         </Label>
@@ -113,10 +124,10 @@ export function ModuleInfoPanel({
       </div>
 
       {/* Prerequisites */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         <Label
           htmlFor="draft-prerequisites"
-          className="font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800"
+          className="text-title text-teal-800"
         >
           Prerequisites
         </Label>

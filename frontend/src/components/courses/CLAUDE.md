@@ -60,7 +60,7 @@ interface CreateCourseDialogProps {
 
 **Dialog Styling (matches Figma node 199:1245):**
 - `max-w-[806px]` width
-- `rounded-[32px]` border radius
+- `rounded-xl` border radius
 - `px-16 pt-8 pb-16` padding
 - Close button positioned top-left (not default top-right)
 

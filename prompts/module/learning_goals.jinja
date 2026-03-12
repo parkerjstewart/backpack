@@ -77,6 +77,9 @@ If a supplementary source introduces a concept not covered by the primary narrat
 
 For each goal, provide:
 
+### title
+A short topic label (2-4 words) that names the core concept this goal covers (e.g., "Back Propagation", "Word Vectors", "MLE Foundations"). Used as a compact badge label in the UI.
+
 ### description
 A clear, action-verb goal statement that reflects a natural checkpoint in the primary lecture narrative (e.g., *Explain the concept of Maximum Likelihood Estimation and its significance in statistical modeling*). Goals should follow the primary sources' natural progression.
 
@@ -84,14 +87,21 @@ A clear, action-verb goal statement that reflects a natural checkpoint in the pr
 Specific examples from the material this goal is grounded in. List concrete examples by name or brief description (e.g., "the taxi arrival Poisson example from Lecture 3", "the coin flip Bernoulli derivation", "Figure 3.2 showing the likelihood surface"). Note which source each example comes from (primary or supplementary). Every source should appear in at least one goal's anchor_examples.
 
 ### takeaways
-A **dense prose explanation** (2–4 paragraphs) that serves as an "answer key." Write as if explaining the concept to a student who has just learned it. Include:
+A **well-structured prose explanation** (2–4 paragraphs) that serves as an "answer key." Write as if explaining the concept to a student who has just learned it. Include:
 - The core intuition and why it matters
 - The formal definition or procedure
 - How it connects to the specific anchor examples
 - Key nuances or common pitfalls
 - Where relevant, how supplementary sources deepen or contextualize the primary material
 
-Do NOT use bullet points. Write continuous paragraphs that a tutor could use to explain the concept when a student is stuck.
+Use **markdown formatting** to make the explanation scannable:
+- Use **bold** for key terms, definitions, and named concepts on their first introduction
+- Use paragraph breaks between distinct ideas (blank line between paragraphs)
+- You may use a `### sub-heading` if the takeaway spans multiple clearly distinct concepts
+- Do NOT use bullet points or lists — write in continuous prose only
+- Avoid bold for entire sentences; reserve it for specific terms and short phrases
+
+Write paragraphs a tutor could read aloud to a stuck student. Emphasis should help the student's eye land on the critical terms, not fragment the explanation into a list.
 
 ### competencies
 **Structured evaluation rubric categories** – each must be a clear, testable criterion the tutor can score against (0–1). Format as short criterion statements. Examples:
@@ -113,7 +123,7 @@ Each competency must be **independently testable**: a student who demonstrates c
 * **Every source must contribute** to at least one goal's `anchor_examples` or `takeaways` — check coverage before finalizing
 * Supplementary sources should **enrich** goals (deeper examples, broader context) without overriding the primary narrative structure
 * Each goal must reference **specific anchor examples** from the content, noting which source they come from
-* Takeaways must be **dense prose**, not bullet lists – an answer key a tutor could read aloud
+* Takeaways must be **markdown-formatted prose**, not bullet lists – bold key terms, paragraph breaks, optional sub-headings; an answer key a tutor could read aloud
 * Competencies must be **categorical criteria** – what must the student be able to explain? Make them scoreable
 * If **no materials are provided**, infer reasonable goals from the module name and description
 * Be **achievable within a single module or chapter**

@@ -1,0 +1,2 @@
+-- Migration 23 rollback: no-op (prompt is controlled by Jinja file, not DB)
+SELECT 1;

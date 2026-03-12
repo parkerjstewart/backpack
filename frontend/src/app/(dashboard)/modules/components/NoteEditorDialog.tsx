@@ -169,7 +169,7 @@ export function NoteEditorDialog({ open, onOpenChange, moduleId, note }: NoteEdi
                   )}
                 />
                 {errors.content && (
-                  <p className="text-sm text-red-600 mt-1">{errors.content.message}</p>
+                  <p className="text-sm text-destructive mt-1">{errors.content.message}</p>
                 )}
               </div>
             </>

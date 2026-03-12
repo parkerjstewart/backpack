@@ -183,7 +183,7 @@ export function SpeakerProfileFormDialog({
                 {...register("name")}
               />
               {errors.name ? (
-                <p className="text-xs text-red-600">{errors.name.message}</p>
+                <p className="text-xs text-destructive">{errors.name.message}</p>
               ) : null}
             </div>
 
@@ -196,7 +196,7 @@ export function SpeakerProfileFormDialog({
                 autoComplete="off"
               />
               {errors.tts_provider ? (
-                <p className="text-xs text-red-600">
+                <p className="text-xs text-destructive">
                   {errors.tts_provider.message}
                 </p>
               ) : null}
@@ -211,7 +211,7 @@ export function SpeakerProfileFormDialog({
                 autoComplete="off"
               />
               {errors.tts_model ? (
-                <p className="text-xs text-red-600">
+                <p className="text-xs text-destructive">
                   {errors.tts_model.message}
                 </p>
               ) : null}
@@ -285,7 +285,7 @@ export function SpeakerProfileFormDialog({
                       autoComplete="off"
                     />
                     {errors.speakers?.[index]?.name ? (
-                      <p className="text-xs text-red-600">
+                      <p className="text-xs text-destructive">
                         {errors.speakers[index]?.name?.message}
                       </p>
                     ) : null}
@@ -301,7 +301,7 @@ export function SpeakerProfileFormDialog({
                       autoComplete="off"
                     />
                     {errors.speakers?.[index]?.voice_id ? (
-                      <p className="text-xs text-red-600">
+                      <p className="text-xs text-destructive">
                         {errors.speakers[index]?.voice_id?.message}
                       </p>
                     ) : null}
@@ -319,7 +319,7 @@ export function SpeakerProfileFormDialog({
                     autoComplete="off"
                   />
                   {errors.speakers?.[index]?.backstory ? (
-                    <p className="text-xs text-red-600">
+                    <p className="text-xs text-destructive">
                       {errors.speakers[index]?.backstory?.message}
                     </p>
                   ) : null}
@@ -336,7 +336,7 @@ export function SpeakerProfileFormDialog({
                     autoComplete="off"
                   />
                   {errors.speakers?.[index]?.personality ? (
-                    <p className="text-xs text-red-600">
+                    <p className="text-xs text-destructive">
                       {errors.speakers[index]?.personality?.message}
                     </p>
                   ) : null}
@@ -345,7 +345,7 @@ export function SpeakerProfileFormDialog({
             ))}
 
             {speakersArrayError ? (
-              <p className="text-xs text-red-600">{speakersArrayError}</p>
+              <p className="text-xs text-destructive">{speakersArrayError}</p>
             ) : null}
           </div>
 

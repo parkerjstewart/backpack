@@ -19,7 +19,6 @@ import { SourceCard } from '@/components/sources/SourceCard'
 import { useDeleteSource, useRetrySource, useRemoveSourceFromModule } from '@/lib/hooks/use-sources'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
-import { ContextMode } from '../[id]/page'
 import { CollapsibleColumn, createCollapseButton } from '@/components/modules/CollapsibleColumn'
 import { useModuleColumnsStore } from '@/lib/stores/module-columns-store'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -31,8 +30,6 @@ interface SourcesColumnProps {
   moduleName?: string
   canEdit?: boolean
   onRefresh?: () => void
-  contextSelections?: Record<string, ContextMode>
-  onContextModeChange?: (sourceId: string, mode: ContextMode) => void
   // Pagination props
   hasNextPage?: boolean
   isFetchingNextPage?: boolean
@@ -45,8 +42,6 @@ export function SourcesColumn({
   moduleId,
   canEdit = true,
   onRefresh,
-  contextSelections,
-  onContextModeChange,
   hasNextPage,
   isFetchingNextPage,
   fetchNextPage,
@@ -209,11 +204,6 @@ export function SourcesColumn({
                     onRemoveFromModule={canEdit ? handleRemoveFromModule : undefined}
                     onRefresh={onRefresh}
                     showRemoveFromModule={canEdit}
-                    contextMode={contextSelections?.[source.id]}
-                    onContextModeChange={onContextModeChange
-                      ? (mode) => onContextModeChange(source.id, mode)
-                      : undefined
-                    }
                   />
                 ))}
                 {/* Loading indicator for infinite scroll */}

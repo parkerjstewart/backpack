@@ -104,7 +104,8 @@ async def get_modules(
         query = f"""
             SELECT *,
             count(<-reference) as source_count,
-            count(<-artifact) as note_count
+            count(<-artifact) as note_count,
+            count((SELECT id FROM learning_goal WHERE module = $parent.id)) as learning_goal_count
             FROM module
             WHERE status != "draft" OR status = NONE
             ORDER BY {order_by}
@@ -128,6 +129,7 @@ async def get_modules(
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                learning_goal_count=nb.get("learning_goal_count", 0),
                 course_id=str(nb.get("course")) if nb.get("course") else None,
             )
             for nb in result
@@ -164,8 +166,9 @@ async def create_module(module: ModuleCreate, authorization: Optional[str] = Hea
             overview=new_module.overview,
             created=str(new_module.created),
             updated=str(new_module.updated),
-            source_count=0,  # New module has no sources
-            note_count=0,  # New module has no notes
+            source_count=0,
+            note_count=0,
+            learning_goal_count=0,
             course_id=str(new_module.course) if new_module.course else None,
         )
     except InvalidInputError as e:
@@ -185,7 +188,8 @@ async def get_module(module_id: str):
         query = """
             SELECT *,
             count(<-reference) as source_count,
-            count(<-artifact) as note_count
+            count(<-artifact) as note_count,
+            count((SELECT id FROM learning_goal WHERE module = $parent.id)) as learning_goal_count
             FROM $module_id
         """
         result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
@@ -205,6 +209,7 @@ async def get_module(module_id: str):
             updated=str(nb.get("updated", "")),
             source_count=nb.get("source_count", 0),
             note_count=nb.get("note_count", 0),
+            learning_goal_count=nb.get("learning_goal_count", 0),
             course_id=str(nb.get("course")) if nb.get("course") else None,
         )
     except HTTPException:
@@ -254,7 +259,8 @@ async def update_module(
         query = """
             SELECT *,
             count(<-reference) as source_count,
-            count(<-artifact) as note_count
+            count(<-artifact) as note_count,
+            count((SELECT id FROM learning_goal WHERE module = $parent.id)) as learning_goal_count
             FROM $module_id
         """
         result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
@@ -272,6 +278,7 @@ async def update_module(
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                learning_goal_count=nb.get("learning_goal_count", 0),
                 course_id=str(nb.get("course")) if nb.get("course") else None,
             )
 
@@ -287,6 +294,7 @@ async def update_module(
             updated=str(module.updated),
             source_count=0,
             note_count=0,
+            learning_goal_count=0,
             course_id=str(module.course) if module.course else None,
         )
     except HTTPException:
@@ -323,7 +331,8 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
         query = """
             SELECT *,
             count(<-reference) as source_count,
-            count(<-artifact) as note_count
+            count(<-artifact) as note_count,
+            count((SELECT id FROM learning_goal WHERE module = $parent.id)) as learning_goal_count
             FROM $module_id
         """
         result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
@@ -341,6 +350,7 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                learning_goal_count=nb.get("learning_goal_count", 0),
                 course_id=str(nb.get("course")) if nb.get("course") else None,
             )
 
@@ -355,6 +365,7 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
             updated=str(module.updated),
             source_count=0,
             note_count=0,
+            learning_goal_count=0,
             course_id=str(module.course) if module.course else None,
         )
     except HTTPException:
@@ -653,6 +664,7 @@ async def get_module_learning_goals(module_id: str):
                 id=str(goal.id),
                 module=str(goal.module),
                 description=goal.description,
+                title=getattr(goal, "title", "") or "",
                 takeaways=goal.takeaways,
                 competencies=goal.competencies,
                 anchor_examples=getattr(goal, "anchor_examples", "") or "",
@@ -698,6 +710,7 @@ async def create_learning_goal(
         goal = LearningGoal(
             module=str(ensure_record_id(module_id)),
             description=request.description,
+            title=getattr(request, "title", "") or "",
             takeaways=request.takeaways,
             competencies=request.competencies,
             anchor_examples=getattr(request, "anchor_examples", "") or "",
@@ -709,6 +722,7 @@ async def create_learning_goal(
             id=str(goal.id),
             module=str(goal.module),
             description=goal.description,
+            title=getattr(goal, "title", "") or "",
             takeaways=goal.takeaways,
             competencies=goal.competencies,
             anchor_examples=getattr(goal, "anchor_examples", "") or "",
@@ -746,6 +760,8 @@ async def update_learning_goal(
 
         if request.description is not None:
             goal.description = request.description
+        if request.title is not None:
+            goal.title = request.title
         if request.takeaways is not None:
             goal.takeaways = request.takeaways
         if request.competencies is not None:
@@ -761,6 +777,7 @@ async def update_learning_goal(
             id=str(goal.id),
             module=str(goal.module),
             description=goal.description,
+            title=getattr(goal, "title", "") or "",
             takeaways=goal.takeaways,
             competencies=goal.competencies,
             anchor_examples=getattr(goal, "anchor_examples", "") or "",
@@ -841,6 +858,7 @@ async def generate_module_learning_goals(
                 goal = LearningGoal(
                     module=str(ensure_record_id(request.module_id)),
                     description=goal_data.description,
+                    title=getattr(goal_data, "title", "") or "",
                     takeaways=goal_data.takeaways,
                     competencies=goal_data.competencies,
                     anchor_examples=goal_data.anchor_examples,
@@ -850,6 +868,7 @@ async def generate_module_learning_goals(
                 created_goals.append(
                     LearningGoalPreview(
                         description=goal.description,
+                        title=getattr(goal, "title", "") or "",
                         takeaways=goal.takeaways,
                         competencies=goal.competencies,
                         anchor_examples=getattr(goal, "anchor_examples", "")
@@ -863,6 +882,7 @@ async def generate_module_learning_goals(
                 learning_goals=[
                     LearningGoalPreview(
                         description=g.description,
+                        title=getattr(g, "title", "") or "",
                         takeaways=g.takeaways,
                         competencies=g.competencies,
                         anchor_examples=getattr(g, "anchor_examples", "") or "",
@@ -939,6 +959,7 @@ async def refine_module_content_endpoint(
             learning_goals=[
                 LearningGoalPreview(
                     description=g.description,
+                    title=getattr(g, "title", "") or "",
                     takeaways=g.takeaways,
                     competencies=g.competencies,
                 )

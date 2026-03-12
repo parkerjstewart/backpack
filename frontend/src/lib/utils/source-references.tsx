@@ -11,20 +11,6 @@ export interface ParsedReference {
   endIndex: number
 }
 
-// ExtractedReference and ExtractedReferences are kept for backward compatibility
-// but not currently used in the codebase
-export interface ExtractedReference {
-  type: ReferenceType
-  id: string
-  originalText: string
-  placeholder: string
-}
-
-export interface ExtractedReferences {
-  processedText: string
-  references: ExtractedReference[]
-}
-
 export interface ReferenceData {
   number: number
   type: ReferenceType
@@ -473,14 +459,3 @@ export function createCompactReferenceLinkComponent(
   return CompactReferenceLinkComponent
 }
 
-/**
- * Legacy function for backward compatibility
- * Converts old Link-based references to new click handler approach
- *
- * @deprecated Use extractReferences + replacePlaceholdersWithButtons instead
- */
-export function convertSourceReferencesLegacy(text: string): React.ReactNode {
-  // For legacy support, just return text as-is
-  // Components should migrate to new convertSourceReferences function
-  return text
-}

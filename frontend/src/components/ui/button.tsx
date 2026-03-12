@@ -12,8 +12,6 @@ const buttonVariants = cva(
         // Primary dark button (teal background) - Figma: surface/inverse
         default:
           "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
-        // Dark variant (alias for default, explicit teal)
-        dark: "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
         // Accent button (sage green background) - Figma: color/sage/500
         accent:
           "bg-accent text-accent-foreground shadow-xs hover:bg-sage-500/80",
@@ -39,17 +37,17 @@ const buttonVariants = cva(
       },
       size: {
         // Default 48px height with 16px border-radius, 32px horizontal padding
-        default: "h-12 px-8 py-3 rounded-[16px]",
+        default: "h-12 px-8 py-3 rounded-md",
         // Small 36px height
-        sm: "h-9 rounded-[16px] gap-1.5 px-4 has-[>svg]:px-3",
+        sm: "h-9 rounded-md gap-1.5 px-4 has-[>svg]:px-3",
         // Large 48px (same as default)
-        lg: "h-12 rounded-[16px] px-8 has-[>svg]:px-6",
+        lg: "h-12 rounded-md px-8 has-[>svg]:px-6",
         // Standard square icon button
-        icon: "size-9 rounded-[16px]",
+        icon: "size-9 rounded-md",
         // Circular icon button (36px total, 20px icon + padding)
         "icon-circle": "size-9 rounded-full p-2",
         // Full-width bar (48px height, for icon-only or icon+text in a wide strip)
-        wide: "h-12 w-full rounded-[16px]",
+        wide: "h-12 w-full rounded-md",
       },
     },
     defaultVariants: {

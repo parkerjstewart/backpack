@@ -106,7 +106,7 @@ export function ModuleHeader({ module }: ModuleHeaderProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowDeleteDialog(true)}
-                className="text-red-600 hover:text-red-700"
+                className="text-destructive hover:text-destructive/80"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 {t.common.delete}

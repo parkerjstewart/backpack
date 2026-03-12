@@ -69,7 +69,7 @@ export function SystemInfo() {
                 {t.advanced.updateAvailable.replace('{version}', config.latestVersion || '')}
               </Badge>
             ) : config?.latestVersion ? (
-              <Badge variant="outline" className="text-green-600 border-green-600">
+              <Badge variant="outline" className="text-success-fg border-success-fg">
                 {t.advanced.upToDate}
               </Badge>
             ) : (

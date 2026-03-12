@@ -6,10 +6,10 @@ import { Plus } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { CourseHeader } from "@/components/courses";
+import { CourseHeader, CourseModuleCard } from "@/components/courses";
 import { useModules, useUpdateModule } from "@/lib/hooks/use-modules";
 import { useCoursesStore } from "@/lib/stores/courses-store";
-import { useCourse } from "@/lib/hooks/use-courses";
+import { useCourse, useCourseStudents } from "@/lib/hooks/use-courses";
 import { CreateModuleWizard } from "@/components/modules/CreateModuleWizard";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -29,6 +29,7 @@ export default function CoursePage() {
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
 
   const { data: modules, isLoading: modulesLoading } = useModules(false);
+  const { data: students } = useCourseStudents(courseId);
   const updateModule = useUpdateModule();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
@@ -69,6 +70,28 @@ export default function CoursePage() {
       (a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime(),
     )[0];
   }, [courseModules]);
+
+  // Per-module completion stats derived from student mastery data
+  const moduleStats = useMemo(() => {
+    const stats: Record<string, { completed: number; total: number; struggling: number }> = {};
+    for (const module of courseModules) {
+      const total = students?.length ?? 0;
+      const completed =
+        students?.filter((s) =>
+          s.module_mastery.some(
+            (m) => m.module_id === module.id && m.status !== "incomplete",
+          ),
+        ).length ?? 0;
+      const struggling =
+        students?.filter((s) =>
+          s.module_mastery.some(
+            (m) => m.module_id === module.id && m.status === "struggling",
+          ),
+        ).length ?? 0;
+      stats[module.id] = { completed, total, struggling };
+    }
+    return stats;
+  }, [courseModules, students]);
 
   const isLoading = courseLoading || modulesLoading;
 
@@ -140,25 +163,13 @@ export default function CoursePage() {
                 <div className="flex flex-col gap-8 w-full">
                   {/* Current (most recent) module - expanded */}
                   {currentModule && (
-                    <Link
-                      href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(currentModule.id)}`}
-                      className="block border border-border rounded-lg px-6 py-4 bg-white hover:bg-secondary transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-[18px] font-medium tracking-[-0.18px]">
-                          {currentModule.name}
-                        </h3>
-                      </div>
-                      {currentModule.description && (
-                        <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
-                          {currentModule.description}
-                        </p>
-                      )}
-                      <div className="flex gap-4 mt-3 text-sm text-muted-foreground">
-                        <span>{currentModule.source_count} sources</span>
-                        <span>{currentModule.note_count} notes</span>
-                      </div>
-                    </Link>
+                    <CourseModuleCard
+                      module={currentModule}
+                      courseId={courseId}
+                      stats={moduleStats[currentModule.id] ?? { completed: 0, total: 0, struggling: 0 }}
+                      variant="expanded"
+                      goalScores={{}} // TODO: populate from backend per-goal aggregation endpoint
+                    />
                   )}
 
                   {/* Separator */}
@@ -172,21 +183,13 @@ export default function CoursePage() {
                       {courseModules
                         .filter((m) => m.id !== currentModule?.id)
                         .map((module) => (
-                          <Link
+                          <CourseModuleCard
                             key={module.id}
-                            href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(module.id)}`}
-                            className="block border border-border rounded-lg px-6 py-4 hover:bg-secondary transition-colors"
-                          >
-                            <div className="flex items-center justify-between">
-                              <h3 className="text-[18px] font-medium tracking-[-0.18px]">
-                                {module.name}
-                              </h3>
-                            </div>
-                            <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
-                              <span>{module.source_count} sources</span>
-                              <span>{module.note_count} notes</span>
-                            </div>
-                          </Link>
+                            module={module}
+                            courseId={courseId}
+                            stats={moduleStats[module.id] ?? { completed: 0, total: 0, struggling: 0 }}
+                            variant="collapsed"
+                          />
                         ))}
                     </div>
                   )}

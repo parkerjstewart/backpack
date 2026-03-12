@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { FileThumbnail } from "./FileThumbnail";
@@ -29,27 +30,29 @@ export function FilesSidebar({
   const overflowCount = sourceIds.length - visibleCount;
 
   return (
-    <div className="w-16 flex-shrink-0 flex flex-col min-h-0">
-      <Label className="flex-shrink-0 font-heading text-[24px] font-medium tracking-[-0.02em] text-teal-800 mb-4 block">
+    <div className="w-16 flex-shrink-0 flex flex-col">
+      <Label className="flex-shrink-0 text-title text-teal-800 mb-4 block">
         Files
       </Label>
 
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
         {/* Add button */}
-        <button
-          type="button"
-          onClick={onAddMore}
-          className={cn(
-            "w-16 h-16 rounded-lg transition-all",
-            "border-2 border-dashed border-teal-800",
-            "hover:bg-secondary",
-            "flex items-center justify-center",
-            "outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-          )}
-          title="Add more files"
-        >
-          <Plus className="h-6 w-6 text-sage-700" />
-        </button>
+        <motion.div layout>
+          <button
+            type="button"
+            onClick={onAddMore}
+            className={cn(
+              "w-16 h-16 rounded-lg transition-all",
+              "border-2 border-dashed border-teal-800",
+              "hover:bg-secondary",
+              "flex items-center justify-center",
+              "outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+            )}
+            title="Add more files"
+          >
+            <Plus className="h-6 w-6 text-sage-700" />
+          </button>
+        </motion.div>
 
         {/* Source thumbnails */}
         {visibleSources.map((sourceId, index) => {

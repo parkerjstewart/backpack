@@ -93,13 +93,13 @@ Two states:
 
 ### Phase 1: Design System Additions
 
-**File: `components/ui/form-label.tsx**`
+**File: `components/ui/form-label.tsx`**
 
 - Create FormLabel with `text-title` class (24px EB Garamond)
 - Support `required` prop for asterisk
 - Use `text-teal-800` for 80% opacity teal color
 
-**File: `components/ui/file-upload-zone.tsx**`
+**File: `components/ui/file-upload-zone.tsx`**
 
 - Extract from CreateModuleDialog
 - Empty state: `bg-secondary border-2 border-dashed rounded-lg`
@@ -108,7 +108,7 @@ Two states:
 
 ### Phase 2: Course Components
 
-**File: `components/courses/CourseCard.tsx**`
+**File: `components/courses/CourseCard.tsx`**
 
 Key structure matching Figma node 85:945:
 
@@ -128,7 +128,7 @@ Key structure matching Figma node 85:945:
 </Link>
 ```
 
-**File: `components/courses/CreateCourseDialog.tsx**`
+**File: `components/courses/CreateCourseDialog.tsx`**
 
 Structure matching Figma node 199:1245:
 
@@ -169,7 +169,7 @@ Structure matching Figma node 199:1245:
 
 ### Phase 3: Page Layout Update
 
-**File: `app/(dashboard)/courses/page.tsx**`
+**File: `app/(dashboard)/courses/page.tsx`**
 
 ```tsx
 <AppShell>
@@ -205,7 +205,7 @@ Structure matching Figma node 199:1245:
 
 ### Phase 4: Store Updates
 
-**File: `lib/stores/courses-store.ts**`
+**File: `lib/stores/courses-store.ts`**
 
 Add to Course interface:
 

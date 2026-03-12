@@ -55,7 +55,7 @@ export function CourseHeader({ courseId, courseName, membershipRole }: CourseHea
   return (
     <div className="flex items-center justify-between border-b border-border py-2">
       {/* Course name */}
-      <h1 className="font-heading text-[32px] font-medium tracking-[-0.64px] text-primary">
+      <h1 className="text-section text-primary">
         {courseName}
       </h1>
 
@@ -68,7 +68,7 @@ export function CourseHeader({ courseId, courseName, membershipRole }: CourseHea
             className={cn(
               "px-4 py-1 rounded-3xl text-[18px] leading-normal font-medium transition-colors",
               isActiveTab(tab.href)
-                ? "bg-accent text-teal-800 tracking-[-0.18px]"
+                ? "bg-sidebar-accent text-teal-800 tracking-[-0.18px]"
                 : "border border-border text-teal-800 hover:bg-secondary tracking-[-0.36px]",
             )}
           >
