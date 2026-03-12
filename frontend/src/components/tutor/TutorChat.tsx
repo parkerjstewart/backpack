@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { GraduationCap, User, Send, Loader2, Target, CheckCircle2, Mic, Pencil, BookOpen, ChevronDown, ChevronRight } from 'lucide-react'
+import { GraduationCap, User, Send, Loader2, Target, CheckCircle2, Mic, Pencil, BookOpen, ChevronDown, ChevronRight, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -72,6 +72,37 @@ export function TutorChat({
   className,
 }: TutorChatProps) {
   const [expandedArtifactIds, setExpandedArtifactIds] = useState<Set<string>>(new Set())
+  const [dismissedHighlightId, setDismissedHighlightId] = useState<string | null>(null)
+  const autoExpandedIdRef = useRef<string | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(240)
+  const isDraggingRef = useRef(false)
+  const dragStartXRef = useRef(0)
+  const dragStartWidthRef = useRef(0)
+
+  const handleDragStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    isDraggingRef.current = true
+    dragStartXRef.current = e.clientX
+    dragStartWidthRef.current = sidebarWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return
+      const delta = dragStartXRef.current - e.clientX
+      const newWidth = Math.min(520, Math.max(160, dragStartWidthRef.current + delta))
+      setSidebarWidth(newWidth)
+    }
+    const onMouseUp = () => {
+      isDraggingRef.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
   const { t } = useTranslation()
   const inputId = useId()
   const [input, setInput] = useState('')
@@ -99,10 +130,23 @@ export function TutorChat({
     }
   }, [messages, streamingMessage])
 
-  // Auto-expand the highlighted artifact when it changes
+  // When the active highlight changes: collapse the previously auto-expanded item,
+  // auto-expand the new one, and reset the overlay dismiss state.
   useEffect(() => {
+    const prevAutoId = autoExpandedIdRef.current
+    if (prevAutoId && prevAutoId !== activeHighlightId) {
+      setExpandedArtifactIds(prev => {
+        const next = new Set(prev)
+        next.delete(prevAutoId)
+        return next
+      })
+    }
     if (activeHighlightId) {
       setExpandedArtifactIds(prev => new Set([...prev, activeHighlightId]))
+      setDismissedHighlightId(null)
+      autoExpandedIdRef.current = activeHighlightId
+    } else {
+      autoExpandedIdRef.current = null
     }
   }, [activeHighlightId])
 
@@ -200,7 +244,38 @@ export function TutorChat({
 
       <CardContent className="flex-1 flex flex-row min-h-0 p-0 overflow-hidden">
         {/* Main chat column */}
-        <div className="flex-1 flex flex-col min-h-0 min-w-0">
+        <div className="flex-1 flex flex-col min-h-0 min-w-0 relative">
+
+          {/* Floating artifact overlay */}
+          {(() => {
+            const pinned = activeHighlightId ? artifacts.find(a => a.id === activeHighlightId) : null
+            const show = pinned && dismissedHighlightId !== activeHighlightId
+            return show ? (
+              <div className="absolute top-3 right-3 z-20 w-72 rounded-xl border border-primary/40 bg-accent shadow-2xl shadow-primary/10 ring-1 ring-primary/20 flex flex-col overflow-hidden transition-all">
+                <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b border-primary/20">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse flex-shrink-0" />
+                  <BookOpen className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                  <span className="text-xs font-semibold text-primary flex-1 truncate">{pinned.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => setDismissedHighlightId(activeHighlightId)}
+                    className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                    aria-label="Dismiss"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="px-3 py-2.5 max-h-52 overflow-y-auto bg-accent">
+                  <div className="prose prose-xs prose-neutral max-w-none text-xs leading-relaxed">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      {normalizeLatexDelimiters(pinned.content)}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            ) : null
+          })()}
+
           <ScrollArea className="flex-1 min-h-0 px-4" ref={scrollAreaRef}>
             <div className="space-y-4 py-4">
               {messages.length === 0 ? (
@@ -422,16 +497,30 @@ export function TutorChat({
 
         {/* Artifacts sidebar — only shown when there are artifacts */}
         {artifacts.length > 0 && (
-          <div className="w-56 flex-shrink-0 border-l flex flex-col overflow-hidden">
+          <div className="flex-shrink-0 flex flex-row" style={{ width: sidebarWidth }}>
+            {/* Drag handle */}
+            <div
+              onMouseDown={handleDragStart}
+              className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors group relative border-l border-border"
+              title="Drag to resize"
+            >
+              <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center pointer-events-none">
+                <div className="h-8 w-0.5 rounded-full bg-border group-hover:bg-primary/40 transition-colors" />
+              </div>
+            </div>
+            <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             <div className="flex items-center gap-1.5 px-3 py-2 border-b bg-muted/30">
               <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">References</span>
             </div>
+
             <ScrollArea className="flex-1">
               <div className="p-2 space-y-1.5">
                 {artifacts.map((art) => {
                   const isHighlighted = art.id === activeHighlightId
                   const isExpanded = expandedArtifactIds.has(art.id)
+                  // Hide from list only while the overlay is showing; if dismissed, show it here
+                  if (isHighlighted && dismissedHighlightId !== activeHighlightId) return null
                   return (
                     <div
                       key={art.id}
@@ -476,6 +565,7 @@ export function TutorChat({
                 })}
               </div>
             </ScrollArea>
+            </div>
           </div>
         )}
       </CardContent>
