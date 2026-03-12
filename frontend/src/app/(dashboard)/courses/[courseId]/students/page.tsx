@@ -63,6 +63,13 @@ export default function CourseStudentsPage() {
   // Track which request ID is being acted on for per-row loading state
   const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
 
+  const pendingStudentInvitations = pendingInvitations?.filter(
+    (inv) => inv.role === "student"
+  );
+  const pendingStaffInvitations = pendingInvitations?.filter(
+    (inv) => inv.role === "instructor" || inv.role === "ta"
+  );
+
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<"student" | "instructor" | "ta">(
@@ -200,6 +207,25 @@ export default function CourseStudentsPage() {
                 </button>
               )}
             </div>
+            {permissions.canManageMembers && pendingStaffInvitations && pendingStaffInvitations.length > 0 && (
+              <div className="flex flex-col divide-y divide-border rounded-xl border border-border overflow-hidden mt-2">
+                {pendingStaffInvitations.map((inv) => (
+                  <StudentListRow
+                    key={inv.id}
+                    variant="pending"
+                    name={inv.name}
+                    email={inv.email}
+                    onCancel={() => cancelInvitation.mutate(inv.id)}
+                    onResend={() =>
+                      resendInvitation.mutate({
+                        email: inv.email,
+                        role: inv.role as "student" | "instructor" | "ta",
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            )}
           </section>
 
           {/* All Students section */}
@@ -219,7 +245,7 @@ export default function CourseStudentsPage() {
             </div>
 
             {(filteredStudents && filteredStudents.length > 0) ||
-            (pendingInvitations && pendingInvitations.length > 0) ? (
+            (pendingStudentInvitations && pendingStudentInvitations.length > 0) ? (
               <div className="flex flex-col divide-y divide-border rounded-xl border border-border overflow-hidden">
                 {filteredStudents?.map((student) => (
                   <StudentListRow
@@ -236,7 +262,7 @@ export default function CourseStudentsPage() {
                   />
                 ))}
                 {permissions.canManageMembers &&
-                  pendingInvitations?.map((inv) => (
+                  pendingStudentInvitations?.map((inv) => (
                   <StudentListRow
                     key={inv.id}
                     variant="pending"
@@ -245,7 +271,6 @@ export default function CourseStudentsPage() {
                     onCancel={() => cancelInvitation.mutate(inv.id)}
                     onResend={() =>
                       resendInvitation.mutate({
-                        name: inv.name,
                         email: inv.email,
                         role: inv.role as "student" | "instructor" | "ta",
                       })
