@@ -1,14 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { VoiceContextPayload, VoiceServerEvent } from '@/lib/types/api'
+import { Artifact, VoiceContextPayload, VoiceServerEvent } from '@/lib/types/api'
 
 interface UseVoiceSessionParams {
   getContextPayload: () => Promise<VoiceContextPayload | null>
   getWhiteboardPng?: () => Promise<string | null>
   onFinalTranscript: (text: string) => void
   onAssistantTextDelta?: (text: string) => void
-  onAssistantTextFinal: (text: string, artifactContent?: string | null, imageUrl?: string | null) => void
+  onAssistantTextFinal: (text: string, artifactContent?: string | null, imageUrl?: string | null, artifacts?: Artifact[], highlightedArtifactId?: string | null) => void
   onError?: (message: string) => void
 }
 
@@ -187,9 +187,11 @@ export function useVoiceSession({
               ? String(data.payload.supplement)
               : null
           const imageUrl = data.payload?.image_url ? String(data.payload.image_url) : null
+          const artifacts = Array.isArray(data.payload?.artifacts) ? (data.payload.artifacts as Artifact[]) : undefined
+          const highlightedArtifactId = data.payload?.highlighted_artifact_id ? String(data.payload.highlighted_artifact_id) : null
           setIsAssistantThinking(false)
           setAssistantStreamingText('')
-          onAssistantTextFinal(text, artifactContent, imageUrl)
+          onAssistantTextFinal(text, artifactContent, imageUrl, artifacts, highlightedArtifactId)
         } else if (data.type === 'assistant_audio_chunk') {
           const encoded = String(data.payload?.audio_base64 ?? '')
           if (encoded) {

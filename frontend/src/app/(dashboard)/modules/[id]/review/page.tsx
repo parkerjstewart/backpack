@@ -24,7 +24,7 @@ export default function ReviewPage() {
   const { data: module, isLoading: moduleLoading } = useModule(moduleId)
 
   const [showDebug, setShowDebug] = useState(false)
-  const [showCanvas, setShowCanvas] = useState(true)
+  const [showCanvas, setShowCanvas] = useState(false)
 
   // Resizable chat panel width
   const [chatWidth, setChatWidth] = useState(420)

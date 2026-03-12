@@ -41,7 +41,7 @@ export default function TryTutorPage() {
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
-  const [showCanvas, setShowCanvas] = useState(true)
+  const [showCanvas, setShowCanvas] = useState(false)
 
   // Resizable chat panel width
   const [chatWidth, setChatWidth] = useState(420)

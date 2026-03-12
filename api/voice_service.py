@@ -210,6 +210,8 @@ class VoiceService:
         interrupt_data = _extract_interrupt_data(result)
         artifact_content: Optional[str] = None
         image_url: Optional[str] = None
+        artifacts_raw: list = []
+        highlighted_artifact_id: Optional[str] = None
         if interrupt_data:
             # Use the cleaned message from interrupt_data as the authoritative text
             display_text = str(interrupt_data.get("message", display_text)).strip()
@@ -220,9 +222,12 @@ class VoiceService:
                 or None
             )
             image_url = interrupt_data.get("image_url") or None
+            artifacts_raw = interrupt_data.get("artifacts", []) or []
+            highlighted_artifact_id = interrupt_data.get("highlighted_artifact_id") or None
             logger.info(
                 f"voice [{session_id}]: interrupt_data resolved | "
-                f"message_len={len(display_text)} | artifact={'yes' if artifact_content else 'no'}"
+                f"message_len={len(display_text)} | artifact={'yes' if artifact_content else 'no'} | "
+                f"artifacts={len(artifacts_raw)}"
             )
 
         _, speech_text = format_for_voice(display_text)
@@ -231,6 +236,10 @@ class VoiceService:
             final_payload["artifact_content"] = artifact_content
         if image_url:
             final_payload["image_url"] = image_url
+        if artifacts_raw:
+            final_payload["artifacts"] = artifacts_raw
+        if highlighted_artifact_id:
+            final_payload["highlighted_artifact_id"] = highlighted_artifact_id
         yield VoiceServerEvent(type="assistant_text_final", payload=final_payload)
 
         audio_output = await self._synthesize(speech_text)

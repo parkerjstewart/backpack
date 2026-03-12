@@ -143,9 +143,9 @@ export function TutorChat({
       setVoiceTranscript(text)
       voiceTranscriptRef.current = text
     },
-    onAssistantTextFinal: (text, artifactContent, imageUrl) => {
+    onAssistantTextFinal: (text, artifactContent, imageUrl, artifacts, highlightedArtifactId) => {
       if (voiceTranscriptRef.current && onAppendVoiceTurn) {
-        onAppendVoiceTurn(voiceTranscriptRef.current, text, artifactContent, imageUrl)
+        onAppendVoiceTurn(voiceTranscriptRef.current, text, artifactContent, imageUrl, artifacts, highlightedArtifactId)
       }
       setVoiceTranscript('')
       voiceTranscriptRef.current = ''
