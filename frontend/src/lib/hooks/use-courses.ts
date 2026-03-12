@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { coursesApi } from '@/lib/api/courses'
 import type {
@@ -184,6 +185,45 @@ export function useRemoveCourseMember(courseId: string) {
     },
     onError: (error) => {
       toast.error(`Failed to remove member: ${error.message}`)
+    },
+  })
+}
+
+/**
+ * Hook for a student to request enrollment in a course by course ID.
+ */
+export function useRequestEnrollment() {
+  const queryClient = useQueryClient()
+
+  return useMutation<{ status: string; message: string }, Error, string>({
+    mutationFn: (courseId) => coursesApi.requestEnrollment(courseId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['enrollment-requests', 'mine'] })
+      toast.success("Enrollment request submitted. You'll be notified when approved.")
+    },
+  })
+}
+
+/**
+ * Hook for a student to leave a course.
+ * Navigates back to /courses on success.
+ */
+export function useLeaveCourse(courseId: string) {
+  const queryClient = useQueryClient()
+  const router = useRouter()
+
+  return useMutation<{ message: string }, Error, void>({
+    mutationFn: () => coursesApi.leaveCourse(courseId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: COURSE_QUERY_KEYS.lists() })
+      queryClient.removeQueries({ queryKey: COURSE_QUERY_KEYS.detail(courseId) })
+      toast.success('You have left the course')
+      router.push('/courses')
+    },
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { detail?: string } }; message?: string }
+      const detail = err.response?.data?.detail ?? err.message ?? 'Failed to leave course'
+      toast.error(detail)
     },
   })
 }

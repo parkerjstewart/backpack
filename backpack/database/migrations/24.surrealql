@@ -1,0 +1,3 @@
+-- Migration 24: Add 'requested' status to invitation for student-initiated enrollment requests
+DEFINE FIELD status ON invitation TYPE string
+  ASSERT $value IN ["pending", "accepted", "declined", "cancelled", "expired", "requested"];

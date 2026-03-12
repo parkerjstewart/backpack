@@ -644,7 +644,6 @@ class StudentWithMasteryResponse(BaseModel):
 # Invitation API models
 # ============================================
 class CreateInvitationRequest(BaseModel):
-    name: str = Field(..., description="Name of the invitee")
     email: str = Field(..., description="Email of the invitee")
     role: Literal["student", "instructor", "ta"] = Field(
         "student", description="Role in the course"
@@ -673,3 +672,16 @@ class InvitationResponse(BaseModel):
 class StudyToolResponse(BaseModel):
     content: str
     module_id: str
+
+
+class EnrollmentRequestResponse(BaseModel):
+    """Response model for a student-initiated enrollment request."""
+    id: str
+    course_id: str
+    course_title: Optional[str] = None
+    student_name: Optional[str] = None
+    student_email: str
+    student_id: str  # The user who requested (invitation.invited_by)
+    role: str        # Always "student" for self-initiated requests
+    status: str      # "requested" | "accepted" | "declined"
+    created: Optional[str] = None

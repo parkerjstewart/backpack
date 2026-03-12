@@ -31,9 +31,7 @@ export function CourseHeader({ courseId, courseName, membershipRole }: CourseHea
     { label: "Modules", href: `/courses/${courseId}` },
     { label: "Students", href: `/courses/${courseId}/students` },
   ];
-  if (permissions.canManageCourseSettings) {
-    tabs.push({ label: "Settings", href: `/courses/${courseId}/settings` });
-  }
+  tabs.push({ label: "Settings", href: `/courses/${courseId}/settings` });
 
   const isActiveTab = (href: string) => {
     // Decode pathname to handle URL-encoded characters (e.g. %3A for : in SurrealDB IDs)

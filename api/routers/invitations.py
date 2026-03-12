@@ -7,7 +7,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Header
 from loguru import logger
 
-from api.models import CreateInvitationRequest, InvitationResponse
+from api.models import CreateInvitationRequest, EnrollmentRequestResponse, InvitationResponse
 from api.routers.authz import (
     require_authenticated_user_id,
     require_teaching_role,
@@ -16,7 +16,7 @@ from api.email_service import get_invite_url, send_invite_email
 from backpack.database.repository import ensure_record_id, repo_query
 from backpack.domain.course import Course, User
 from backpack.domain.invitation import Invitation
-from backpack.exceptions import DatabaseOperationError, InvalidInputError
+from backpack.exceptions import InvalidInputError
 
 router = APIRouter()
 
@@ -82,7 +82,7 @@ async def create_invitation(
         invitation = Invitation(
             course_id=course_id,
             email=email,
-            name=request.name.strip(),
+            name="",
             role=request.role,
             invited_by=user_id,
         )
@@ -95,7 +95,6 @@ async def create_invitation(
         if response.invite_url:
             await send_invite_email(
                 to_email=email,
-                invitee_name=request.name.strip(),
                 course_title=course.title,
                 invite_url=response.invite_url,
                 invited_by_name=inviter_name,
@@ -278,4 +277,144 @@ async def cancel_invitation(
         logger.error(f"Error cancelling invitation {invitation_id}: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error cancelling invitation: {str(e)}"
+        )
+
+
+# ============================================
+# Enrollment request endpoints (student-initiated)
+# ============================================
+
+
+def _request_to_response(
+    request: Invitation, course_title: Optional[str] = None
+) -> EnrollmentRequestResponse:
+    """Convert a student enrollment request (Invitation with status='requested') to a response."""
+    return EnrollmentRequestResponse(
+        id=str(request.id),
+        course_id=str(request.course_id) if request.course_id else "",
+        course_title=course_title,
+        student_name=request.name or None,
+        student_email=request.email,
+        student_id=str(request.invited_by) if request.invited_by else "",
+        role=request.role,
+        status=request.status,
+        created=str(request.created) if request.created else None,
+    )
+
+
+@router.get(
+    "/courses/{course_id}/enrollment-requests",
+    response_model=List[EnrollmentRequestResponse],
+)
+async def get_enrollment_requests(
+    course_id: str, authorization: Optional[str] = Header(None)
+):
+    """Get all pending enrollment requests for a course (teaching staff view)."""
+    try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_teaching_role(course_id, user_id)
+
+        course = await Course.get(course_id)
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        requests = await Invitation.get_requests_for_course(course_id)
+        return [_request_to_response(r, course_title=course.title) for r in requests]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching enrollment requests for course {course_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching enrollment requests: {str(e)}"
+        )
+
+
+@router.post("/enrollment-requests/{request_id}/approve")
+async def approve_enrollment_request(
+    request_id: str, authorization: Optional[str] = Header(None)
+):
+    """Approve a student enrollment request (teaching staff action)."""
+    try:
+        user_id = require_authenticated_user_id(authorization)
+
+        request = await Invitation.get(request_id)
+        if not request:
+            raise HTTPException(status_code=404, detail="Enrollment request not found")
+
+        # Verify teaching role; return 404 on failure to avoid leaking request existence
+        try:
+            await require_teaching_role(str(request.course_id), user_id)
+        except HTTPException:
+            raise HTTPException(status_code=404, detail="Enrollment request not found")
+
+        await request.approve()
+        return {"status": "approved", "message": "Enrollment request approved"}
+    except HTTPException:
+        raise
+    except InvalidInputError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error approving enrollment request {request_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error approving enrollment request: {str(e)}"
+        )
+
+
+@router.post("/enrollment-requests/{request_id}/deny")
+async def deny_enrollment_request(
+    request_id: str, authorization: Optional[str] = Header(None)
+):
+    """Deny a student enrollment request (teaching staff action)."""
+    try:
+        user_id = require_authenticated_user_id(authorization)
+
+        request = await Invitation.get(request_id)
+        if not request:
+            raise HTTPException(status_code=404, detail="Enrollment request not found")
+
+        # Verify teaching role; return 404 on failure to avoid leaking request existence
+        try:
+            await require_teaching_role(str(request.course_id), user_id)
+        except HTTPException:
+            raise HTTPException(status_code=404, detail="Enrollment request not found")
+
+        await request.deny()
+        return {"status": "denied", "message": "Enrollment request denied"}
+    except HTTPException:
+        raise
+    except InvalidInputError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error denying enrollment request {request_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error denying enrollment request: {str(e)}"
+        )
+
+
+@router.get(
+    "/users/me/enrollment-requests",
+    response_model=List[EnrollmentRequestResponse],
+)
+async def get_my_enrollment_requests(
+    authorization: Optional[str] = Header(None),
+):
+    """Get all pending enrollment requests submitted by the current user."""
+    try:
+        user_id = require_authenticated_user_id(authorization)
+
+        raw_results = await Invitation.get_enrollment_requests_by_user(user_id)
+
+        requests = []
+        for r in raw_results:
+            course_title = r.pop("course_title", None)
+            inv = Invitation(**r)
+            requests.append(_request_to_response(inv, course_title=course_title))
+
+        return requests
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching enrollment requests for current user: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching enrollment requests: {str(e)}"
         )

@@ -4,7 +4,12 @@ import { useState, useEffect } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { CourseCard, CreateCourseDialog, PendingInvitationCard } from "@/components/courses";
+import {
+  CourseCard,
+  CreateCourseDialog,
+  JoinCourseDialog,
+  PendingInvitationCard,
+} from "@/components/courses";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useCoursesStore, type Course } from "@/lib/stores/courses-store";
 import { useUserStore } from "@/lib/stores/user-store";
@@ -14,6 +19,7 @@ import {
   useMyPendingInvitations,
   useAcceptInvitation,
   useDeclineInvitation,
+  useMyEnrollmentRequests,
 } from "@/lib/hooks/use-invitations";
 
 function isTeachingRole(role?: string | null): boolean {
@@ -24,17 +30,17 @@ export default function CoursesPage() {
   const { setCourses, getCourseColor } = useCoursesStore();
   const { profile } = useUserStore();
   const { currentUser } = useAuthStore();
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [joinDialogOpen, setJoinDialogOpen] = useState(false);
 
-  // Fetch courses from backend
   const { data: coursesData, isLoading } = useCourses({ archived: false });
 
-  // Fetch pending invitations for the current user
   const { data: pendingInvitations } = useMyPendingInvitations();
   const acceptInvitation = useAcceptInvitation();
   const declineInvitation = useDeclineInvitation();
 
-  // Sync backend courses to local store (for color management + membership role)
+  const { data: myEnrollmentRequests } = useMyEnrollmentRequests();
+
   useEffect(() => {
     if (coursesData) {
       const localCourses: Course[] = coursesData.map((c) => ({
@@ -51,10 +57,8 @@ export default function CoursesPage() {
     }
   }, [coursesData, setCourses, getCourseColor]);
 
-  // Get display name
   const displayName = currentUser?.name || profile.name;
 
-  // Convert backend courses to local format for CourseCard
   const activeCourses: Course[] = (coursesData ?? []).map((c) => ({
     id: c.id,
     name: c.title,
@@ -66,7 +70,6 @@ export default function CoursesPage() {
     membershipRole: c.membership_role,
   }));
 
-  // Split courses by role
   const teachingCourses = activeCourses.filter((c) =>
     isTeachingRole(c.membershipRole)
   );
@@ -74,7 +77,6 @@ export default function CoursesPage() {
     (c) => c.membershipRole === "student"
   );
 
-  // Determine if we have role-based data
   const hasMembershipData = activeCourses.some((c) => c.membershipRole);
 
   const sections = hasMembershipData
@@ -83,6 +85,9 @@ export default function CoursesPage() {
         { label: "Enrolled", courses: enrolledCourses },
       ]
     : null;
+
+  // API only returns 'requested' status records
+  const pendingEnrollmentRequests = myEnrollmentRequests;
 
   if (isLoading) {
     return (
@@ -97,28 +102,25 @@ export default function CoursesPage() {
   return (
     <AppShell>
       <div className="flex-1 overflow-y-auto">
-        {/* Main content container with 32px padding (design system --page-padding) */}
         <div className="flex flex-col gap-4 p-8">
-          {/* Hero section - centered welcome text */}
           <div className="flex items-center justify-center pt-[var(--hero-padding-top)] pb-[var(--hero-padding-bottom)] w-full">
             <h1 className="text-hero text-center">
               Welcome back, {displayName}!
             </h1>
           </div>
 
-          {/* Action buttons row */}
           <div className="flex flex-wrap gap-4 items-center">
-            <Button variant="outline" onClick={() => setDialogOpen(true)}>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(true)}>
               + Create New Course
+            </Button>
+            <Button variant="outline" onClick={() => setJoinDialogOpen(true)}>
+              + Join a Course
             </Button>
           </div>
 
-          {/* Pending invitations */}
           {pendingInvitations && pendingInvitations.length > 0 && (
             <div className="flex flex-col gap-4 mt-4">
-              <h2 className="text-title text-teal-800">
-                Pending Invitations
-              </h2>
+              <h2 className="text-title text-teal-800">Pending Invitations</h2>
               <div className="flex flex-col gap-3">
                 {pendingInvitations.map((invitation) => (
                   <PendingInvitationCard
@@ -134,19 +136,38 @@ export default function CoursesPage() {
             </div>
           )}
 
-          {/* Courses sections */}
+          {pendingEnrollmentRequests && pendingEnrollmentRequests.length > 0 && (
+            <div className="flex flex-col gap-4 mt-4">
+              <h2 className="text-title text-teal-800">Enrollment Requests</h2>
+              <div className="flex flex-col gap-3">
+                {pendingEnrollmentRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="flex items-center justify-between gap-6 rounded-xl border border-border bg-white px-6 py-4"
+                  >
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="text-lg font-medium tracking-[-0.18px] text-primary truncate">
+                        {req.course_title || req.course_id}
+                      </span>
+                      <span className="text-sm text-primary/60">
+                        Enrollment request pending approval
+                      </span>
+                    </div>
+                    <span className="text-sm text-muted-foreground shrink-0 italic">
+                      Awaiting approval
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {sections ? (
-            // Role-based sectioned view
             sections.map(
               (section) =>
                 section.courses.length > 0 && (
-                  <div
-                    key={section.label}
-                    className="flex flex-col gap-4 mt-4"
-                  >
-                    <h2 className="text-title text-teal-800">
-                      {section.label}
-                    </h2>
+                  <div key={section.label} className="flex flex-col gap-4 mt-4">
+                    <h2 className="text-title text-teal-800">{section.label}</h2>
                     <div className="flex flex-wrap gap-6">
                       {section.courses.map((course) => (
                         <CourseCard key={course.id} course={course} />
@@ -156,10 +177,8 @@ export default function CoursesPage() {
                 )
             )
           ) : (
-            // Unsectioned fallback (no membership data)
             <div className="flex flex-col gap-4 mt-4">
               <h2 className="text-title text-teal-800">Courses</h2>
-
               {activeCourses.length > 0 ? (
                 <div className="flex flex-wrap gap-6">
                   {activeCourses.map((course) => (
@@ -168,28 +187,26 @@ export default function CoursesPage() {
                 </div>
               ) : (
                 <p className="text-body text-muted-foreground">
-                  No courses yet. Use &quot;Create New Course&quot; to get
-                  started.
+                  No courses yet. Create a course or join one with a course ID.
                 </p>
               )}
             </div>
           )}
 
-          {/* Show empty state if both sections are empty */}
           {sections &&
             teachingCourses.length === 0 &&
             enrolledCourses.length === 0 && (
               <div className="flex flex-col gap-4 mt-4">
                 <p className="text-body text-muted-foreground">
-                  No courses yet. Use &quot;Create New Course&quot; to get
-                  started.
+                  No courses yet. Create a course or join one with a course ID.
                 </p>
               </div>
             )}
         </div>
       </div>
 
-      <CreateCourseDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <CreateCourseDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+      <JoinCourseDialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen} />
     </AppShell>
   );
 }
