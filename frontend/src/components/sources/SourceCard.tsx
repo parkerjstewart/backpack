@@ -27,6 +27,7 @@ import {
   FileAudio,
   FileVideo,
   Pencil,
+  Settings,
 } from "lucide-react";
 import Link from "next/link";
 import { useSourceStatus } from "@/lib/hooks/use-sources";
@@ -320,7 +321,8 @@ export function SourceCard({
     onRetry ||
     onRemoveFromModule ||
     showRemoveFromModule ||
-    onRename
+    onRename ||
+    editModuleHref
   );
 
   return (
@@ -391,30 +393,18 @@ export function SourceCard({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  {showRemoveFromModule && (
+                  {showRemoveFromModule && !editModuleHref && (
                     <>
-                      {editModuleHref ? (
-                        <DropdownMenuItem asChild>
-                          <Link
-                            href={editModuleHref}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Unlink className="h-4 w-4 mr-2" />
-                            {t.sources.removeFromModule}
-                          </Link>
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveFromModule();
-                          }}
-                          disabled={!onRemoveFromModule}
-                        >
-                          <Unlink className="h-4 w-4 mr-2" />
-                          {t.sources.removeFromModule}
-                        </DropdownMenuItem>
-                      )}
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveFromModule();
+                        }}
+                        disabled={!onRemoveFromModule}
+                      >
+                        <Unlink className="h-4 w-4 mr-2" />
+                        {t.sources.removeFromModule}
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
                     </>
                   )}
@@ -450,17 +440,30 @@ export function SourceCard({
                     </>
                   )}
 
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete();
-                    }}
-                    disabled={!onDelete}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {t.sources.deleteSource}
-                  </DropdownMenuItem>
+                  {editModuleHref ? (
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href={editModuleHref}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Settings className="h-4 w-4 mr-2" />
+                        Edit Module
+                      </Link>
+                    </DropdownMenuItem>
+                  ) : (
+                    onDelete && (
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete();
+                        }}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        {t.sources.deleteSource}
+                      </DropdownMenuItem>
+                    )
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

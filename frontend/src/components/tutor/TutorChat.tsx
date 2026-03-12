@@ -7,12 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { GraduationCap, User, Send, Loader2, Target, CheckCircle2, Mic, Pencil } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
-import { normalizeLatexDelimiters } from '@/lib/utils'
+import { MathMarkdown } from '@/components/ui/math-markdown'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useVoiceSession } from '@/lib/hooks/useVoiceSession'
 import { toast } from 'sonner'
@@ -209,9 +204,7 @@ export function TutorChat({
                     >
                       {message.type === 'tutor' ? (
                         <div className="prose prose-sm prose-neutral max-w-none break-words">
-                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                            {normalizeLatexDelimiters(message.content)}
-                          </ReactMarkdown>
+                          <MathMarkdown>{message.content}</MathMarkdown>
                         </div>
                       ) : (
                         <p className="text-sm break-words overflow-wrap-anywhere">
@@ -222,12 +215,7 @@ export function TutorChat({
                     {message.type === 'tutor' && message.supplement && (
                       <div className="rounded-lg border bg-background px-4 py-3 text-sm">
                         <div className="prose prose-sm prose-neutral max-w-none">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
-                          >
-                            {normalizeLatexDelimiters(message.supplement)}
-                          </ReactMarkdown>
+                          <MathMarkdown>{message.supplement}</MathMarkdown>
                         </div>
                       </div>
                     )}

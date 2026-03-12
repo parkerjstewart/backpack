@@ -23,8 +23,7 @@ import { Play, Loader2 } from "lucide-react";
 import { Transformation } from "@/lib/types/transformations";
 import { useExecuteTransformation } from "@/lib/hooks/use-transformations";
 import { useTranslation } from "@/lib/hooks/use-translation";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MathMarkdown } from "@/components/ui/math-markdown";
 
 interface TransformationPlaygroundProps {
   transformations: Transformation[] | undefined;
@@ -128,8 +127,7 @@ export function TransformationPlayground({
                 <ScrollArea className="h-[400px]">
                   <CardContent className="pt-6">
                     <div className="prose prose-sm max-w-none">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
+                      <MathMarkdown
                         components={{
                           table: ({ children }) => (
                             <div className="my-4 overflow-x-auto">
@@ -160,7 +158,7 @@ export function TransformationPlayground({
                         }}
                       >
                         {output}
-                      </ReactMarkdown>
+                      </MathMarkdown>
                     </div>
                   </CardContent>
                 </ScrollArea>
