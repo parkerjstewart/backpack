@@ -130,13 +130,15 @@ class Invitation(ObjectModel):
 
     @classmethod
     async def get_request_by_user_and_course(
-        cls, user_id: str, course_id: str
+        cls, user_id: str, course_id: str, email: str = ""
     ) -> Optional["Invitation"]:
         """Get an active enrollment request or pending invitation for a user in a course.
 
-        Checks both 'requested' (student-initiated) and 'pending' (instructor-sent) so
-        that a student who already has an instructor invitation cannot also submit a
-        self-enrollment request for the same course.
+        Checks both:
+        - 'requested' status where invited_by = user_id (student-initiated self-enrollment)
+        - 'pending' status where email matches (instructor-sent invitation to this student)
+
+        Both cases block the student from submitting a duplicate self-enrollment request.
         """
         if not user_id or not course_id:
             return None
@@ -144,13 +146,17 @@ class Invitation(ObjectModel):
             result = await repo_query(
                 """
                 SELECT * FROM invitation
-                WHERE invited_by = $user_id AND course_id = $course_id
-                  AND status IN ['requested', 'pending']
+                WHERE course_id = $course_id
+                  AND (
+                    (invited_by = $user_id AND status = 'requested')
+                    OR (email = $email AND status = 'pending')
+                  )
                 LIMIT 1
                 """,
                 {
                     "user_id": ensure_record_id(user_id),
                     "course_id": ensure_record_id(course_id),
+                    "email": email.lower().strip() if email else "",
                 },
             )
             return cls(**result[0]) if result else None
@@ -159,6 +165,32 @@ class Invitation(ObjectModel):
                 f"Error fetching enrollment request for user {user_id} in course {course_id}: {str(e)}"
             )
             return None
+
+    @classmethod
+    async def get_enrollment_requests_by_user(cls, user_id: str) -> List[dict]:
+        """Get all pending enrollment requests submitted by a user, with course titles.
+
+        Returns raw dicts (not Invitation instances) because the result includes the
+        joined course_title field. Callers should use Invitation(**{k: v for k, v in r.items()
+        if k != 'course_title'}) if an Invitation instance is needed.
+        """
+        if not user_id:
+            return []
+        try:
+            result = await repo_query(
+                """
+                SELECT *, course_id.title AS course_title FROM invitation
+                WHERE invited_by = $user_id AND status = 'requested'
+                ORDER BY created DESC
+                """,
+                {"user_id": ensure_record_id(user_id)},
+            )
+            return result if result else []
+        except Exception as e:
+            logger.error(
+                f"Error fetching enrollment requests for user {user_id}: {str(e)}"
+            )
+            raise DatabaseOperationError(e)
 
     @classmethod
     async def get_pending_for_course(cls, course_id: str) -> List["Invitation"]:
@@ -228,6 +260,12 @@ class Invitation(ObjectModel):
             },
         )
         if existing:
+            existing_role = existing[0].get("role")
+            if existing_role and existing_role != self.role:
+                logger.warning(
+                    f"User {user_id} is already a member of {self.course_id} "
+                    f"with role '{existing_role}'; invitation role '{self.role}' ignored"
+                )
             return existing[0]
 
         result = await repo_query(
@@ -306,8 +344,14 @@ class Invitation(ObjectModel):
             raise InvalidInputError(
                 f"Cannot deny request with status '{self.status}'"
             )
-        self.status = "declined"
-        await self.save()
+        try:
+            self.status = "declined"
+            await self.save()
+        except InvalidInputError:
+            raise
+        except Exception as e:
+            logger.error(f"Error denying enrollment request {self.id}: {str(e)}")
+            raise DatabaseOperationError(e)
 
     async def decline(self) -> None:
         """Decline the invitation."""

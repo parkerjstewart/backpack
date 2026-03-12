@@ -86,9 +86,8 @@ export default function CoursesPage() {
       ]
     : null;
 
-  const pendingEnrollmentRequests = myEnrollmentRequests?.filter(
-    (r) => r.status === "requested"
-  );
+  // API only returns 'requested' status records
+  const pendingEnrollmentRequests = myEnrollmentRequests;
 
   if (isLoading) {
     return (

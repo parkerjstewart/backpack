@@ -21,6 +21,7 @@ from api.routers.authz import (
     get_current_user_id_from_auth,
     require_authenticated_user_id,
     require_course_membership_role,
+    require_instructor_role,
     require_teaching_role,
 )
 from backpack.database.repository import ensure_record_id, repo_query
@@ -194,10 +195,15 @@ async def update_course(
     course_update: CourseUpdate,
     authorization: Optional[str] = Header(None),
 ):
-    """Update a course."""
+    """Update a course. Archiving requires instructor role; title/description allow TA."""
     try:
         user_id = require_authenticated_user_id(authorization)
-        membership_role = await require_teaching_role(course_id, user_id)
+
+        # Archiving is a destructive action — instructor only
+        if course_update.archived is not None:
+            membership_role = await require_instructor_role(course_id, user_id)
+        else:
+            membership_role = await require_teaching_role(course_id, user_id)
 
         course = await Course.get(course_id)
         if not course:
@@ -245,10 +251,10 @@ async def update_course(
 
 @router.delete("/courses/{course_id}")
 async def delete_course(course_id: str, authorization: Optional[str] = Header(None)):
-    """Delete a course."""
+    """Delete a course. Instructor only."""
     try:
         user_id = require_authenticated_user_id(authorization)
-        await require_teaching_role(course_id, user_id)
+        await require_instructor_role(course_id, user_id)
 
         course = await Course.get(course_id)
         if not course:
@@ -526,6 +532,10 @@ async def request_enrollment(
                 status_code=400, detail="Cannot request enrollment in an archived course"
             )
 
+        user = await User.get(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
         # Check if already enrolled
         existing_role = await get_course_membership_role(course_id, user_id)
         if existing_role:
@@ -533,19 +543,15 @@ async def request_enrollment(
                 status_code=409, detail="You are already enrolled in this course"
             )
 
-        # Check for duplicate pending request
+        # Check for duplicate pending request (student-initiated) or existing invitation (instructor-sent)
         existing_request = await Invitation.get_request_by_user_and_course(
-            user_id, course_id
+            user_id, course_id, email=user.email
         )
         if existing_request:
             raise HTTPException(
                 status_code=409,
                 detail="You already have a pending enrollment request for this course",
             )
-
-        user = await User.get(user_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
 
         invitation = Invitation(
             course_id=course_id,
@@ -573,7 +579,7 @@ async def leave_course(
     authorization: Optional[str] = Header(None),
 ):
     """
-    Student leaves a course (removes their own membership).
+    Student or TA leaves a course (removes their own membership).
     Instructors cannot leave their own course; they must archive or delete it.
     """
     try:

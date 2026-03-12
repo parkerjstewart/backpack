@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CourseHeader, LeaveCourseDialog } from "@/components/courses";
+import { toast } from "sonner";
 import {
   useCourse,
   useUpdateCourse,
@@ -101,9 +102,8 @@ export default function CourseSettingsPage() {
   }
 
   const permissions = getCoursePermissions(course.membership_role);
-  const isStudent = course.membership_role === "student";
 
-  // Students see a limited view with only the Leave Course option
+  // Students and TAs see a limited view with only the Leave Course option
   if (!permissions.canManageCourseSettings) {
     return (
       <AppShell>
@@ -114,7 +114,7 @@ export default function CourseSettingsPage() {
               courseName={course.title}
               membershipRole={course.membership_role}
             />
-            {isStudent ? (
+            {permissions.canLeaveCourse ? (
               <Card className="max-w-2xl border-destructive/20">
                 <CardHeader>
                   <CardTitle>Leave Course</CardTitle>
@@ -156,7 +156,7 @@ export default function CourseSettingsPage() {
           </div>
         </div>
 
-        {isStudent && (
+        {permissions.canLeaveCourse && (
           <LeaveCourseDialog
             open={leaveDialogOpen}
             onOpenChange={setLeaveDialogOpen}
@@ -196,7 +196,12 @@ export default function CourseSettingsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => navigator.clipboard.writeText(courseId)}
+                      onClick={() =>
+                        navigator.clipboard
+                          .writeText(courseId)
+                          .then(() => toast.success("Course ID copied"))
+                          .catch(() => toast.error("Failed to copy — please copy it manually"))
+                      }
                       className="shrink-0 gap-1.5"
                     >
                       <Copy className="h-4 w-4" />

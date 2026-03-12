@@ -341,7 +341,12 @@ async def approve_enrollment_request(
         if not request:
             raise HTTPException(status_code=404, detail="Enrollment request not found")
 
-        await require_teaching_role(str(request.course_id), user_id)
+        # Verify teaching role; return 404 on failure to avoid leaking request existence
+        try:
+            await require_teaching_role(str(request.course_id), user_id)
+        except HTTPException:
+            raise HTTPException(status_code=404, detail="Enrollment request not found")
+
         await request.approve()
         return {"status": "approved", "message": "Enrollment request approved"}
     except HTTPException:
@@ -367,7 +372,12 @@ async def deny_enrollment_request(
         if not request:
             raise HTTPException(status_code=404, detail="Enrollment request not found")
 
-        await require_teaching_role(str(request.course_id), user_id)
+        # Verify teaching role; return 404 on failure to avoid leaking request existence
+        try:
+            await require_teaching_role(str(request.course_id), user_id)
+        except HTTPException:
+            raise HTTPException(status_code=404, detail="Enrollment request not found")
+
         await request.deny()
         return {"status": "denied", "message": "Enrollment request denied"}
     except HTTPException:
@@ -388,21 +398,14 @@ async def deny_enrollment_request(
 async def get_my_enrollment_requests(
     authorization: Optional[str] = Header(None),
 ):
-    """Get all enrollment requests submitted by the current user."""
+    """Get all pending enrollment requests submitted by the current user."""
     try:
         user_id = require_authenticated_user_id(authorization)
 
-        result = await repo_query(
-            """
-            SELECT *, course_id.title AS course_title FROM invitation
-            WHERE invited_by = $user_id AND status IN ['requested', 'accepted', 'declined']
-            ORDER BY created DESC
-            """,
-            {"user_id": ensure_record_id(user_id)},
-        )
+        raw_results = await Invitation.get_enrollment_requests_by_user(user_id)
 
         requests = []
-        for r in result if result else []:
+        for r in raw_results:
             course_title = r.pop("course_title", None)
             inv = Invitation(**r)
             requests.append(_request_to_response(inv, course_title=course_title))

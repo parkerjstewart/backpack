@@ -2,7 +2,7 @@
 
 import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import type { EnrollmentRequestResponse } from "@/lib/types/api";
 
@@ -37,7 +37,6 @@ export function EnrollmentRequestRow({
       {/* Left: Avatar + Name/Email */}
       <div className="flex items-center gap-4 flex-1 min-w-0">
         <Avatar className="w-8 h-8 shrink-0">
-          <AvatarImage src={undefined} alt={displayName} />
           <AvatarFallback className="bg-muted text-sm font-medium text-muted-foreground">
             {displayName.charAt(0).toUpperCase()}
           </AvatarFallback>
