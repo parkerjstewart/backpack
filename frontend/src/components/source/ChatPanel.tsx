@@ -23,6 +23,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { normalizeLatexDelimiters } from "@/lib/utils";
 import {
   SourceChatMessage,
   SourceChatContextIndicator,
@@ -133,23 +134,13 @@ export function ChatPanel({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Detect platform for correct modifier key
-    const isMac =
-      typeof navigator !== "undefined" &&
-      navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
-    const isModifierPressed = isMac ? e.metaKey : e.ctrlKey;
-
-    if (e.key === "Enter" && isModifierPressed) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
-  // Detect platform for placeholder text
-  const isMac =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
-  const keyHint = isMac ? "⌘+Enter" : "Ctrl+Enter";
+  const keyHint = "Enter";
 
   const {
     isRecording,
@@ -488,7 +479,7 @@ function AIMessageContent({
   const LinkComponent = createCompactReferenceLinkComponent(onReferenceClick);
 
   return (
-    <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
+    <div className="prose prose-sm prose-neutral max-w-none break-words prose-headings:font-semibold prose-a:text-info prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
@@ -528,7 +519,7 @@ function AIMessageContent({
           ),
         }}
       >
-        {markdownWithCompactRefs}
+        {normalizeLatexDelimiters(markdownWithCompactRefs)}
       </ReactMarkdown>
     </div>
   );

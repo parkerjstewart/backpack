@@ -265,7 +265,7 @@ export default function SourcesPage() {
     return (
       <AppShell>
         <div className="flex h-full items-center justify-center">
-          <p className="text-red-500">{error}</p>
+          <p className="text-destructive">{error}</p>
         </div>
       </AppShell>
     )
@@ -287,7 +287,7 @@ export default function SourcesPage() {
     <AppShell>
       <div className="flex flex-col h-full w-full max-w-none px-6 py-6">
         <div className="mb-6 flex-shrink-0">
-          <h1 className="text-3xl font-bold">{t.sources.allSources}</h1>
+          <h1 className="text-section">{t.sources.allSources}</h1>
           <p className="mt-2 text-muted-foreground">
             {t.sources.allSourcesDesc}
           </p>

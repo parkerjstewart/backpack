@@ -182,7 +182,7 @@ export function ModuleAssociations({
                           {module.name}
                         </h4>
                         {isCurrentlyLinked && !hasChanges && (
-                          <Check className="h-4 w-4 text-green-600" />
+                          <Check className="h-4 w-4 text-success-fg" />
                         )}
                       </div>
                       {module.description && (

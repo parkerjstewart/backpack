@@ -18,6 +18,7 @@ class LearningGoal(ObjectModel):
     table_name: ClassVar[str] = "learning_goal"
     module: str  # record<module> reference
     description: str
+    title: str = ""
     takeaways: str = ""
     competencies: str = ""
     anchor_examples: str = ""
