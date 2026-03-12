@@ -77,8 +77,30 @@ export function TutorChat({
   const isDraggingRef = useRef(false)
   const dragStartXRef = useRef(0)
   const dragStartWidthRef = useRef(0)
+  const dragListenersRef = useRef<{
+    onMouseMove: ((e: MouseEvent) => void) | null
+    onMouseUp: (() => void) | null
+  }>({ onMouseMove: null, onMouseUp: null })
+
+  // Clean up body styles and window listeners if the component unmounts mid-drag
+  useEffect(() => {
+    return () => {
+      if (isDraggingRef.current) {
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+        isDraggingRef.current = false
+      }
+      if (dragListenersRef.current.onMouseMove) {
+        window.removeEventListener('mousemove', dragListenersRef.current.onMouseMove)
+      }
+      if (dragListenersRef.current.onMouseUp) {
+        window.removeEventListener('mouseup', dragListenersRef.current.onMouseUp)
+      }
+    }
+  }, [])
 
   const handleDragStart = (e: React.MouseEvent) => {
+    if (isDraggingRef.current) return   // guard against listener accumulation
     e.preventDefault()
     isDraggingRef.current = true
     dragStartXRef.current = e.clientX
@@ -98,7 +120,11 @@ export function TutorChat({
       document.body.style.userSelect = ''
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
+      dragListenersRef.current.onMouseMove = null
+      dragListenersRef.current.onMouseUp = null
     }
+    dragListenersRef.current.onMouseMove = onMouseMove
+    dragListenersRef.current.onMouseUp = onMouseUp
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
   }

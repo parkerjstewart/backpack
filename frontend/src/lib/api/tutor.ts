@@ -83,7 +83,11 @@ export const tutorApi = {
 
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        // Flush any bytes still held inside the decoder (e.g. incomplete UTF-8 sequences)
+        buffer += decoder.decode()
+        break
+      }
       buffer += decoder.decode(value, { stream: true })
       const parts = buffer.split('\n\n')
       buffer = parts.pop() ?? ''
@@ -96,6 +100,14 @@ export const tutorApi = {
             // skip malformed event
           }
         }
+      }
+    }
+    // Process anything left in the buffer after the stream closes
+    if (buffer.trim().startsWith('data: ')) {
+      try {
+        yield JSON.parse(buffer.trim().slice(6)) as TutorStreamEvent
+      } catch {
+        // skip malformed trailing event
       }
     }
   },

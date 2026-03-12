@@ -43,6 +43,10 @@ export function useTutor({ moduleId }: UseTutorParams) {
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false)
   const [streamingMessage, setStreamingMessage] = useState('')
 
+  // Ref guard to prevent concurrent sends — React state updates are async so
+  // isSending alone cannot block a second call before the first re-render.
+  const isSendingRef = useRef(false)
+
   // Holds the async PNG export function provided by ExcalidrawCanvas.
   // Using a ref avoids re-renders while still being accessible in sendMessage.
   const exportCanvasRef = useRef<(() => Promise<string | null>) | null>(null)
@@ -119,6 +123,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     const lastMsg = messages[messages.length - 1]
     if (lastMsg.type !== 'tutor') return
 
+    let mounted = true
     const controller = new AbortController()
     const last4 = messages.slice(-4).map(m => ({
       role: m.type === 'tutor' ? 'tutor' : 'student',
@@ -126,14 +131,17 @@ export function useTutor({ moduleId }: UseTutorParams) {
     }))
     setIsSuggestionsLoading(true)
     tutorApi.getSuggestions(sessionId, last4, controller.signal)
-      .then(setSuggestions)
+      .then(result => { if (mounted) setSuggestions(result) })
       .catch((err) => {
-        if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+        if (mounted && err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
           setSuggestions([])
         }
       })
-      .finally(() => setIsSuggestionsLoading(false))
-    return () => controller.abort()
+      .finally(() => { if (mounted) setIsSuggestionsLoading(false) })
+    return () => {
+      mounted = false
+      controller.abort()
+    }
   }, [messages, sessionId, isSending, isInitializing, sessionPhase])
 
   // Send response to tutor using streaming SSE.
@@ -144,6 +152,8 @@ export function useTutor({ moduleId }: UseTutorParams) {
       toast.error('No active session')
       return
     }
+    if (isSendingRef.current) return
+    isSendingRef.current = true
 
     // Clear suggestions immediately when student sends
     setSuggestions([])
@@ -216,6 +226,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
       // Remove optimistic message on error
       setMessages(prev => prev.filter(msg => msg.id !== studentMessage.id))
     } finally {
+      isSendingRef.current = false
       setIsSending(false)
     }
   }, [sessionId, t])

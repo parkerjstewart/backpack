@@ -139,8 +139,13 @@ export function useVoiceSession({
 
   const ensureConnected = useCallback(async () => {
     const existing = wsRef.current
-    if (existing && existing.readyState === WebSocket.OPEN) {
-      return
+    if (existing) {
+      if (existing.readyState === WebSocket.OPEN) return
+      // Close any stale socket (CONNECTING, CLOSING, or CLOSED) before reconnecting.
+      // Null out onclose first so the handler doesn't fire and overwrite wsRef mid-setup.
+      existing.onclose = null
+      existing.close()
+      wsRef.current = null
     }
 
     const token = getAuthToken()
@@ -152,13 +157,21 @@ export function useVoiceSession({
     const ws = new WebSocket(url)
     wsRef.current = ws
 
-    await new Promise<void>((resolve, reject) => {
-      ws.onopen = () => {
-        setIsConnected(true)
-        resolve()
-      }
-      ws.onerror = () => reject(new Error('Unable to connect voice socket'))
-    })
+    await Promise.race([
+      new Promise<void>((resolve, reject) => {
+        ws.onopen = () => {
+          setIsConnected(true)
+          resolve()
+        }
+        ws.onerror = () => reject(new Error('Unable to connect voice socket'))
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          ws.close()
+          reject(new Error('Voice connection timed out'))
+        }, 10_000)
+      ),
+    ])
 
     ws.onclose = () => {
       setIsConnected(false)
@@ -317,6 +330,7 @@ export function useVoiceSession({
       if (recorder && recorder.state !== 'inactive') {
         recorder.stop()
       }
+      audioContextRef.current?.close()
       setIsAssistantThinking(false)
     }
   }, [concatUint8Arrays, drainAudioQueue])

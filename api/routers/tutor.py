@@ -28,6 +28,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from backpack.ai.provision import provision_langchain_model
 from backpack.domain.module import Module
 from backpack.graphs.tutor import tutor_graph
+from backpack.utils.token_stream import drain_token_queue
 
 router = APIRouter()
 
@@ -47,7 +48,7 @@ class CreateSessionRequest(BaseModel):
 
 class ArtifactResponse(BaseModel):
     """A single artifact in the session's reference panel."""
-    id: str = Field(..., description="Unique artifact ID (art-N)")
+    id: str = Field(..., description="Unique artifact ID (art-XXXXXXXX)")
     label: str = Field(..., description="Short display name")
     content: str = Field(..., description="LaTeX/markdown content")
     source_mode: str = Field(..., description="Tutor mode that created this artifact")
@@ -201,6 +202,21 @@ def count_goals(state: Dict[str, Any]) -> tuple[int, int]:
     return completed, total - completed
 
 
+def parse_artifacts(artifacts_raw: List[Any]) -> List[ArtifactResponse]:
+    """Safely parse a list of raw artifact dicts into ArtifactResponse objects.
+
+    Skips malformed entries rather than letting a single bad artifact raise
+    a 500 on the whole response.
+    """
+    result = []
+    for a in artifacts_raw:
+        try:
+            result.append(ArtifactResponse.model_validate(a))
+        except Exception as e:
+            logger.warning(f"Skipping malformed artifact (will not be shown): {e} | data={a}")
+    return result
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -260,7 +276,7 @@ async def create_session(request: CreateSessionRequest):
             module_name=state_values.get("module_name", module.name),
             first_message=interrupt_data.get("message", ""),
             first_image_url=interrupt_data.get("image_url"),
-            artifacts=[ArtifactResponse(**a) for a in artifacts_raw],
+            artifacts=parse_artifacts(artifacts_raw),
             highlighted_artifact_id=interrupt_data.get("highlighted_artifact_id"),
             current_goal_id=current_goal_id,
             current_goal_description=current_goal_description,
@@ -398,7 +414,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
                 tutor_message=interrupt_data.get("message", ""),
                 tutor_image_url=interrupt_data.get("image_url"),
                 artifact_content=interrupt_data.get("artifact_content"),
-                artifacts=[ArtifactResponse(**a) for a in artifacts_raw],
+                artifacts=parse_artifacts(artifacts_raw),
                 highlighted_artifact_id=interrupt_data.get("highlighted_artifact_id"),
                 latest_understanding_score=latest_eval.get("score"),
                 competency_scores=latest_eval.get("competency_score_dict"),
@@ -444,7 +460,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
             tutor_message=last_ai_message or "Session updated.",
             tutor_image_url=state_values.get("latest_image_url"),
             artifact_content=artifact_content,
-            artifacts=[ArtifactResponse(**a) for a in artifacts_raw],
+            artifacts=parse_artifacts(artifacts_raw),
             highlighted_artifact_id=highlighted_id,
             latest_understanding_score=state_values.get("latest_evaluation", {}).get("score"),
             competency_scores=state_values.get("latest_evaluation", {}).get("competency_score_dict"),
@@ -471,6 +487,18 @@ async def stream_tutor_response(session_id: str, request: StudentResponseRequest
     """
     logger.info(f"Streaming response for session: {session_id}")
 
+    # Validate session before committing to a streaming response (so we can return 404)
+    try:
+        current_state = tutor_graph.get_state(
+            config=RunnableConfig(**{"configurable": {"thread_id": session_id}})
+        )
+        if not current_state or not current_state.values:
+            raise HTTPException(status_code=404, detail="Session not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
     token_queue: queue.Queue = queue.Queue()
 
     if request.whiteboard_png:
@@ -488,86 +516,16 @@ async def stream_tutor_response(session_id: str, request: StudentResponseRequest
     async def generate():
         loop = asyncio.get_event_loop()
 
-        # Validate session exists before starting the graph
-        try:
-            current_state = tutor_graph.get_state(config=RunnableConfig(**{"configurable": {"thread_id": session_id}}))
-            if not current_state or not current_state.values:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'Session not found'})}\n\n"
-                return
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-            return
-
         # Run the graph in a thread so the sync invoke() doesn't block the event loop
         graph_task = asyncio.ensure_future(
             loop.run_in_executor(None, tutor_graph.invoke, Command(resume=resume_value), config)
         )
 
-        # Relay tokens from tutor_turn(s) to the client.
-        #
-        # LangGraph re-runs the interrupted node (tutor_turn) on resume, which causes
-        # the previous message to be re-generated and its tokens sent to the queue.
-        # We buffer those "replay" tokens and discard them when we see the sentinel
-        # while the graph is still running (meaning a second, real tutor_turn is coming).
-        # Only the final tutor_turn's tokens (the actual new response) are streamed.
-        token_buffer: list[str] = []
-        streaming_active = False  # True once replay is done and real response is streaming
         tokens_emitted = 0
-
-        while True:
-            try:
-                item = await loop.run_in_executor(
-                    None, lambda: token_queue.get(timeout=0.1)
-                )
-                if item is None:  # sentinel from tutor_turn finally block
-                    if graph_task.done():
-                        # Final sentinel — flush buffer if we only had one tutor_turn
-                        if not streaming_active and token_buffer:
-                            logger.info(
-                                f"stream [{session_id}]: single tutor_turn, flushing "
-                                f"{len(token_buffer)}-token buffer"
-                            )
-                            for tok in token_buffer:
-                                yield f"data: {json.dumps({'type': 'token', 'text': tok})}\n\n"
-                                tokens_emitted += 1
-                        logger.info(
-                            f"stream [{session_id}]: final sentinel, graph done, "
-                            f"{tokens_emitted} tokens emitted to client"
-                        )
-                        break
-                    else:
-                        # Graph still running — this sentinel is from the replay of the
-                        # previous message (LangGraph re-runs the interrupted node).
-                        # Discard buffered replay tokens and enter active streaming mode.
-                        logger.info(
-                            f"stream [{session_id}]: replay sentinel received — discarding "
-                            f"{len(token_buffer)} replay tokens, switching to active streaming"
-                        )
-                        token_buffer.clear()
-                        streaming_active = True
-                else:
-                    if streaming_active:
-                        yield f"data: {json.dumps({'type': 'token', 'text': item})}\n\n"
-                        tokens_emitted += 1
-                    else:
-                        token_buffer.append(item)
-            except queue.Empty:
-                if graph_task.done():
-                    # Graph finished without a final sentinel — flush buffer if needed
-                    if not streaming_active and token_buffer:
-                        logger.info(
-                            f"stream [{session_id}]: graph done (no sentinel), flushing "
-                            f"{len(token_buffer)}-token buffer"
-                        )
-                        for tok in token_buffer:
-                            yield f"data: {json.dumps({'type': 'token', 'text': tok})}\n\n"
-                            tokens_emitted += 1
-                    logger.info(
-                        f"stream [{session_id}]: graph done (queue empty), "
-                        f"{tokens_emitted} tokens emitted to client"
-                    )
-                    break
-                continue
+        async for token in drain_token_queue(token_queue, graph_task, session_id):
+            yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
+            tokens_emitted += 1
+        logger.info(f"stream [{session_id}]: {tokens_emitted} tokens emitted to client")
 
         # Await the graph result and build the complete payload
         try:

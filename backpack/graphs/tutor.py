@@ -21,6 +21,7 @@ import concurrent.futures
 import json
 import os
 import sqlite3
+import uuid
 from datetime import datetime
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
@@ -870,7 +871,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     highlighted_artifact_id: Optional[str] = None
 
     if result is not None and result.new_artifact:
-        artifact_id = f"art-{len(artifacts) + 1}"
+        artifact_id = f"art-{uuid.uuid4().hex[:8]}"
         new_artifact_dict = {
             "id": artifact_id,
             "label": result.new_artifact.label,

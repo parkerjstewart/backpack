@@ -17,6 +17,7 @@ from backpack.ai.models import model_manager
 from backpack.domain.module import ChatSession
 from backpack.graphs.chat import graph as chat_graph
 from backpack.graphs.tutor import tutor_graph
+from backpack.utils.token_stream import drain_token_queue
 from backpack.utils.voice_text import format_for_voice
 
 
@@ -173,56 +174,10 @@ class VoiceService:
 
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "end"})
 
-        # Same replay-buffering logic as the HTTP streaming endpoint:
-        # LangGraph re-runs the interrupted tutor_turn node on resume, causing the previous
-        # message to be re-streamed. Buffer those tokens and discard them when we see the
-        # sentinel while the graph is still running; stream the second (real) turn eagerly.
-        token_buffer: list[str] = []
-        streaming_active = False
         display_text = ""
-
-        while True:
-            try:
-                item = await loop.run_in_executor(None, lambda: token_queue.get(timeout=0.1))
-                if item is None:  # sentinel
-                    if graph_task.done():
-                        # Final sentinel — flush buffer if only one tutor_turn ran
-                        if not streaming_active and token_buffer:
-                            logger.info(
-                                f"voice [{session_id}]: single tutor_turn, "
-                                f"flushing {len(token_buffer)}-token buffer"
-                            )
-                            for tok in token_buffer:
-                                display_text += tok
-                                yield VoiceServerEvent(type="assistant_text_delta", payload={"text": tok})
-                        logger.info(f"voice [{session_id}]: final sentinel, graph done")
-                        break
-                    else:
-                        # Replay sentinel — discard buffered tokens, switch to active streaming
-                        logger.info(
-                            f"voice [{session_id}]: replay sentinel — discarding "
-                            f"{len(token_buffer)} replay tokens, switching to active streaming"
-                        )
-                        token_buffer.clear()
-                        streaming_active = True
-                else:
-                    if streaming_active:
-                        display_text += item
-                        yield VoiceServerEvent(type="assistant_text_delta", payload={"text": item})
-                    else:
-                        token_buffer.append(item)
-            except _queue.Empty:
-                if graph_task.done():
-                    if not streaming_active and token_buffer:
-                        logger.info(
-                            f"voice [{session_id}]: graph done (no sentinel), "
-                            f"flushing {len(token_buffer)}-token buffer"
-                        )
-                        for tok in token_buffer:
-                            display_text += tok
-                            yield VoiceServerEvent(type="assistant_text_delta", payload={"text": tok})
-                    break
-                continue
+        async for token in drain_token_queue(token_queue, graph_task, session_id):
+            display_text += token
+            yield VoiceServerEvent(type="assistant_text_delta", payload={"text": token})
 
         result = await graph_task
         interrupt_data = _extract_interrupt_data(result)
