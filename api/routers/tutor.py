@@ -45,14 +45,25 @@ class CreateSessionRequest(BaseModel):
     )
 
 
+class ArtifactResponse(BaseModel):
+    """A single artifact in the session's reference panel."""
+    id: str = Field(..., description="Unique artifact ID (art-N)")
+    label: str = Field(..., description="Short display name")
+    content: str = Field(..., description="LaTeX/markdown content")
+    source_mode: str = Field(..., description="Tutor mode that created this artifact")
+    goal_id: Optional[str] = Field(None, description="Learning goal when artifact was created")
+    exchange: Optional[int] = Field(None, description="Exchange number when artifact was created")
+
+
 class CreateSessionResponse(BaseModel):
     """Response after creating a tutoring session."""
     session_id: str = Field(..., description="Unique session identifier")
     module_id: str = Field(..., description="Module ID")
     module_name: str = Field(..., description="Module name")
     first_message: str = Field(..., description="First message from tutor")
-    first_supplement: Optional[str] = Field(None, description="Optional supplemental content for first message")
     first_image_url: Optional[str] = Field(None, description="Optional generated image data URI for first message")
+    artifacts: List[ArtifactResponse] = Field(default_factory=list, description="Accumulated artifacts")
+    highlighted_artifact_id: Optional[str] = Field(None, description="Artifact to highlight this turn")
     current_goal_id: Optional[str] = Field(None, description="Current learning goal ID")
     current_goal_description: Optional[str] = Field(None, description="Current goal description")
     total_goals: int = Field(..., description="Total number of learning goals")
@@ -82,8 +93,10 @@ class TutorResponsePayload(BaseModel):
 
     # The tutor's response message
     tutor_message: str = Field(..., description="Tutor's response")
-    tutor_supplement: Optional[str] = Field(None, description="Optional supplemental equations/definitions block")
     tutor_image_url: Optional[str] = Field(None, description="Optional generated image data URI")
+    artifact_content: Optional[str] = Field(None, description="Content of newly created artifact (for inline display)")
+    artifacts: List[ArtifactResponse] = Field(default_factory=list, description="Accumulated artifacts")
+    highlighted_artifact_id: Optional[str] = Field(None, description="Artifact to highlight this turn")
 
     # Latest evaluation (for real-time feedback)
     latest_understanding_score: Optional[float] = Field(
@@ -240,13 +253,15 @@ async def create_session(request: CreateSessionRequest):
         current_goal_id, current_goal_description = get_current_goal_info(state_values)
         total_goals = len(state_values.get("learning_goals", []))
 
+        artifacts_raw = interrupt_data.get("artifacts", [])
         return CreateSessionResponse(
             session_id=session_id,
             module_id=request.module_id,
             module_name=state_values.get("module_name", module.name),
             first_message=interrupt_data.get("message", ""),
-            first_supplement=interrupt_data.get("supplement"),
             first_image_url=interrupt_data.get("image_url"),
+            artifacts=[ArtifactResponse(**a) for a in artifacts_raw],
+            highlighted_artifact_id=interrupt_data.get("highlighted_artifact_id"),
             current_goal_id=current_goal_id,
             current_goal_description=current_goal_description,
             total_goals=total_goals,
@@ -372,6 +387,7 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
         if interrupt_data:
             # Still in progress - return the tutor's response
             latest_eval = state_values.get("latest_evaluation", {})
+            artifacts_raw = interrupt_data.get("artifacts", [])
 
             return TutorResponsePayload(
                 session_id=session_id,
@@ -380,8 +396,10 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
                 current_goal_description=current_goal_description,
                 anchor_problem=state_values.get("anchor_problem"),
                 tutor_message=interrupt_data.get("message", ""),
-                tutor_supplement=interrupt_data.get("supplement"),
                 tutor_image_url=interrupt_data.get("image_url"),
+                artifact_content=interrupt_data.get("artifact_content"),
+                artifacts=[ArtifactResponse(**a) for a in artifacts_raw],
+                highlighted_artifact_id=interrupt_data.get("highlighted_artifact_id"),
                 latest_understanding_score=latest_eval.get("score"),
                 competency_scores=latest_eval.get("competency_score_dict"),
                 goals_completed=completed,
@@ -408,6 +426,15 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
         else:
             phase = "in_progress"
 
+        artifacts_raw = state_values.get("artifacts", [])
+        highlighted_id = state_values.get("highlighted_artifact_id")
+        artifact_content = None
+        if highlighted_id:
+            for art in artifacts_raw:
+                if art.get("id") == highlighted_id:
+                    artifact_content = art.get("content")
+                    break
+
         return TutorResponsePayload(
             session_id=session_id,
             phase=phase,
@@ -415,8 +442,10 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
             current_goal_description=current_goal_description,
             anchor_problem=state_values.get("anchor_problem"),
             tutor_message=last_ai_message or "Session updated.",
-            tutor_supplement=state_values.get("latest_supplement"),
             tutor_image_url=state_values.get("latest_image_url"),
+            artifact_content=artifact_content,
+            artifacts=[ArtifactResponse(**a) for a in artifacts_raw],
+            highlighted_artifact_id=highlighted_id,
             latest_understanding_score=state_values.get("latest_evaluation", {}).get("score"),
             competency_scores=state_values.get("latest_evaluation", {}).get("competency_score_dict"),
             goals_completed=completed,
@@ -474,17 +503,69 @@ async def stream_tutor_response(session_id: str, request: StudentResponseRequest
             loop.run_in_executor(None, tutor_graph.invoke, Command(resume=resume_value), config)
         )
 
-        # Relay tokens as they arrive from tutor_turn
+        # Relay tokens from tutor_turn(s) to the client.
+        #
+        # LangGraph re-runs the interrupted node (tutor_turn) on resume, which causes
+        # the previous message to be re-generated and its tokens sent to the queue.
+        # We buffer those "replay" tokens and discard them when we see the sentinel
+        # while the graph is still running (meaning a second, real tutor_turn is coming).
+        # Only the final tutor_turn's tokens (the actual new response) are streamed.
+        token_buffer: list[str] = []
+        streaming_active = False  # True once replay is done and real response is streaming
+        tokens_emitted = 0
+
         while True:
             try:
                 item = await loop.run_in_executor(
                     None, lambda: token_queue.get(timeout=0.1)
                 )
                 if item is None:  # sentinel from tutor_turn finally block
-                    break
-                yield f"data: {json.dumps({'type': 'token', 'text': item})}\n\n"
+                    if graph_task.done():
+                        # Final sentinel — flush buffer if we only had one tutor_turn
+                        if not streaming_active and token_buffer:
+                            logger.info(
+                                f"stream [{session_id}]: single tutor_turn, flushing "
+                                f"{len(token_buffer)}-token buffer"
+                            )
+                            for tok in token_buffer:
+                                yield f"data: {json.dumps({'type': 'token', 'text': tok})}\n\n"
+                                tokens_emitted += 1
+                        logger.info(
+                            f"stream [{session_id}]: final sentinel, graph done, "
+                            f"{tokens_emitted} tokens emitted to client"
+                        )
+                        break
+                    else:
+                        # Graph still running — this sentinel is from the replay of the
+                        # previous message (LangGraph re-runs the interrupted node).
+                        # Discard buffered replay tokens and enter active streaming mode.
+                        logger.info(
+                            f"stream [{session_id}]: replay sentinel received — discarding "
+                            f"{len(token_buffer)} replay tokens, switching to active streaming"
+                        )
+                        token_buffer.clear()
+                        streaming_active = True
+                else:
+                    if streaming_active:
+                        yield f"data: {json.dumps({'type': 'token', 'text': item})}\n\n"
+                        tokens_emitted += 1
+                    else:
+                        token_buffer.append(item)
             except queue.Empty:
                 if graph_task.done():
+                    # Graph finished without a final sentinel — flush buffer if needed
+                    if not streaming_active and token_buffer:
+                        logger.info(
+                            f"stream [{session_id}]: graph done (no sentinel), flushing "
+                            f"{len(token_buffer)}-token buffer"
+                        )
+                        for tok in token_buffer:
+                            yield f"data: {json.dumps({'type': 'token', 'text': tok})}\n\n"
+                            tokens_emitted += 1
+                    logger.info(
+                        f"stream [{session_id}]: graph done (queue empty), "
+                        f"{tokens_emitted} tokens emitted to client"
+                    )
                     break
                 continue
 
@@ -507,8 +588,10 @@ async def stream_tutor_response(session_id: str, request: StudentResponseRequest
         if interrupt_data:
             phase = "in_progress"
             tutor_message = interrupt_data.get("message", "")
-            tutor_supplement = interrupt_data.get("supplement")
             tutor_image_url = interrupt_data.get("image_url")
+            artifact_content = interrupt_data.get("artifact_content")
+            highlighted_artifact_id = interrupt_data.get("highlighted_artifact_id")
+            artifacts_raw = interrupt_data.get("artifacts", [])
         else:
             messages = state_values.get("messages", [])
             tutor_message = ""
@@ -519,10 +602,21 @@ async def stream_tutor_response(session_id: str, request: StudentResponseRequest
                 elif isinstance(msg, AIMessage):
                     tutor_message = msg.content
                     break
-            tutor_supplement = state_values.get("latest_supplement")
             tutor_image_url = state_values.get("latest_image_url")
+            artifacts_raw = state_values.get("artifacts", [])
+            highlighted_artifact_id = state_values.get("highlighted_artifact_id")
+            artifact_content = None
+            if highlighted_artifact_id:
+                for art in artifacts_raw:
+                    if art.get("id") == highlighted_artifact_id:
+                        artifact_content = art.get("content")
+                        break
             phase = "session_complete" if remaining == 0 else ("goal_complete" if not current_goal_id else "in_progress")
 
+        logger.info(
+            f"stream [{session_id}]: complete | interrupt={'yes' if interrupt_data else 'no'} "
+            f"| phase={phase} | tutor_message_len={len(tutor_message)}"
+        )
         payload = {
             "type": "complete",
             "session_id": session_id,
@@ -531,8 +625,10 @@ async def stream_tutor_response(session_id: str, request: StudentResponseRequest
             "current_goal_description": current_goal_description,
             "anchor_problem": state_values.get("anchor_problem"),
             "tutor_message": tutor_message,
-            "tutor_supplement": tutor_supplement,
             "tutor_image_url": tutor_image_url,
+            "artifact_content": artifact_content,
+            "artifacts": artifacts_raw,
+            "highlighted_artifact_id": highlighted_artifact_id,
             "latest_understanding_score": latest_eval.get("score"),
             "competency_scores": latest_eval.get("competency_score_dict"),
             "goals_completed": completed,

@@ -73,6 +73,16 @@ You are a Socratic tutor in a one-on-one discussion. You're working through a sp
 {% endfor %}
 {% endif %}
 
+{% if artifacts %}
+# ESTABLISHED ARTIFACTS (student can see these)
+
+{% for art in artifacts %}
+- **[{{ art.label }}]** {{ art.content }}
+{% endfor %}
+
+*(These are already visible to the student. You can reference them by label using reference_artifact_label. Do not re-explain or re-derive them — just point to them.)*
+{% endif %}
+
 {% if has_student_drawing %}
 # STUDENT'S WHITEBOARD DRAWING
 
@@ -97,16 +107,18 @@ Respond to the student naturally as a skilled tutor. Follow the evaluator's asse
 
 ## Output Format
 
-Respond with a JSON object with three fields:
+Respond with a JSON object with four fields:
 
-**`message`** (required): Your conversational response in plain English. No equations, no markdown — just talk naturally. 2–4 sentences typical.
+**`message`** (required): Your conversational response in plain English. No equations, no LaTeX, no markdown — just talk naturally. 2–4 sentences typical. Any formula or equation MUST go in new_artifact.content, not here.
 
-**`supplement`** (optional — null if not needed): A separate block for equations, formal definitions, or structured derivations. Use LaTeX for math:
-- Inline: `$expression$` (e.g. `$P(X=k) = \frac{\lambda^k e^{-\lambda}}{k!}$`)
-- Block: `$$expression$$` on its own line for key formulas
-- Markdown bullets/headers for multi-step breakdowns
+**`new_artifact`** (optional — null if not needed): Create a new reference artifact (formula, definition, or derivation).
+- **Default: null in guide, nudge, tangent, and opening modes. Only create in give_fact, explain, and transition modes.**
+- **Exception: if the student explicitly asked you to write something as an artifact, show a formula, or write it down — create the artifact regardless of mode.**
+- Set `label` to a short display name (e.g. `"Poisson PMF"`)
+- Set `content` to the LaTeX/markdown: use `$expr$` inline, `$$expr$$` on its own line for display math
+- Use markdown bullets/headers for multi-step derivations
 
-Use `supplement` for symbolic math. Omit it (null) for casual probe/nudge exchanges or when you're using `image_prompt` instead.
+**`reference_artifact_label`** (optional — null if not needed): Highlight an existing artifact by its exact label (from ESTABLISHED ARTIFACTS above). Use when pointing the student to something already on the board. Allowed in any mode.
 
 **`image_prompt`** (optional — null if not needed): A description of a visual diagram to generate as an image. Use this for structural and relational concepts where a picture is worth more than equations:
 - Neural networks and computation graphs (specify layer sizes, node labels, arrow directions)
@@ -117,4 +129,4 @@ Use `supplement` for symbolic math. Omit it (null) for casual probe/nudge exchan
 Be specific: include node names, edge directions, any numerical annotations.
 Example: `"A 3-layer neural network: 2 input nodes x1 and x2, 3 hidden nodes h1–h3, 1 output node y. Show forward-pass arrows between all nodes in adjacent layers."`
 
-Use `image_prompt` for structural diagrams; use `supplement` for symbolic math. Use both only if the explanation needs both a formula and a diagram. Leave null when neither is needed.
+Use `image_prompt` for structural diagrams; use `new_artifact` for symbolic math. Leave null when neither is needed.

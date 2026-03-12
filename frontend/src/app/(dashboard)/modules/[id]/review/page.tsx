@@ -55,6 +55,7 @@ export default function ReviewPage() {
   const {
     sessionId,
     messages,
+    artifacts,
     isSending,
     isInitializing,
     currentGoal,
@@ -172,6 +173,7 @@ export default function ReviewPage() {
           >
             <TutorChat
               messages={messages}
+              artifacts={artifacts}
               isSending={isSending}
               isInitializing={isInitializing}
               onSendMessage={sendMessage}

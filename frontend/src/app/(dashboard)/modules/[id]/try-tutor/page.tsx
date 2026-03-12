@@ -71,6 +71,7 @@ export default function TryTutorPage() {
 
   const {
     messages,
+    artifacts,
     isSending,
     isInitializing,
     currentGoal,
@@ -255,6 +256,7 @@ export default function TryTutorPage() {
           >
             <TutorChat
               messages={messages}
+              artifacts={artifacts}
               isSending={isSending}
               isInitializing={isInitializing}
               onSendMessage={sendMessage}

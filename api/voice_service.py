@@ -155,33 +155,80 @@ class VoiceService:
 
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "end"})
 
+        # Same replay-buffering logic as the HTTP streaming endpoint:
+        # LangGraph re-runs the interrupted tutor_turn node on resume, causing the previous
+        # message to be re-streamed. Buffer those tokens and discard them when we see the
+        # sentinel while the graph is still running; stream the second (real) turn eagerly.
+        token_buffer: list[str] = []
+        streaming_active = False
         display_text = ""
+
         while True:
             try:
                 item = await loop.run_in_executor(None, lambda: token_queue.get(timeout=0.1))
-                if item is None:
-                    break
-                display_text += item
-                yield VoiceServerEvent(type="assistant_text_delta", payload={"text": item})
+                if item is None:  # sentinel
+                    if graph_task.done():
+                        # Final sentinel — flush buffer if only one tutor_turn ran
+                        if not streaming_active and token_buffer:
+                            logger.info(
+                                f"voice [{session_id}]: single tutor_turn, "
+                                f"flushing {len(token_buffer)}-token buffer"
+                            )
+                            for tok in token_buffer:
+                                display_text += tok
+                                yield VoiceServerEvent(type="assistant_text_delta", payload={"text": tok})
+                        logger.info(f"voice [{session_id}]: final sentinel, graph done")
+                        break
+                    else:
+                        # Replay sentinel — discard buffered tokens, switch to active streaming
+                        logger.info(
+                            f"voice [{session_id}]: replay sentinel — discarding "
+                            f"{len(token_buffer)} replay tokens, switching to active streaming"
+                        )
+                        token_buffer.clear()
+                        streaming_active = True
+                else:
+                    if streaming_active:
+                        display_text += item
+                        yield VoiceServerEvent(type="assistant_text_delta", payload={"text": item})
+                    else:
+                        token_buffer.append(item)
             except _queue.Empty:
                 if graph_task.done():
+                    if not streaming_active and token_buffer:
+                        logger.info(
+                            f"voice [{session_id}]: graph done (no sentinel), "
+                            f"flushing {len(token_buffer)}-token buffer"
+                        )
+                        for tok in token_buffer:
+                            display_text += tok
+                            yield VoiceServerEvent(type="assistant_text_delta", payload={"text": tok})
                     break
                 continue
 
         result = await graph_task
         interrupt_data = _extract_interrupt_data(result)
-        supplement: Optional[str] = None
+        artifact_content: Optional[str] = None
         image_url: Optional[str] = None
         if interrupt_data:
-            # Use the full message from interrupt (display_text may differ after clean_thinking_content)
+            # Use the cleaned message from interrupt_data as the authoritative text
             display_text = str(interrupt_data.get("message", display_text)).strip()
-            supplement = interrupt_data.get("supplement") or None
+            # Support new artifact_content field; fall back to legacy supplement
+            artifact_content = (
+                interrupt_data.get("artifact_content")
+                or interrupt_data.get("supplement")
+                or None
+            )
             image_url = interrupt_data.get("image_url") or None
+            logger.info(
+                f"voice [{session_id}]: interrupt_data resolved | "
+                f"message_len={len(display_text)} | artifact={'yes' if artifact_content else 'no'}"
+            )
 
         _, speech_text = format_for_voice(display_text)
         final_payload: dict[str, Any] = {"text": display_text}
-        if supplement:
-            final_payload["supplement"] = supplement
+        if artifact_content:
+            final_payload["artifact_content"] = artifact_content
         if image_url:
             final_payload["image_url"] = image_url
         yield VoiceServerEvent(type="assistant_text_final", payload=final_payload)

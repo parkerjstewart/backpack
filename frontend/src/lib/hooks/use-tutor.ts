@@ -10,13 +10,15 @@ import {
   TutorSessionResponse,
   TutorResponsePayload,
   TutorDebugInfo,
+  Artifact,
 } from '@/lib/types/api'
 
 interface Message {
   id: string
   type: 'tutor' | 'student'
   content: string
-  supplement?: string | null
+  artifact_content?: string | null
+  highlighted_artifact_id?: string | null
   image_url?: string | null
   timestamp: string
 }
@@ -36,6 +38,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
   const [goalsCompleted, setGoalsCompleted] = useState(0)
   const [goalsRemaining, setGoalsRemaining] = useState(0)
   const [latestDebugInfo, setLatestDebugInfo] = useState<TutorDebugInfo | null>(null)
+  const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false)
   const [streamingMessage, setStreamingMessage] = useState('')
@@ -63,13 +66,14 @@ export function useTutor({ moduleId }: UseTutorParams) {
       setSessionId(session.session_id)
       setCurrentGoal(session.current_goal_description)
       setGoalsRemaining(session.total_goals)
+      setArtifacts(session.artifacts ?? [])
       // Add the first tutor message
       const tutorMessage: Message = {
         id: `tutor-${Date.now()}`,
         type: 'tutor',
         content: session.first_message,
-        supplement: session.first_supplement,
         image_url: session.first_image_url,
+        highlighted_artifact_id: session.highlighted_artifact_id ?? null,
         timestamp: new Date().toISOString(),
       }
       setMessages([tutorMessage])
@@ -101,6 +105,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     setGoalsCompleted(0)
     setGoalsRemaining(0)
     setLatestDebugInfo(null)
+    setArtifacts([])
     setSuggestions([])
     setStreamingMessage('')
   }, [])
@@ -186,11 +191,13 @@ export function useTutor({ moduleId }: UseTutorParams) {
         id: `tutor-${Date.now()}`,
         type: 'tutor',
         content: finalPayload.tutor_message,
-        supplement: finalPayload.tutor_supplement,
+        artifact_content: finalPayload.artifact_content ?? null,
+        highlighted_artifact_id: finalPayload.highlighted_artifact_id ?? null,
         image_url: finalPayload.tutor_image_url,
         timestamp: new Date().toISOString(),
       }
       setStreamingMessage('')
+      setArtifacts(finalPayload.artifacts ?? [])
       setMessages(prev => [...prev, tutorMessage])
 
       // Fire-and-forget: fetch debug state after each exchange
@@ -213,7 +220,14 @@ export function useTutor({ moduleId }: UseTutorParams) {
     }
   }, [sessionId, t])
 
-  const appendVoiceTurn = useCallback((studentText: string, tutorText: string, supplement?: string | null, imageUrl?: string | null) => {
+  const appendVoiceTurn = useCallback((
+    studentText: string,
+    tutorText: string,
+    artifactContent?: string | null,
+    imageUrl?: string | null,
+    newArtifacts?: Artifact[],
+    highlightedArtifactId?: string | null,
+  ) => {
     setSuggestions([])
     const studentMessage: Message = {
       id: `student-${Date.now()}`,
@@ -225,9 +239,13 @@ export function useTutor({ moduleId }: UseTutorParams) {
       id: `tutor-${Date.now()}-${Math.random()}`,
       type: 'tutor',
       content: tutorText,
-      supplement: supplement ?? null,
+      artifact_content: artifactContent ?? null,
+      highlighted_artifact_id: highlightedArtifactId ?? null,
       image_url: imageUrl ?? null,
       timestamp: new Date().toISOString(),
+    }
+    if (newArtifacts) {
+      setArtifacts(newArtifacts)
     }
     setMessages(prev => [...prev, studentMessage, tutorMessage])
   }, [])
@@ -236,6 +254,7 @@ export function useTutor({ moduleId }: UseTutorParams) {
     // State
     sessionId,
     messages,
+    artifacts,
     isSending,
     isInitializing,
     sessionPhase,

@@ -76,13 +76,17 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- If giving info, give enough to unblock, then follow with a question\n"
         "- If prior evidence exists, build on it — don't re-test demonstrated understanding\n"
         "- 2-4 sentences typical, shorter or longer as the exchange calls for\n"
-        "- If you reference a formula or formal definition, put it in the supplement field"
+        "- Do NOT set new_artifact unless the student explicitly asked you to write something "
+        "  as an artifact or write out a formula. "
+        "  If an existing artifact is relevant, set reference_artifact_label to its label."
     ),
     "nudge": (
         "The student is close — they almost have it. Give a brief, targeted push.\n"
         "- 1-2 sentences — short reaction + one specific question or prompt\n"
         "- Name the specific concept or formula they're missing\n"
-        "- Don't re-explain — they're almost there"
+        "- Don't re-explain — they're almost there\n"
+        "- Do NOT set new_artifact unless the student explicitly asked you to write something "
+        "  as an artifact or write out a formula. You can set reference_artifact_label if an existing one is helpful."
     ),
     "give_fact": (
         "The student is stuck on a specific fact you've already probed from multiple "
@@ -92,7 +96,8 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Check: is this a context gap (forgot the scenario) or a knowledge gap "
         "  (forgot the formula)? If context gap, restate the scenario instead.\n"
         "- 2-3 sentences typical\n"
-        "- If the fact is a formula, put it in the supplement field as a LaTeX equation"
+        "- If the fact is a formula or definition, set new_artifact with a short label "
+        "  and the LaTeX/markdown content."
     ),
     "explain": (
         "The student is genuinely stuck on this concept. Explain it clearly and "
@@ -104,7 +109,7 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- End with: \"Does that help? Any questions about this, or should we move on?\"\n"
         "- Don't quiz them on this concept again after explaining\n"
         "- Stay conversational — \"here's how I think about it...\" not \"the answer is...\"\n"
-        "- Put any equations or formal definitions in the supplement field, not in the message\n"
+        "- Put any equations or formal definitions in new_artifact, not in the message\n"
         "- For structural concepts (networks, trees, state machines, graphs), set image_prompt "
         "  instead of trying to describe the structure in text"
     ),
@@ -118,7 +123,8 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "In both cases:\n"
         "- Bridge through the problem, a conceptual connection, or a follow-up to what they just said\n"
         "- Don't name the competency rubric text\n"
-        "- 2-3 sentences typical"
+        "- 2-3 sentences typical\n"
+        "- You may set new_artifact to capture a key formula or takeaway being summarized."
     ),
     "tangent": (
         "The student asked a side question. Answer it directly and helpfully — "
@@ -246,8 +252,12 @@ class TutorState(TypedDict):
     # Worked examples / figures / definitions extracted from module material
     module_examples: List[Dict[str, Any]]
 
-    # Supplement from the most recent tutor_turn (equations, definitions, etc.)
-    latest_supplement: Optional[str]
+    # Cumulative artifact list — persisted across all goals in the session.
+    # Each entry: {id, label, content, source_mode, goal_id, exchange}
+    artifacts: List[Dict[str, Any]]
+
+    # Which artifact (by id) to highlight this turn — None if no highlight.
+    highlighted_artifact_id: Optional[str]
 
     # Generated image data URI from the most recent tutor_turn (if any)
     latest_image_url: Optional[str]
@@ -432,7 +442,8 @@ def initialize_session(state: TutorState, config: RunnableConfig) -> dict:
         "is_tangent": False,
         "student_model": {},
         "module_examples": module_examples,
-        "latest_supplement": None,
+        "artifacts": [],
+        "highlighted_artifact_id": None,
         "latest_image_url": None,
         "messages": [
             AIMessage(
@@ -710,7 +721,11 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     """
     tutor_mode = state.get("tutor_mode", "opening")
     current_goal_id = state.get("current_goal_id")
-    logger.info(f"tutor_turn in mode={tutor_mode} for goal={current_goal_id}")
+    token_queue_present = bool(config.get("configurable", {}).get("token_queue"))
+    logger.info(
+        f"tutor_turn START | mode={tutor_mode} | goal={current_goal_id} "
+        f"| streaming={'yes' if token_queue_present else 'no'}"
+    )
 
     current_goal = _get_current_goal(state)
     competency_statuses = state.get("competency_statuses", [])
@@ -754,6 +769,8 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
                         break
             break  # only check the most recent human message
 
+    artifacts = list(state.get("artifacts", []))
+
     prompt_data = {
         "goal": current_goal or {},
         "anchor_problem": state.get("anchor_problem", ""),
@@ -767,6 +784,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         "module_examples": state.get("module_examples", [])[:8],
         "context_chunks": state.get("goal_contexts", {}).get(current_goal_id, [])[:3],
         "has_student_drawing": last_student_image is not None,
+        "artifacts": artifacts,
     }
 
     system_prompt = Prompter(prompt_template="tutor/tutor_turn").render(data=prompt_data)
@@ -794,7 +812,6 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         model_input = system_prompt
 
     message = ""
-    supplement = None
     image_prompt = None
     token_queue = config.get("configurable", {}).get("token_queue", None)
     try:
@@ -802,9 +819,8 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         if token_queue:
             # Raw streaming path: bind_tools bypasses PydanticToolsParser so we get
             # individual JSON argument characters instead of waiting for a full parseable object.
-            # Only stream the message field in real-time; supplement is emitted in small chunks
-            # after the full response is parsed (supplement arrives in large chunks from the LLM
-            # regardless of model, so real-time extraction produces no benefit).
+            # Only stream the message field in real-time; artifact/image fields are assembled
+            # after the full response is parsed (they arrive in large chunks regardless of model).
             accumulated_args = ""
             prev_sent_message = 0
             stream_ok = False
@@ -831,10 +847,10 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         if result is None:
             raise ValueError("Model invocation returned no result")
         message = clean_thinking_content(result.message or "")
-        supplement = result.supplement or None
         image_prompt = result.image_prompt or None
         logger.info(
-            f"tutor_turn structured output ok | supplement={'yes (' + str(len(supplement)) + ' chars)' if supplement else 'null'}"
+            f"tutor_turn structured output ok | new_artifact={'yes' if result.new_artifact else 'null'}"
+            f" | reference_artifact_label={result.reference_artifact_label!r}"
             f" | image_prompt={'yes' if image_prompt else 'null'}"
         )
     except Exception as e:
@@ -849,12 +865,40 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
 
     image_url = _generate_image(image_prompt) if image_prompt else None
 
+    # --- Artifact processing ---
+    new_artifact_dict: Optional[Dict[str, Any]] = None
+    highlighted_artifact_id: Optional[str] = None
+
+    if result is not None and result.new_artifact:
+        artifact_id = f"art-{len(artifacts) + 1}"
+        new_artifact_dict = {
+            "id": artifact_id,
+            "label": result.new_artifact.label,
+            "content": result.new_artifact.content,
+            "source_mode": tutor_mode,
+            "goal_id": current_goal_id,
+            "exchange": state.get("exchanges_on_goal", 0),
+        }
+        artifacts = artifacts + [new_artifact_dict]
+        highlighted_artifact_id = artifact_id
+        logger.info(f"tutor_turn: created artifact '{result.new_artifact.label}' in {tutor_mode} mode")
+
+    if result is not None and result.reference_artifact_label and not highlighted_artifact_id:
+        ref_label = result.reference_artifact_label
+        for art in artifacts:
+            if art.get("label") == ref_label:
+                highlighted_artifact_id = art.get("id")
+                logger.info(f"tutor_turn: referencing artifact '{ref_label}' → {highlighted_artifact_id}")
+                break
+
     # INTERRUPT: pause and wait for the student's response
     student_response = interrupt(
         {
             "type": "tutor_turn",
             "message": message,
-            "supplement": supplement,
+            "artifact_content": new_artifact_dict["content"] if new_artifact_dict else None,
+            "highlighted_artifact_id": highlighted_artifact_id,
+            "artifacts": artifacts,
             "image_url": image_url,
             "tutor_mode": tutor_mode,
             "goal_id": current_goal_id,
@@ -869,7 +913,10 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         student_text = student_response
         whiteboard_png = None
 
-    logger.info(f"Received student response ({tutor_mode}): {str(student_text)[:80]}...")
+    logger.info(
+        f"tutor_turn RESUMED (this was the LangGraph replay) | mode={tutor_mode} "
+        f"| student: {str(student_text)[:80]}..."
+    )
 
     # Build HumanMessage — multimodal when a whiteboard PNG is attached
     if whiteboard_png:
@@ -883,8 +930,9 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
 
     return {
         "messages": [AIMessage(content=message), human_message],
-        "latest_supplement": supplement,
         "latest_image_url": image_url,
+        "artifacts": artifacts,
+        "highlighted_artifact_id": highlighted_artifact_id,
     }
 
 

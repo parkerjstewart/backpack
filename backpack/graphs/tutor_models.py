@@ -249,6 +249,13 @@ class GoalProgress(BaseModel):
     trajectory: List[UnderstandingPoint] = Field(default_factory=list)
 
 
+class NewArtifact(BaseModel):
+    """A new artifact to add to the session's reference collection."""
+
+    label: str = Field(..., description="Short display name, e.g. 'Poisson PMF'")
+    content: str = Field(..., description="LaTeX/markdown content to display")
+
+
 class TutorResponse(BaseModel):
     """Structured output from the tutor_turn LLM call."""
 
@@ -258,17 +265,26 @@ class TutorResponse(BaseModel):
             "Conversational tutor message in plain spoken English only. "
             "MUST NOT contain any equations, LaTeX, math notation, or markdown. "
             "Write as if speaking aloud — no symbols like nabla, sigma, top, $, $$, etc. "
-            "Any formula or equation MUST go in the supplement field instead."
+            "Any formula or equation MUST go in new_artifact.content instead."
         ),
     )
-    supplement: Optional[str] = Field(
+    new_artifact: Optional["NewArtifact"] = Field(
         default=None,
         description=(
-            "Supplemental block rendered below the message with full LaTeX and markdown support. "
-            "Use this whenever the message references a formula, equation, or formal definition. "
-            "Use LaTeX: $expr$ for inline, $$expr$$ on its own line for display. "
-            "Use markdown bullets/headers for multi-step derivations. "
-            "Set to null when no symbolic math is needed, or when image_prompt is used instead."
+            "Create a new artifact (formula, definition, or derivation) to add to the reference panel. "
+            "ONLY allowed in give_fact, explain, and transition modes. "
+            "MUST be null in guide, nudge, tangent, and opening modes — the student must work through formulas themselves. "
+            "Set label to a short display name (e.g. 'Poisson PMF') and content to the LaTeX/markdown. "
+            "Use LaTeX: $expr$ for inline, $$expr$$ on its own line for display math."
+        ),
+    )
+    reference_artifact_label: Optional[str] = Field(
+        default=None,
+        description=(
+            "Label of an existing artifact to highlight in the reference panel. "
+            "Use when pointing the student to something already established (e.g. 'As we saw in the Poisson PMF...'). "
+            "Must exactly match the label field of an artifact in ESTABLISHED ARTIFACTS. "
+            "Leave null if not referencing a specific artifact."
         ),
     )
     image_prompt: Optional[str] = Field(
