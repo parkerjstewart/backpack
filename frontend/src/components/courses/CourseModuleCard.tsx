@@ -26,6 +26,7 @@ interface CourseModuleCardProps {
   goalScores?: Record<string, number>; // goal_id -> 0-1 avg score across students
   canDelete?: boolean;
   onDeleted?: () => void;
+  isTeacher?: boolean;
 }
 
 // Smooth HSL gradient: 100% = green, 75% = yellow-green, 50% = orange, 25%+ = red
@@ -106,6 +107,7 @@ function ExpandedCard({
   goalScores,
   canDelete,
   onDeleted,
+  isTeacher,
 }: Omit<CourseModuleCardProps, "variant">) {
   const { data: goals } = useLearningGoals(module.id);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -125,14 +127,21 @@ function ExpandedCard({
         href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(module.id)}`}
         className="block border border-border rounded-lg px-6 py-4 bg-white hover:bg-secondary transition-colors"
       >
-        {/* Title row: module name left, source count right */}
+        {/* Title row: module name left, paused badge + source count right */}
         <div className="flex items-baseline justify-between gap-4">
           <h3 className="text-title-sm text-primary">
             {module.name}
           </h3>
-          <span className="shrink-0 text-body-sm text-primary">
-            {module.source_count} {module.source_count === 1 ? "source" : "sources"}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {isTeacher && module.status === "paused" && (
+              <span className="text-xs font-medium text-amber-700 bg-amber-100 border border-amber-300 rounded-md px-2 py-0.5">
+                Paused
+              </span>
+            )}
+            <span className="text-body-sm text-primary">
+              {module.source_count} {module.source_count === 1 ? "source" : "sources"}
+            </span>
+          </div>
         </div>
 
         {/* Learning goal badges */}
@@ -206,6 +215,7 @@ function CollapsedCard({
   stats,
   canDelete,
   onDeleted,
+  isTeacher,
 }: Omit<CourseModuleCardProps, "variant" | "goalScores">) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const deleteModule = useDeleteModule();
@@ -221,12 +231,17 @@ function CollapsedCard({
         href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(module.id)}`}
         className="block border border-border rounded-lg px-6 py-4 hover:bg-secondary transition-colors"
       >
-        {/* Title row: module name left, struggling badge + source/goal counts right */}
+        {/* Title row: module name left, paused/struggling badge + source/goal counts right */}
         <div className="flex items-baseline justify-between gap-4">
           <h3 className="text-title-sm text-primary">
             {module.name}
           </h3>
           <div className="flex items-center gap-3 shrink-0">
+            {isTeacher && module.status === "paused" && (
+              <span className="text-xs font-medium text-amber-700 bg-amber-100 border border-amber-300 rounded-md px-2 py-0.5">
+                Paused
+              </span>
+            )}
             {stats.struggling > 0 && (
               <span className="text-xs font-medium text-destructive bg-destructive/10 rounded-md px-2 py-0.5">
                 {stats.struggling} struggling
@@ -280,11 +295,12 @@ export function CourseModuleCard({
   goalScores,
   canDelete,
   onDeleted,
+  isTeacher,
 }: CourseModuleCardProps) {
   if (variant === "expanded") {
     return (
-      <ExpandedCard module={module} courseId={courseId} stats={stats} goalScores={goalScores} canDelete={canDelete} onDeleted={onDeleted} />
+      <ExpandedCard module={module} courseId={courseId} stats={stats} goalScores={goalScores} canDelete={canDelete} onDeleted={onDeleted} isTeacher={isTeacher} />
     );
   }
-  return <CollapsedCard module={module} courseId={courseId} stats={stats} canDelete={canDelete} onDeleted={onDeleted} />;
+  return <CollapsedCard module={module} courseId={courseId} stats={stats} canDelete={canDelete} onDeleted={onDeleted} isTeacher={isTeacher} />;
 }
