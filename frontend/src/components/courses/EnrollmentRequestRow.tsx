@@ -54,7 +54,7 @@ export function EnrollmentRequestRow({
       {/* Right: Approve / Deny buttons */}
       <div className="flex items-center gap-3 shrink-0">
         <Button
-          variant="outline"
+          variant="light"
           size="sm"
           onClick={() => onDeny(request.id)}
           disabled={isActing}

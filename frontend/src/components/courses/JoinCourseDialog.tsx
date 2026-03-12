@@ -86,11 +86,7 @@ export function JoinCourseDialog({ open, onOpenChange }: JoinCourseDialogProps) 
           Join a Course
         </DialogTitle>
 
-        <p className="text-center text-muted-foreground mt-2">
-          Enter the course ID provided by your instructor to request enrollment.
-        </p>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8 mt-8">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6 mt-6">
           <div className="flex flex-col gap-3">
             <FormLabel htmlFor="join-course-id" required>
               Course ID
