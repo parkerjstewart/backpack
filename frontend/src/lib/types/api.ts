@@ -449,7 +449,6 @@ export interface InvitationResponse {
 }
 
 export interface CreateInvitationRequest {
-  name: string
   email: string
   role?: 'student' | 'instructor' | 'ta'
 }

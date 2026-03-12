@@ -82,7 +82,7 @@ async def create_invitation(
         invitation = Invitation(
             course_id=course_id,
             email=email,
-            name=request.name.strip(),
+            name="",
             role=request.role,
             invited_by=user_id,
         )
@@ -95,7 +95,6 @@ async def create_invitation(
         if response.invite_url:
             await send_invite_email(
                 to_email=email,
-                invitee_name=request.name.strip(),
                 course_title=course.title,
                 invite_url=response.invite_url,
                 invited_by_name=inviter_name,

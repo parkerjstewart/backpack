@@ -644,7 +644,6 @@ class StudentWithMasteryResponse(BaseModel):
 # Invitation API models
 # ============================================
 class CreateInvitationRequest(BaseModel):
-    name: str = Field(..., description="Name of the invitee")
     email: str = Field(..., description="Email of the invitee")
     role: Literal["student", "instructor", "ta"] = Field(
         "student", description="Role in the course"

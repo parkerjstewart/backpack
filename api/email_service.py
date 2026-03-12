@@ -37,7 +37,6 @@ def get_invite_url(token: str) -> str:
 
 async def send_invite_email(
     to_email: str,
-    invitee_name: str,
     course_title: str,
     invite_url: str,
     invited_by_name: Optional[str] = None,
@@ -74,7 +73,6 @@ async def send_invite_email(
                 <h1 style="color: #ffffff; margin: 0; font-size: 20px; font-weight: 600;">Backpack</h1>
             </div>
             <div style="padding: 40px;">
-                <p style="font-size: 16px; color: #27272a; margin: 0 0 8px 0;">Hi {invitee_name},</p>
                 <p style="font-size: 16px; color: #52525b; margin: 0 0 24px 0;">
                     You've been invited{invited_by_text} to join <strong>{course_title}</strong>.
                 </p>
