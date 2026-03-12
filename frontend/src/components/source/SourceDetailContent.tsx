@@ -2,12 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { isAxiosError } from 'axios'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
-import { normalizeLatexDelimiters } from '@/lib/utils'
+import { MathMarkdown } from '@/components/ui/math-markdown'
 import { sourcesApi } from '@/lib/api/sources'
 import { insightsApi, SourceInsightResponse } from '@/lib/api/insights'
 import { SourceDetailResponse } from '@/lib/types/api'
@@ -332,12 +327,7 @@ export function SourceDetailContent({
             {denseSummary ? (
               <div className="mt-3 flex-1 min-h-0 overflow-y-auto pr-1">
                 <div className="prose max-w-none text-primary [&_h1]:font-sans [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-5 [&_h1]:mb-2 [&_h2]:font-sans [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:font-sans [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_h4]:font-sans [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:mb-2 [&_li]:mb-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:my-2 [&_blockquote]:not-italic [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                  >
-                    {normalizeLatexDelimiters(denseSummary.content)}
-                  </ReactMarkdown>
+                  <MathMarkdown>{denseSummary.content}</MathMarkdown>
                 </div>
               </div>
             ) : generatingSummary ? (
@@ -431,9 +421,7 @@ export function SourceDetailContent({
 
                 {/* Raw extracted text */}
                 <div className="prose prose-sm max-w-none text-primary [&_p]:mb-3 [&_p:last-child]:mb-0 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:mt-5 [&_h1]:mb-3 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-3 [&_li]:mb-1 [&_a]:text-info [&_a]:underline [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {contentText || t.sources.noContent}
-                  </ReactMarkdown>
+                  <MathMarkdown>{contentText || t.sources.noContent}</MathMarkdown>
                 </div>
               </div>
             )}

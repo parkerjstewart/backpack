@@ -27,8 +27,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { StudyToolsPanel } from "@/components/modules/StudyToolsPanel";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MathMarkdown } from "@/components/ui/math-markdown";
 import { LearningGoalResponse, SourceListResponse } from "@/lib/types/api";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useModalManager } from "@/lib/hooks/use-modal-manager";
@@ -82,9 +81,7 @@ function ReadOnlyGoal({ goal }: ReadOnlyGoalProps) {
                   Takeaways
                 </p>
                 <div className="prose prose-sm max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {goal.takeaways}
-                  </ReactMarkdown>
+                  <MathMarkdown>{goal.takeaways}</MathMarkdown>
                 </div>
               </div>
             )}
@@ -94,9 +91,7 @@ function ReadOnlyGoal({ goal }: ReadOnlyGoalProps) {
                   Competencies
                 </p>
                 <div className="prose prose-sm max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {goal.competencies}
-                  </ReactMarkdown>
+                  <MathMarkdown>{goal.competencies}</MathMarkdown>
                 </div>
               </div>
             )}
@@ -212,9 +207,7 @@ function TeacherView({
         <section className="flex flex-col gap-3">
           <h3 className="text-title-sm text-primary">Overview</h3>
           <div className="prose prose-sm max-w-none bg-secondary rounded-md p-4">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {overviewContent}
-            </ReactMarkdown>
+            <MathMarkdown>{overviewContent}</MathMarkdown>
           </div>
         </section>
       )}
@@ -355,9 +348,7 @@ function StudentView({
 
         {overviewContent && (
           <div className="prose prose-sm max-w-none bg-secondary rounded-md p-4">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {overviewContent}
-            </ReactMarkdown>
+            <MathMarkdown>{overviewContent}</MathMarkdown>
           </div>
         )}
 

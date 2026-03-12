@@ -97,6 +97,16 @@ class PodcastStudyToolRequest(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _sanitize_for_db(obj: object) -> object:
+    """Recursively remove null bytes from strings so SurrealDB can serialize them."""
+    if isinstance(obj, str):
+        return obj.replace("\x00", "")
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_db(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_db(item) for item in obj]
+    return obj
+
 async def _build_module_study_context(module_id: str) -> tuple[Module, dict]:
     """Build context dict used by all study tool prompt templates."""
     module = await Module.get(module_id)
@@ -225,8 +235,8 @@ async def _run_generation_task(
             "UPDATE $id SET data = $data, status = 'completed', title = $title, updated = time::now()",
             {
                 "id": ensure_record_id(result_id),
-                "data": generated.model_dump(),
-                "title": final_title,
+                "data": _sanitize_for_db(generated.model_dump()),
+                "title": _sanitize_for_db(final_title),
             },
         )
         logger.info(f"Background generation completed for {result_id}")
@@ -569,7 +579,12 @@ async def delete_study_tool_result(result_id: str):
     try:
         if not result_id.startswith("study_tool_result:"):
             result_id = f"study_tool_result:{result_id}"
-        await repo_delete(result_id)
+        # Use RETURN NONE to avoid serializing the deleted record, which may
+        # contain null bytes from malformed LLM output.
+        await repo_query(
+            "DELETE $id RETURN NONE",
+            {"id": ensure_record_id(result_id)},
+        )
     except Exception as e:
         logger.error(f"Error deleting study tool result {result_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Error deleting result: {str(e)}")

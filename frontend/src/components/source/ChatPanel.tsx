@@ -18,12 +18,7 @@ import {
   Clock,
   Mic,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
-import { normalizeLatexDelimiters } from "@/lib/utils";
+import { MathMarkdown } from "@/components/ui/math-markdown";
 import {
   SourceChatMessage,
   SourceChatContextIndicator,
@@ -467,9 +462,7 @@ function AIMessageContent({
 
   return (
     <div className="prose prose-sm prose-neutral max-w-none break-words prose-headings:font-semibold prose-a:text-info prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+      <MathMarkdown
         components={{
           a: LinkComponent,
           p: ({ children }) => <p className="mb-4">{children}</p>,
@@ -506,8 +499,8 @@ function AIMessageContent({
           ),
         }}
       >
-        {normalizeLatexDelimiters(markdownWithCompactRefs)}
-      </ReactMarkdown>
+        {markdownWithCompactRefs}
+      </MathMarkdown>
     </div>
   );
 }
