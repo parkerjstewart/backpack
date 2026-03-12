@@ -8,7 +8,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CourseHeader } from "@/components/courses";
-import { useModule, useLearningGoals } from "@/lib/hooks/use-modules";
+import { useModule, useLearningGoals, usePublishModule, useUnpublishModule } from "@/lib/hooks/use-modules";
 import { useCourse } from "@/lib/hooks/use-courses";
 import { useModuleSources } from "@/lib/hooks/use-sources";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
@@ -24,6 +24,9 @@ import {
   MessageSquare,
   Eye,
   EyeOff,
+  PauseCircle,
+  PlayCircle,
+  ArrowLeft,
 } from "lucide-react";
 import { StudyToolsPanel } from "@/components/modules/StudyToolsPanel";
 import { MathMarkdown } from "@/components/ui/math-markdown";
@@ -107,6 +110,7 @@ interface TeacherViewProps {
   courseId: string;
   moduleId: string;
   moduleName: string;
+  moduleStatus: 'draft' | 'published' | 'paused';
   moduleOverview?: string | null;
   moduleDescription?: string | null;
   learningGoals: LearningGoalResponse[];
@@ -116,12 +120,17 @@ interface TeacherViewProps {
   canEdit: boolean;
   onRefetchSources: () => void;
   onToggleStudentView: () => void;
+  onPublish: () => void;
+  onUnpublish: () => void;
+  isPublishing: boolean;
+  isUnpublishing: boolean;
 }
 
 function TeacherView({
   courseId,
   moduleId,
   moduleName,
+  moduleStatus,
   moduleOverview,
   moduleDescription,
   learningGoals,
@@ -131,6 +140,10 @@ function TeacherView({
   canEdit,
   onRefetchSources,
   onToggleStudentView,
+  onPublish,
+  onUnpublish,
+  isPublishing,
+  isUnpublishing,
 }: TeacherViewProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sourceToDelete, setSourceToDelete] = useState<string | null>(null);
@@ -158,10 +171,45 @@ function TeacherView({
 
   return (
     <div className="flex flex-col gap-8 pb-8">
+      {/* Paused banner */}
+      {moduleStatus === "paused" && (
+        <div className="flex items-center justify-between gap-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-amber-800">
+            <PauseCircle className="h-5 w-5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium">Module is paused</p>
+              <p className="text-xs text-amber-700">Students cannot start tutoring sessions while this module is paused.</p>
+            </div>
+          </div>
+          {canEdit && (
+            <Button
+              size="sm"
+              onClick={onPublish}
+              disabled={isPublishing}
+              className="flex-shrink-0"
+            >
+              <PlayCircle className="h-4 w-4" />
+              {isPublishing ? "Publishing…" : "Publish"}
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Module header */}
       <div className="flex items-start justify-between gap-4">
         <h2 className="text-title text-primary">{moduleName}</h2>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {canEdit && moduleStatus === "published" && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onUnpublish}
+              disabled={isUnpublishing}
+            >
+              <PauseCircle className="h-4 w-4" />
+              {isUnpublishing ? "Pausing…" : "Pause"}
+            </Button>
+          )}
           {canEdit && (
             <Button variant="secondary" size="sm" asChild>
               <Link
@@ -290,6 +338,7 @@ interface StudentViewProps {
   courseId: string;
   moduleId: string;
   moduleName: string;
+  moduleStatus: 'draft' | 'published' | 'paused';
   moduleOverview?: string | null;
   moduleDescription?: string | null;
   sources: SourceListResponse[];
@@ -300,6 +349,7 @@ function StudentView({
   courseId,
   moduleId,
   moduleName,
+  moduleStatus,
   moduleOverview,
   moduleDescription,
   sources,
@@ -307,6 +357,7 @@ function StudentView({
 }: StudentViewProps) {
   const { openModal } = useModalManager();
   const overviewContent = moduleOverview || moduleDescription;
+  const isPaused = moduleStatus === "paused";
 
   return (
     <div className="flex flex-col gap-8 pb-8">
@@ -322,12 +373,19 @@ function StudentView({
 
         {/* Primary actions */}
         <div className="flex items-center gap-3 flex-wrap">
-          <Button asChild>
-            <Link href={`/modules/${encodeURIComponent(moduleId)}/review`}>
-              <GraduationCap className="h-4 w-4" />
-              Start Tutor
-            </Link>
-          </Button>
+          {isPaused ? (
+            <div className="flex items-center gap-2 rounded-md border border-border bg-secondary px-4 py-2 text-sm text-muted-foreground">
+              <PauseCircle className="h-4 w-4 flex-shrink-0" />
+              This module is not currently available for tutoring.
+            </div>
+          ) : (
+            <Button asChild>
+              <Link href={`/modules/${encodeURIComponent(moduleId)}/review`}>
+                <GraduationCap className="h-4 w-4" />
+                Start Tutor
+              </Link>
+            </Button>
+          )}
           <Button variant="secondary" asChild>
             <Link
               href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(moduleId)}/chat`}
@@ -404,6 +462,9 @@ export default function CourseModuleOverviewPage() {
     refetch: refetchSources,
   } = useModuleSources(moduleId);
 
+  const publishModule = usePublishModule();
+  const unpublishModule = useUnpublishModule();
+
   const permissions = getCoursePermissions(course?.membership_role);
   const isStudent = course?.membership_role === "student";
 
@@ -449,11 +510,21 @@ export default function CourseModuleOverviewPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-8">
+          {/* Back navigation */}
+          <Link
+            href={`/courses/${encodeURIComponent(courseId)}`}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to modules
+          </Link>
+
           {isStudent ? (
             <StudentView
               courseId={courseId}
               moduleId={moduleId}
               moduleName={module.name}
+              moduleStatus={module.status}
               moduleOverview={module.overview}
               moduleDescription={module.description}
               sources={sources}
@@ -479,6 +550,7 @@ export default function CourseModuleOverviewPage() {
                 courseId={courseId}
                 moduleId={moduleId}
                 moduleName={module.name}
+                moduleStatus={module.status}
                 moduleOverview={module.overview}
                 moduleDescription={module.description}
                 sources={sources}
@@ -490,6 +562,7 @@ export default function CourseModuleOverviewPage() {
               courseId={courseId}
               moduleId={moduleId}
               moduleName={module.name}
+              moduleStatus={module.status}
               moduleOverview={module.overview}
               moduleDescription={module.description}
               learningGoals={learningGoals}
@@ -499,6 +572,10 @@ export default function CourseModuleOverviewPage() {
               canEdit={permissions.canEditModuleContent}
               onRefetchSources={refetchSources}
               onToggleStudentView={() => setStudentViewPreview(true)}
+              onPublish={() => publishModule.mutate(moduleId)}
+              onUnpublish={() => unpublishModule.mutate(moduleId)}
+              isPublishing={publishModule.isPending}
+              isUnpublishing={unpublishModule.isPending}
             />
           )}
         </div>

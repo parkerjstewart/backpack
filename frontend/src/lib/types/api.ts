@@ -3,7 +3,7 @@ export interface ModuleResponse {
   name: string
   description: string
   archived: boolean
-  status: 'draft' | 'published'
+  status: 'draft' | 'published' | 'paused'
   overview: string | null
   created: string
   updated: string
@@ -68,7 +68,7 @@ export interface CreateModuleRequest {
   name: string
   description?: string
   course_id?: string
-  status?: 'draft' | 'published'
+  status?: 'draft' | 'published' | 'paused'
 }
 
 export interface UpdateModuleRequest {

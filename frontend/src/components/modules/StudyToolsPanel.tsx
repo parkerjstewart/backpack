@@ -13,6 +13,8 @@ import {
   AlertCircle,
   Play,
   Pause,
+  RotateCcw,
+  RotateCw,
   X,
   MoreVertical,
   Pencil,
@@ -95,6 +97,8 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+const PLAYBACK_SPEEDS = [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5];
+
 function PodcastPlayer({ title, audioUrl, onClose, onRetry }: PodcastPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -102,6 +106,7 @@ function PodcastPlayer({ title, audioUrl, onClose, onRetry }: PodcastPlayerProps
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
 
   const togglePlay = () => {
     const audio = audioRef.current;
@@ -113,10 +118,23 @@ function PodcastPlayer({ title, audioUrl, onClose, onRetry }: PodcastPlayerProps
     }
   };
 
+  const skip = (seconds: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + seconds));
+  };
+
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
     if (!audio) return;
     audio.currentTime = Number(e.target.value);
+  };
+
+  const cycleSpeed = () => {
+    const idx = PLAYBACK_SPEEDS.indexOf(playbackRate);
+    const next = PLAYBACK_SPEEDS[(idx + 1) % PLAYBACK_SPEEDS.length];
+    setPlaybackRate(next);
+    if (audioRef.current) audioRef.current.playbackRate = next;
   };
 
   useEffect(() => {
@@ -209,8 +227,18 @@ function PodcastPlayer({ title, audioUrl, onClose, onRetry }: PodcastPlayerProps
         </div>
       )}
 
-      {/* Play/pause controls */}
-      <div className="flex items-center justify-center">
+      {/* Playback controls */}
+      <div className="flex items-center justify-center gap-3">
+        <button
+          type="button"
+          onClick={() => skip(-15)}
+          disabled={loading || error}
+          className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+          title="Rewind 15s"
+        >
+          <RotateCcw className="h-4 w-4" />
+        </button>
+
         <button
           type="button"
           onClick={togglePlay}
@@ -226,6 +254,26 @@ function PodcastPlayer({ title, audioUrl, onClose, onRetry }: PodcastPlayerProps
           ) : (
             <Play className="h-3.5 w-3.5 ml-0.5" />
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => skip(15)}
+          disabled={loading || error}
+          className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+          title="Forward 15s"
+        >
+          <RotateCw className="h-4 w-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={cycleSpeed}
+          disabled={loading || error}
+          className="min-w-[2.75rem] text-[11px] font-medium tabular-nums text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 text-center"
+          title="Playback speed"
+        >
+          {playbackRate === 1 ? "1×" : `${playbackRate}×`}
         </button>
       </div>
     </div>

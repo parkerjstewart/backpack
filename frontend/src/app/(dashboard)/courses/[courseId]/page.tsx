@@ -162,6 +162,7 @@ export default function CoursePage() {
                       stats={moduleStats[currentModule.id] ?? { completed: 0, total: 0, struggling: 0 }}
                       variant="expanded"
                       goalScores={{}} // TODO: populate from backend per-goal aggregation endpoint
+                      isTeacher={permissions.canCreateModules}
                     />
                   )}
 
@@ -182,6 +183,7 @@ export default function CoursePage() {
                             courseId={courseId}
                             stats={moduleStats[module.id] ?? { completed: 0, total: 0, struggling: 0 }}
                             variant="collapsed"
+                            isTeacher={permissions.canCreateModules}
                           />
                         ))}
                     </div>
