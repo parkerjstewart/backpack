@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CourseHeader } from "@/components/courses";
-import { useModule, useLearningGoals } from "@/lib/hooks/use-modules";
+import { useModule, useLearningGoals, useDeleteModule } from "@/lib/hooks/use-modules";
 import { useCourse } from "@/lib/hooks/use-courses";
 import { useModuleSources } from "@/lib/hooks/use-sources";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import {
   GraduationCap,
   Pencil,
+  Trash2,
   ChevronDown,
   BookOpen,
   MessageSquare,
@@ -117,6 +118,7 @@ interface TeacherViewProps {
   sources: SourceListResponse[];
   sourcesLoading: boolean;
   canEdit: boolean;
+  canDelete: boolean;
   onRefetchSources: () => void;
 }
 
@@ -131,12 +133,16 @@ function TeacherView({
   sources,
   sourcesLoading,
   canEdit,
+  canDelete,
   onRefetchSources,
 }: TeacherViewProps) {
+  const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteModuleDialogOpen, setDeleteModuleDialogOpen] = useState(false);
   const [sourceToDelete, setSourceToDelete] = useState<string | null>(null);
   const { openModal } = useModalManager();
   const deleteSource = useDeleteSource();
+  const deleteModule = useDeleteModule();
   const retrySource = useRetrySource();
 
   const handleDeleteSource = async (sourceId: string) => {
@@ -170,6 +176,17 @@ function TeacherView({
               Test Tutor
             </Link>
           </Button>
+          {canDelete && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="text-destructive hover:text-destructive/80"
+              onClick={() => setDeleteModuleDialogOpen(true)}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Module
+            </Button>
+          )}
         </div>
       </div>
 
@@ -267,6 +284,21 @@ function TeacherView({
         isLoading={deleteSource.isPending}
         confirmText="Delete"
         confirmVariant="destructive"
+      />
+
+      <ConfirmDialog
+        open={deleteModuleDialogOpen}
+        onOpenChange={setDeleteModuleDialogOpen}
+        title="Delete Module"
+        description={`Are you sure you want to delete "${moduleName}"? This action cannot be undone.`}
+        confirmText="Delete Forever"
+        confirmVariant="destructive"
+        onConfirm={() => {
+          setDeleteModuleDialogOpen(false);
+          deleteModule.mutate(moduleId, {
+            onSuccess: () => router.push(`/courses/${encodeURIComponent(courseId)}`),
+          });
+        }}
       />
     </div>
   );
@@ -457,6 +489,7 @@ export default function CourseModuleOverviewPage() {
               sources={sources}
               sourcesLoading={sourcesLoading}
               canEdit={permissions.canEditModuleContent}
+              canDelete={permissions.canCreateModules}
               onRefetchSources={refetchSources}
             />
           )}

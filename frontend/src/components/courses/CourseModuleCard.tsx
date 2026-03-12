@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { Trash2 } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useLearningGoals } from "@/lib/hooks/use-modules";
+import { useLearningGoals, useDeleteModule } from "@/lib/hooks/use-modules";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import type { ModuleResponse } from "@/lib/types/api";
 
 interface ModuleStats {
@@ -21,6 +24,8 @@ interface CourseModuleCardProps {
   stats: ModuleStats;
   variant: "expanded" | "collapsed";
   goalScores?: Record<string, number>; // goal_id -> 0-1 avg score across students
+  canDelete?: boolean;
+  onDeleted?: () => void;
 }
 
 // Smooth HSL gradient: 100% = green, 75% = yellow-green, 50% = orange, 25%+ = red
@@ -99,67 +104,99 @@ function ExpandedCard({
   courseId,
   stats,
   goalScores,
+  canDelete,
+  onDeleted,
 }: Omit<CourseModuleCardProps, "variant">) {
   const { data: goals } = useLearningGoals(module.id);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const deleteModule = useDeleteModule();
+
   const visibleGoals = goals?.slice(0, 4) ?? [];
   const extraCount = (goals?.length ?? 0) - visibleGoals.length;
 
-  return (
-    <Link
-      href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(module.id)}`}
-      className="block border border-border rounded-lg px-6 py-4 bg-white hover:bg-secondary transition-colors"
-    >
-      {/* Title row: module name left, source count right */}
-      <div className="flex items-baseline justify-between gap-4">
-        <h3 className="text-title-sm text-teal-800">
-          {module.name}
-        </h3>
-        <span className="shrink-0 text-body-sm text-teal-800">
-          {module.source_count} {module.source_count === 1 ? "source" : "sources"}
-        </span>
-      </div>
+  const handleDelete = () => {
+    setShowDeleteDialog(false);
+    deleteModule.mutate(module.id, { onSuccess: onDeleted });
+  };
 
-      {/* Learning goal badges */}
-      {visibleGoals.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-3">
-          {visibleGoals.map((goal) => {
-            const score = goalScores?.[goal.id];
-            const label = goal.title || goal.description;
-            const pctLabel = score !== undefined ? ` (${Math.round(score * 100)}%)` : "";
-            const isTruncated = !goal.title;
-            return (
-              <Tooltip key={goal.id}>
-                <TooltipTrigger asChild>
-                  <span
-                    className="inline-block rounded-lg bg-muted px-2.5 py-1.5 text-body-sm text-teal-800 cursor-default whitespace-nowrap"
-                    style={score !== undefined ? { backgroundColor: goalBadgeColor(score) } : undefined}
-                  >
-                    {label}{pctLabel}
-                  </span>
-                </TooltipTrigger>
-                {isTruncated && (
-                  <TooltipContent>
-                    <p className="max-w-xs">{goal.description}</p>
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            );
-          })}
-          {extraCount > 0 && (
-            <span className="inline-block rounded-lg bg-muted px-2.5 py-1.5 text-body-sm text-teal-800">
-              +{extraCount} more
-            </span>
-          )}
+  return (
+    <div className="relative group/card">
+      <Link
+        href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(module.id)}`}
+        className="block border border-border rounded-lg px-6 py-4 bg-white hover:bg-secondary transition-colors"
+      >
+        {/* Title row: module name left, source count right */}
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-title-sm text-teal-800">
+            {module.name}
+          </h3>
+          <span className="shrink-0 text-body-sm text-teal-800">
+            {module.source_count} {module.source_count === 1 ? "source" : "sources"}
+          </span>
         </div>
+
+        {/* Learning goal badges */}
+        {visibleGoals.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {visibleGoals.map((goal) => {
+              const score = goalScores?.[goal.id];
+              const label = goal.title || goal.description;
+              const pctLabel = score !== undefined ? ` (${Math.round(score * 100)}%)` : "";
+              const isTruncated = !goal.title;
+              return (
+                <Tooltip key={goal.id}>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="inline-block rounded-lg bg-muted px-2.5 py-1.5 text-body-sm text-teal-800 cursor-default whitespace-nowrap"
+                      style={score !== undefined ? { backgroundColor: goalBadgeColor(score) } : undefined}
+                    >
+                      {label}{pctLabel}
+                    </span>
+                  </TooltipTrigger>
+                  {isTruncated && (
+                    <TooltipContent>
+                      <p className="max-w-xs">{goal.description}</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              );
+            })}
+            {extraCount > 0 && (
+              <span className="inline-block rounded-lg bg-muted px-2.5 py-1.5 text-body-sm text-teal-800">
+                +{extraCount} more
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Progress bar: created date left, bar center, X/Y Completed right */}
+        <ProgressBar
+          completed={stats.completed}
+          total={stats.total}
+          leftLabel={formatDate(module.created)}
+        />
+      </Link>
+
+      {canDelete && (
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDeleteDialog(true); }}
+          className="absolute top-3 right-3 opacity-0 group-hover/card:opacity-100 transition-opacity p-1.5 rounded-md text-destructive hover:bg-destructive/10"
+          aria-label="Delete module"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       )}
 
-      {/* Progress bar: created date left, bar center, X/Y Completed right */}
-      <ProgressBar
-        completed={stats.completed}
-        total={stats.total}
-        leftLabel={formatDate(module.created)}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title="Delete Module"
+        description={`Are you sure you want to delete "${module.name}"? This action cannot be undone.`}
+        confirmText="Delete Forever"
+        confirmVariant="destructive"
+        onConfirm={handleDelete}
       />
-    </Link>
+    </div>
   );
 }
 
@@ -167,39 +204,71 @@ function CollapsedCard({
   module,
   courseId,
   stats,
+  canDelete,
+  onDeleted,
 }: Omit<CourseModuleCardProps, "variant" | "goalScores">) {
-  return (
-    <Link
-      href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(module.id)}`}
-      className="block border border-border rounded-lg px-6 py-4 hover:bg-secondary transition-colors"
-    >
-      {/* Title row: module name left, struggling badge + source/goal counts right */}
-      <div className="flex items-baseline justify-between gap-4">
-        <h3 className="text-title-sm text-teal-800">
-          {module.name}
-        </h3>
-        <div className="flex items-center gap-3 shrink-0">
-          {stats.struggling > 0 && (
-            <span className="text-xs font-medium text-destructive bg-destructive/10 rounded-md px-2 py-0.5">
-              {stats.struggling} struggling
-            </span>
-          )}
-          <span className="text-body-sm text-teal-800">
-            {module.source_count} {module.source_count === 1 ? "source" : "sources"}
-            {module.learning_goal_count > 0 && (
-              <> · {module.learning_goal_count} {module.learning_goal_count === 1 ? "goal" : "goals"}</>
-            )}
-          </span>
-        </div>
-      </div>
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const deleteModule = useDeleteModule();
 
-      {/* Progress bar: created date left, bar center, X/Y Completed right */}
-      <ProgressBar
-        completed={stats.completed}
-        total={stats.total}
-        leftLabel={formatDate(module.created)}
+  const handleDelete = () => {
+    setShowDeleteDialog(false);
+    deleteModule.mutate(module.id, { onSuccess: onDeleted });
+  };
+
+  return (
+    <div className="relative group/card">
+      <Link
+        href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(module.id)}`}
+        className="block border border-border rounded-lg px-6 py-4 hover:bg-secondary transition-colors"
+      >
+        {/* Title row: module name left, struggling badge + source/goal counts right */}
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-title-sm text-teal-800">
+            {module.name}
+          </h3>
+          <div className="flex items-center gap-3 shrink-0">
+            {stats.struggling > 0 && (
+              <span className="text-xs font-medium text-destructive bg-destructive/10 rounded-md px-2 py-0.5">
+                {stats.struggling} struggling
+              </span>
+            )}
+            <span className="text-body-sm text-teal-800">
+              {module.source_count} {module.source_count === 1 ? "source" : "sources"}
+              {module.learning_goal_count > 0 && (
+                <> · {module.learning_goal_count} {module.learning_goal_count === 1 ? "goal" : "goals"}</>
+              )}
+            </span>
+          </div>
+        </div>
+
+        {/* Progress bar: created date left, bar center, X/Y Completed right */}
+        <ProgressBar
+          completed={stats.completed}
+          total={stats.total}
+          leftLabel={formatDate(module.created)}
+        />
+      </Link>
+
+      {canDelete && (
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDeleteDialog(true); }}
+          className="absolute top-3 right-3 opacity-0 group-hover/card:opacity-100 transition-opacity p-1.5 rounded-md text-destructive hover:bg-destructive/10"
+          aria-label="Delete module"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title="Delete Module"
+        description={`Are you sure you want to delete "${module.name}"? This action cannot be undone.`}
+        confirmText="Delete Forever"
+        confirmVariant="destructive"
+        onConfirm={handleDelete}
       />
-    </Link>
+    </div>
   );
 }
 
@@ -209,11 +278,13 @@ export function CourseModuleCard({
   stats,
   variant,
   goalScores,
+  canDelete,
+  onDeleted,
 }: CourseModuleCardProps) {
   if (variant === "expanded") {
     return (
-      <ExpandedCard module={module} courseId={courseId} stats={stats} goalScores={goalScores} />
+      <ExpandedCard module={module} courseId={courseId} stats={stats} goalScores={goalScores} canDelete={canDelete} onDeleted={onDeleted} />
     );
   }
-  return <CollapsedCard module={module} courseId={courseId} stats={stats} />;
+  return <CollapsedCard module={module} courseId={courseId} stats={stats} canDelete={canDelete} onDeleted={onDeleted} />;
 }
