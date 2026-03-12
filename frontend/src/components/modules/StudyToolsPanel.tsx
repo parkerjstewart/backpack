@@ -16,6 +16,8 @@ import {
   X,
   MoreVertical,
   Pencil,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -45,7 +47,7 @@ import {
   useRenameStudyToolResult,
 } from "@/lib/hooks/use-study-tools";
 import { useEpisodeProfiles, useSpeakerProfiles } from "@/lib/hooks/use-podcasts";
-import { fetchProtectedAudioBlobUrl } from "@/lib/api/podcasts";
+
 import { cn } from "@/lib/utils";
 import type {
   StudyToolResultResponse,
@@ -84,6 +86,7 @@ interface PodcastPlayerProps {
   title: string;
   audioUrl: string;
   onClose: () => void;
+  onRetry?: () => void;
 }
 
 function formatTime(seconds: number): string {
@@ -92,7 +95,7 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function PodcastPlayer({ title, audioUrl, onClose }: PodcastPlayerProps) {
+function PodcastPlayer({ title, audioUrl, onClose, onRetry }: PodcastPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -153,59 +156,78 @@ function PodcastPlayer({ title, audioUrl, onClose }: PodcastPlayerProps) {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="mt-3 rounded-sm border border-border bg-card px-3 py-2.5 flex items-center gap-3">
-      <audio ref={audioRef} src={audioUrl} preload="metadata" />
+    <div className="mt-3 rounded-sm border border-border bg-card px-3 py-2.5 flex flex-col gap-2">
+      <audio ref={audioRef} key={audioUrl} src={audioUrl} preload="metadata" />
 
-      <button
-        type="button"
-        onClick={togglePlay}
-        disabled={loading || error}
-        className="shrink-0 h-7 w-7 rounded-full bg-foreground text-background flex items-center justify-center hover:opacity-80 transition-opacity disabled:opacity-40"
-      >
-        {loading ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : error ? (
-          <AlertCircle className="h-3.5 w-3.5" />
-        ) : isPlaying ? (
-          <Pause className="h-3.5 w-3.5" />
-        ) : (
-          <Play className="h-3.5 w-3.5 ml-0.5" />
-        )}
-      </button>
-
-      <div className="flex-1 min-w-0 flex flex-col gap-1">
+      {/* Title row */}
+      <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium truncate leading-none">{title}</p>
-        {error ? (
-          <p className="text-xs text-destructive">Failed to load audio</p>
-        ) : (
-          <div className="flex items-center gap-2">
-            <input
-              type="range"
-              min={0}
-              max={duration || 100}
-              step={0.5}
-              value={currentTime}
-              onChange={handleSeek}
-              className="flex-1 h-1 accent-foreground cursor-pointer"
-              style={{
-                background: `linear-gradient(to right, currentColor ${progress}%, transparent ${progress}%)`,
-              }}
-            />
-            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-              {formatTime(currentTime)}{duration > 0 ? ` / ${formatTime(duration)}` : ""}
-            </span>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+          title="Close player"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
 
-      <button
-        type="button"
-        onClick={onClose}
-        className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
-        title="Close player"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+      {/* Progress bar */}
+      {error ? (
+        <p className="text-xs text-destructive">
+          Failed to load audio
+          {onRetry && (
+            <>
+              {" — "}
+              <button
+                type="button"
+                onClick={onRetry}
+                className="underline hover:no-underline"
+              >
+                Retry
+              </button>
+            </>
+          )}
+        </p>
+      ) : (
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={0}
+            max={duration || 100}
+            step={0.5}
+            value={currentTime}
+            onChange={handleSeek}
+            className="flex-1 h-1 accent-foreground cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, currentColor ${progress}%, transparent ${progress}%)`,
+            }}
+          />
+          <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+            {formatTime(currentTime)}{duration > 0 ? ` / ${formatTime(duration)}` : ""}
+          </span>
+        </div>
+      )}
+
+      {/* Play/pause controls */}
+      <div className="flex items-center justify-center">
+        <button
+          type="button"
+          onClick={togglePlay}
+          disabled={loading || error}
+          className="h-7 w-7 rounded-full bg-foreground text-background flex items-center justify-center hover:opacity-80 transition-opacity disabled:opacity-40"
+        >
+          {loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : error ? (
+            <AlertCircle className="h-3.5 w-3.5" />
+          ) : isPlaying ? (
+            <Pause className="h-3.5 w-3.5" />
+          ) : (
+            <Play className="h-3.5 w-3.5 ml-0.5" />
+          )}
+        </button>
+      </div>
     </div>
   );
 }
@@ -225,13 +247,10 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
     title: string;
     audioUrl: string;
   } | null>(null);
-  const [podcastLoading, setPodcastLoading] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  // Tracks the current blob URL so we can revoke it when switching / closing
-  const podcastBlobUrlRef = useRef<string | null>(null);
 
-  const { data: results = [] } = useStudyToolResults(moduleId);
+  const { data: results = [], isError, refetch } = useStudyToolResults(moduleId);
   const flashcardsMutation = useGenerateFlashcards();
   const quizMutation = useGenerateQuiz();
   const mindMapMutation = useGenerateMindMap();
@@ -249,15 +268,6 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
   useEffect(() => {
     deleteMutateAsyncRef.current = deleteMutation.mutateAsync;
   });
-
-  // Revoke any outstanding audio blob URL on unmount
-  useEffect(() => {
-    return () => {
-      if (podcastBlobUrlRef.current) {
-        URL.revokeObjectURL(podcastBlobUrlRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     const prevStatuses = prevStatusesRef.current;
@@ -286,42 +296,31 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
     []
   );
 
+  const handlePodcastRetry = useCallback(() => {
+    if (!playingPodcast) return;
+    const base = playingPodcast.audioUrl.split("?")[0];
+    setPlayingPodcast({ ...playingPodcast, audioUrl: `${base}?t=${Date.now()}` });
+  }, [playingPodcast]);
+
   const handlePodcastClick = useCallback(
-    async (result: StudyToolResultResponse) => {
+    (result: StudyToolResultResponse) => {
       if (playingPodcast?.resultId === result.id) {
-        if (podcastBlobUrlRef.current) {
-          URL.revokeObjectURL(podcastBlobUrlRef.current);
-          podcastBlobUrlRef.current = null;
-        }
         setPlayingPodcast(null);
         return;
       }
 
-      if (podcastBlobUrlRef.current) {
-        URL.revokeObjectURL(podcastBlobUrlRef.current);
-        podcastBlobUrlRef.current = null;
-      }
-
       const podData = result.data as PodcastStudyToolData;
-      const rawUrl =
+      const audioUrl =
         podData?.audio_url ||
         (podData?.episode_id
           ? `/api/podcasts/episodes/${podData.episode_id}/audio`
           : null);
-      if (!rawUrl) return;
-
-      setPodcastLoading(result.id);
-      try {
-        const blobUrl = await fetchProtectedAudioBlobUrl(rawUrl);
-        if (!blobUrl) {
-          toast.error("Failed to load podcast audio");
-          return;
-        }
-        podcastBlobUrlRef.current = blobUrl;
-        setPlayingPodcast({ resultId: result.id, title: result.title, audioUrl: blobUrl });
-      } finally {
-        setPodcastLoading(null);
+      if (!audioUrl) {
+        toast.error("No audio URL available for this podcast");
+        return;
       }
+
+      setPlayingPodcast({ resultId: result.id, title: result.title, audioUrl });
     },
     [playingPodcast]
   );
@@ -372,10 +371,6 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
     await deleteMutation.mutateAsync({ resultId: bare, moduleId });
     if (viewingResult?.id === result.id) setViewingResult(null);
     if (playingPodcast?.resultId === result.id) {
-      if (podcastBlobUrlRef.current) {
-        URL.revokeObjectURL(podcastBlobUrlRef.current);
-        podcastBlobUrlRef.current = null;
-      }
       setPlayingPodcast(null);
     }
   };
@@ -469,6 +464,24 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
           })}
         </div>
 
+        {/* Error banner when backend is unreachable */}
+        {isError && results.some((r) => r.status === "generating") && (
+          <div className="flex items-center gap-2 rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2">
+            <WifiOff className="h-3.5 w-3.5 shrink-0 text-destructive" />
+            <p className="text-xs text-destructive flex-1">
+              Unable to reach server — generation status unknown
+            </p>
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="shrink-0 p-1 rounded text-destructive hover:bg-destructive/10 transition-colors"
+              title="Retry"
+            >
+              <RefreshCw className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+
         {/* Results list */}
         {hasActivity && (
           <div className="flex flex-col">
@@ -481,23 +494,45 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
               const podData = isPodcast ? (result.data as PodcastStudyToolData) : null;
               const hasAudio = !!(podData?.audio_url || podData?.episode_id);
               const isActivePodcast = playingPodcast?.resultId === result.id;
-              const isLoadingPodcast = podcastLoading === result.id;
+
               const isRenaming = renamingId === result.id;
 
               if (isGenerating) {
+                const createdMs = result.created ? new Date(result.created).getTime() : 0;
+                const isStale = createdMs > 0 && Date.now() - createdMs > 10 * 60 * 1000;
                 return (
                   <div
                     key={result.id}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-sm animate-pulse"
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-sm",
+                      !isStale && "animate-pulse"
+                    )}
                   >
-                    <Loader2 className="h-4 w-4 shrink-0 text-muted-foreground animate-spin" />
+                    {isStale ? (
+                      <AlertCircle className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <Loader2 className="h-4 w-4 shrink-0 text-muted-foreground animate-spin" />
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate text-muted-foreground">
                         {result.title}
                       </p>
-                      <p className="text-xs text-muted-foreground">Generating…</p>
+                      <p className="text-xs text-muted-foreground">
+                        {isStale ? "Generation may have stalled" : "Generating…"}
+                      </p>
                     </div>
-                    <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                    {isStale ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(result)}
+                        className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                        title="Delete stalled result"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    ) : (
+                      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                    )}
                   </div>
                 );
               }
@@ -545,15 +580,13 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
                       "flex items-center gap-3 px-3 py-2.5 rounded-sm transition-colors",
                       !isRenaming && (!isPodcast || hasAudio) && "hover:bg-secondary cursor-pointer",
                       isActivePodcast && "bg-secondary",
-                      isPodcast && (!hasAudio || isLoadingPodcast) && "opacity-60"
+                      isPodcast && !hasAudio && "opacity-60"
                     )}
                     onClick={() => (!isPodcast || hasAudio) ? handleResultClick(result) : undefined}
                   >
                     {isPodcast ? (
                       <div className="shrink-0">
-                        {isLoadingPodcast ? (
-                          <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
-                        ) : isActivePodcast ? (
+                        {isActivePodcast ? (
                           <Pause className="h-4 w-4 text-foreground" />
                         ) : (
                           <Play className="h-4 w-4 text-muted-foreground" />
@@ -631,13 +664,8 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
                     <PodcastPlayer
                       title={playingPodcast.title}
                       audioUrl={playingPodcast.audioUrl}
-                      onClose={() => {
-                        if (podcastBlobUrlRef.current) {
-                          URL.revokeObjectURL(podcastBlobUrlRef.current);
-                          podcastBlobUrlRef.current = null;
-                        }
-                        setPlayingPodcast(null);
-                      }}
+                      onRetry={handlePodcastRetry}
+                      onClose={() => setPlayingPodcast(null)}
                     />
                   )}
                 </div>

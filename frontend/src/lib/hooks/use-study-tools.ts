@@ -3,17 +3,28 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { studyToolsApi, PodcastStudyToolRequest } from '@/lib/api/study-tools'
 import { QUERY_KEYS } from '@/lib/api/query-client'
 
+const FRONTEND_GENERATING_TIMEOUT_MS = 20 * 60 * 1000 // 20 minutes
+
 export function useStudyToolResults(moduleId: string) {
   return useQuery({
     queryKey: QUERY_KEYS.studyToolResults(moduleId),
     queryFn: () => studyToolsApi.listResults(moduleId),
     enabled: !!moduleId,
+    retry: 1, // Surface errors quickly instead of retrying 3 times
     // Poll every 3s while any result is still generating
     refetchInterval: (query) => {
       const data = query.state.data
       if (!data) return false
-      const hasGenerating = data.some((r) => r.status === 'generating')
-      return hasGenerating ? 3000 : false
+      const generating = data.filter((r) => r.status === 'generating')
+      if (generating.length === 0) return false
+
+      // Safety net: stop polling if all generating results are older than 20 minutes
+      const now = Date.now()
+      const allTimedOut = generating.every((r) => {
+        if (!r.created) return false
+        return now - new Date(r.created).getTime() > FRONTEND_GENERATING_TIMEOUT_MS
+      })
+      return allTimedOut ? false : 3000
     },
   })
 }

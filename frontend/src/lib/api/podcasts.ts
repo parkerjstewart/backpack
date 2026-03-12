@@ -39,8 +39,18 @@ export async function resolvePodcastAssetUrl(path?: string | null): Promise<stri
  * resolved.
  */
 export async function fetchProtectedAudioBlobUrl(path?: string | null): Promise<string | undefined> {
-  const resolvedUrl = await resolvePodcastAssetUrl(path)
-  if (!resolvedUrl) return undefined
+  if (!path) return undefined
+
+  // For relative /api/... paths, use them directly so the request goes through the
+  // Next.js proxy (same-origin). Only resolve external/absolute URLs via getApiUrl().
+  let resolvedUrl: string
+  if (path.startsWith('/api/') || /^https?:\/\//i.test(path)) {
+    resolvedUrl = path
+  } else {
+    const resolved = await resolvePodcastAssetUrl(path)
+    if (!resolved) return undefined
+    resolvedUrl = resolved
+  }
 
   try {
     let token: string | undefined
@@ -63,13 +73,17 @@ export async function fetchProtectedAudioBlobUrl(path?: string | null): Promise<
 
     const response = await fetch(resolvedUrl, { headers })
     if (!response.ok) {
-      throw new Error(`Audio fetch failed: ${response.status}`)
+      console.error(
+        `Audio fetch failed: status=${response.status}, url=${resolvedUrl}, ` +
+        `content-type=${response.headers.get('content-type')}`
+      )
+      return undefined
     }
 
     const blob = await response.blob()
     return URL.createObjectURL(blob)
   } catch (error) {
-    console.error('Unable to load podcast audio', error)
+    console.error('Unable to load podcast audio', { url: resolvedUrl, error })
     return undefined
   }
 }

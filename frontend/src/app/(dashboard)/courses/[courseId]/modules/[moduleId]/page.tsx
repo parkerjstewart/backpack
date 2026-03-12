@@ -466,14 +466,14 @@ export default function CourseModuleOverviewPage() {
                   <Eye className="h-4 w-4" />
                   Previewing as student
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
+                <button
+                  type="button"
                   onClick={() => setStudentViewPreview(false)}
+                  className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 transition-colors"
                 >
                   <EyeOff className="h-4 w-4" />
                   Exit Student View
-                </Button>
+                </button>
               </div>
               <StudentView
                 courseId={courseId}

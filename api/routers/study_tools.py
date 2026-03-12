@@ -30,7 +30,7 @@ def _resolve_audio_path(audio_file: str) -> Path:
     return Path(audio_file)
 
 
-PODCAST_ACTIVE_STATUS_TIMEOUT = timedelta(hours=2)
+PODCAST_ACTIVE_STATUS_TIMEOUT = timedelta(minutes=30)
 PODCAST_MISSING_COMMAND_TIMEOUT = timedelta(minutes=3)
 
 
@@ -465,10 +465,12 @@ async def _resolve_podcast_status(result: StudyToolResult) -> StudyToolResult:
             if episodes:
                 ep = episodes[0]
                 ep_id = str(ep.get("id", ""))
+                # Strip table prefix for clean URLs (e.g. "episode:abc" → "abc")
+                ep_id_bare = ep_id.split(":", 1)[-1] if ":" in ep_id else ep_id
                 audio_file = ep.get("audio_file", "") or ""
-                audio_url = f"/api/podcasts/episodes/{ep_id}/audio" if audio_file else ""
+                audio_url = f"/api/podcasts/episodes/{ep_id_bare}/audio" if audio_file else ""
                 episode_data = {
-                    "episode_id": ep_id,
+                    "episode_id": ep_id_bare,
                     "audio_file": audio_file,
                     "audio_url": audio_url,
                 }
