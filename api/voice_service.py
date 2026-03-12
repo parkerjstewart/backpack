@@ -4,6 +4,7 @@ import asyncio
 import base64
 import io
 import queue as _queue
+import re
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Optional
 
@@ -37,6 +38,33 @@ def _iter_text_deltas(text: str, chunk_size: int = 32) -> list[str]:
     if not text:
         return []
     return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+
+
+_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
+# Abbreviations that should NOT trigger sentence splits
+_ABBREV_RE = re.compile(r'\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|e\.g|i\.e)\.\s*$', re.IGNORECASE)
+
+
+def _split_into_sentences(text: str, min_length: int = 60) -> list[str]:
+    """Split text into sentence groups for streaming TTS.
+
+    Short fragments are merged with the next sentence to avoid many tiny
+    TTS calls.  Returns [text] unchanged if splitting produces only one part.
+    """
+    if not text:
+        return []
+    parts = _SENTENCE_SPLIT_RE.split(text.strip())
+    result: list[str] = []
+    buffer = ""
+    for part in parts:
+        buffer = f"{buffer} {part}".strip() if buffer else part
+        # Don't split after common abbreviations
+        if len(buffer) >= min_length and not _ABBREV_RE.search(buffer):
+            result.append(buffer)
+            buffer = ""
+    if buffer:
+        result.append(buffer)
+    return result if result else [text]
 
 
 
@@ -120,18 +148,8 @@ class VoiceService:
                 yield VoiceServerEvent(type="assistant_text_delta", payload={"text": delta})
             final_payload: dict[str, Any] = {"text": display_text}
             yield VoiceServerEvent(type="assistant_text_final", payload=final_payload)
-            audio_output = await self._synthesize(speech_text)
-            if audio_output:
-                for i in range(0, len(audio_output), 16_000):
-                    chunk = audio_output[i : i + 16_000]
-                    yield VoiceServerEvent(
-                        type="assistant_audio_chunk",
-                        payload={
-                            "audio_base64": base64.b64encode(chunk).decode("ascii"),
-                            "mime_type": "audio/mpeg",
-                        },
-                    )
-                yield VoiceServerEvent(type="assistant_audio_end", payload={})
+            async for audio_event in self._emit_audio_sentences(speech_text):
+                yield audio_event
 
     async def _stream_tutor(
         self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
@@ -242,8 +260,20 @@ class VoiceService:
             final_payload["highlighted_artifact_id"] = highlighted_artifact_id
         yield VoiceServerEvent(type="assistant_text_final", payload=final_payload)
 
-        audio_output = await self._synthesize(speech_text)
-        if audio_output:
+        async for audio_event in self._emit_audio_sentences(speech_text):
+            yield audio_event
+
+    async def _emit_audio_sentences(self, speech_text: str) -> AsyncIterator[VoiceServerEvent]:
+        """Synthesize speech_text sentence-by-sentence and stream each clip immediately.
+
+        Each sentence produces its own assistant_audio_chunk(s) + assistant_audio_end
+        so the frontend can start playback before the full response is synthesized.
+        """
+        sentences = _split_into_sentences(speech_text)
+        for sentence in sentences:
+            audio_output = await self._synthesize(sentence)
+            if not audio_output:
+                continue
             for i in range(0, len(audio_output), 16_000):
                 chunk = audio_output[i : i + 16_000]
                 yield VoiceServerEvent(
