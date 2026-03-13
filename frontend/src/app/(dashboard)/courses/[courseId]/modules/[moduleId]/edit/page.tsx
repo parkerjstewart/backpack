@@ -15,10 +15,12 @@ import {
   useGenerateLearningGoals,
 } from "@/lib/hooks/use-modules";
 import { useModuleSources } from "@/lib/hooks/use-sources";
+import { useSourcePolling } from "@/lib/hooks/use-source-polling";
 import { modulesApi } from "@/lib/api/modules";
 import { ModuleInfoPanel } from "@/components/modules/review/ModuleInfoPanel";
 import { LearningGoalsPanel } from "@/components/modules/review/LearningGoalsPanel";
 import { FilesSidebar } from "@/components/modules/review/FilesSidebar";
+import { CreateModuleWizard } from "@/components/modules/CreateModuleWizard";
 import { SourceDialog } from "@/components/source/SourceDialog";
 import { RefinementChat } from "@/components/modules/RefinementChat";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
@@ -46,6 +48,7 @@ export default function EditModulePage() {
     overview,
     learningGoals: draftGoals,
     pendingSourceIds,
+    sourceStatuses: draftSourceStatuses,
     setModuleField,
     setGeneratedContent,
     setDraftModuleId,
@@ -53,6 +56,12 @@ export default function EditModulePage() {
     updateSourceStatus,
     reset,
   } = useModuleDraftStore();
+
+  // Poll only sources that are still processing (newly added ones)
+  const processingSourceIds = pendingSourceIds.filter(
+    (id) => draftSourceStatuses[id] === "processing"
+  );
+  useSourcePolling(processingSourceIds);
 
   // Mutations
   const generateOverview = useGenerateOverview();
@@ -62,6 +71,7 @@ export default function EditModulePage() {
   const [initialized, setInitialized] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [showAddFiles, setShowAddFiles] = useState(false);
   const leftColumnRef = useRef<HTMLDivElement | null>(null);
   const [leftColumnHeight, setLeftColumnHeight] = useState<number | null>(null);
   const [refinePulse, setRefinePulse] = useState<{
@@ -241,12 +251,8 @@ export default function EditModulePage() {
     );
   };
 
-  // Build source statuses for FilesSidebar (all completed in edit mode)
-  const sourceStatuses: Record<string, "processing" | "completed" | "failed"> =
-    {};
-  pendingSourceIds.forEach((id) => {
-    sourceStatuses[id] = "completed";
-  });
+  // Use draft store statuses directly — polling updates them for new sources
+  const sourceStatuses = draftSourceStatuses;
 
   const isGeneratingOverview = generateOverview.isPending;
   const isGeneratingGoals = generateLearningGoals.isPending;
@@ -335,7 +341,7 @@ export default function EditModulePage() {
           <FilesSidebar
             sourceIds={pendingSourceIds}
             sourceStatuses={sourceStatuses}
-            onAddMore={() => {}}
+            onAddMore={() => setShowAddFiles(true)}
             onSourceClick={(id) => setSelectedSourceId(id)}
           />
         </div>
@@ -377,6 +383,16 @@ export default function EditModulePage() {
           </Button>
         </div>
       </footer>
+
+      {/* Add files dialog */}
+      <CreateModuleWizard
+        open={showAddFiles}
+        onOpenChange={setShowAddFiles}
+        addMoreMode
+        onSourceCreated={async (sourceId) => {
+          await modulesApi.addSource(moduleId, sourceId);
+        }}
+      />
 
       {/* Source detail dialog */}
       <SourceDialog
