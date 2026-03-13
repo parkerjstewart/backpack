@@ -514,9 +514,11 @@ async def stream_tutor_response(session_id: str, request: StudentResponseRequest
     }
 
     async def generate():
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
-        # Run the graph in a thread so the sync invoke() doesn't block the event loop
+        # Run the graph in a thread so the sync invoke() doesn't block the event loop.
+        # ensure_future (not create_task) is required here: run_in_executor returns an
+        # asyncio.Future, and create_task only accepts coroutines.
         graph_task = asyncio.ensure_future(
             loop.run_in_executor(None, tutor_graph.invoke, Command(resume=resume_value), config)
         )
@@ -585,7 +587,7 @@ async def stream_tutor_response(session_id: str, request: StudentResponseRequest
             "tutor_message": tutor_message,
             "tutor_image_url": tutor_image_url,
             "artifact_content": artifact_content,
-            "artifacts": artifacts_raw,
+            "artifacts": [a.model_dump() for a in parse_artifacts(artifacts_raw)],
             "highlighted_artifact_id": highlighted_artifact_id,
             "latest_understanding_score": latest_eval.get("score"),
             "competency_scores": latest_eval.get("competency_score_dict"),

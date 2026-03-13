@@ -157,21 +157,21 @@ export function useVoiceSession({
     const ws = new WebSocket(url)
     wsRef.current = ws
 
-    await Promise.race([
-      new Promise<void>((resolve, reject) => {
-        ws.onopen = () => {
-          setIsConnected(true)
-          resolve()
-        }
-        ws.onerror = () => reject(new Error('Unable to connect voice socket'))
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => {
-          ws.close()
-          reject(new Error('Voice connection timed out'))
-        }, 10_000)
-      ),
-    ])
+    await new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        ws.close()
+        reject(new Error('Voice connection timed out'))
+      }, 10_000)
+      ws.onopen = () => {
+        clearTimeout(timeoutId)
+        setIsConnected(true)
+        resolve()
+      }
+      ws.onerror = () => {
+        clearTimeout(timeoutId)
+        reject(new Error('Unable to connect voice socket'))
+      }
+    })
 
     ws.onclose = () => {
       setIsConnected(false)

@@ -47,7 +47,7 @@ async def drain_token_queue(
     Yields:
         str — individual token strings in emission order.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     token_buffer: list[str] = []
     streaming_active = False  # True once replay sentinel is received
 
