@@ -9,6 +9,7 @@ interface CourseHeaderProps {
   courseId: string;
   courseName: string;
   membershipRole?: CourseMembershipRole;
+  moduleName?: string;
 }
 
 interface Tab {
@@ -22,7 +23,7 @@ interface Tab {
  * Displays course name on the left and tabs (Modules | Students | Insights | Settings)
  * on the right. Should be used on all course subpages for consistent navigation.
  */
-export function CourseHeader({ courseId, courseName, membershipRole }: CourseHeaderProps) {
+export function CourseHeader({ courseId, courseName, membershipRole, moduleName }: CourseHeaderProps) {
   const pathname = usePathname();
   const permissions = getCoursePermissions(membershipRole);
 
@@ -54,10 +55,22 @@ export function CourseHeader({ courseId, courseName, membershipRole }: CourseHea
 
   return (
     <div className="flex items-center justify-between border-b border-border py-2">
-      {/* Course name */}
-      <h1 className="text-section text-primary">
-        {courseName}
-      </h1>
+      {/* Course name (or breadcrumb when inside a module) */}
+      {moduleName ? (
+        <h1 className="text-section text-primary flex items-baseline gap-2">
+          <Link href={`/courses/${courseId}`} className="hover:opacity-70 transition-opacity">
+            {courseName}
+          </Link>
+          <span className="text-muted-foreground">›</span>
+          <span>{moduleName}</span>
+        </h1>
+      ) : (
+        <h1 className="text-section text-primary">
+          <Link href={`/courses/${courseId}`} className="hover:opacity-70 transition-opacity">
+            {courseName}
+          </Link>
+        </h1>
+      )}
 
       {/* Tab navigation */}
       <nav className="flex items-center gap-1">
