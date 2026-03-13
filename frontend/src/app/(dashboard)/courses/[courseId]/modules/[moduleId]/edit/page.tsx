@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ import {
 import { useModuleSources } from "@/lib/hooks/use-sources";
 import { useSourcePolling } from "@/lib/hooks/use-source-polling";
 import { modulesApi } from "@/lib/api/modules";
+import { QUERY_KEYS } from "@/lib/api/query-client";
 import { ModuleInfoPanel } from "@/components/modules/review/ModuleInfoPanel";
 import { LearningGoalsPanel } from "@/components/modules/review/LearningGoalsPanel";
 import { FilesSidebar } from "@/components/modules/review/FilesSidebar";
@@ -28,6 +30,7 @@ import { LearningGoalPreview } from "@/lib/types/api";
 
 export default function EditModulePage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const params = useParams();
   const courseId = params?.courseId
     ? decodeURIComponent(params.courseId as string)
@@ -68,7 +71,8 @@ export default function EditModulePage() {
   const generateLearningGoals = useGenerateLearningGoals();
 
   // Local state
-  const [initialized, setInitialized] = useState(false);
+  const initializedRef = useRef(false);  // prevents double-init (StrictMode-safe)
+  const [initialized, setInitialized] = useState(false);  // triggers re-renders for dependent effects
   const [isSaving, setIsSaving] = useState(false);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [showAddFiles, setShowAddFiles] = useState(false);
@@ -82,8 +86,9 @@ export default function EditModulePage() {
 
   // On mount: populate draft store from API data
   useEffect(() => {
-    if (!module || goalsLoading || sourcesLoading || initialized) return;
+    if (!module || goalsLoading || sourcesLoading || initializedRef.current) return;
 
+    initializedRef.current = true;
     reset();
     setDraftModuleId(moduleId);
     setModuleField("name", module.name);
@@ -110,10 +115,13 @@ export default function EditModulePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [module, existingGoals, sources, goalsLoading, sourcesLoading]);
 
-  // Reset draft store on unmount
+  // Reset draft store on unmount. Also resets initializedRef so StrictMode's
+  // fake unmount/remount cycle can re-initialize after the store is cleared.
   useEffect(() => {
     return () => {
       reset();
+      initializedRef.current = false;
+      setInitialized(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -184,9 +192,11 @@ export default function EditModulePage() {
         overview: overview || undefined,
       });
 
-      // Replace all learning goals: delete existing, create from draft
+      // Fetch fresh goals from DB (bypasses stale TanStack Query cache)
+      // This ensures ALL existing goals are deleted, including any duplicates
+      const freshGoals = await modulesApi.getLearningGoals(moduleId);
       await Promise.allSettled(
-        existingGoals.map((g) => modulesApi.deleteLearningGoal(g.id))
+        freshGoals.map((g) => modulesApi.deleteLearningGoal(g.id))
       );
 
       for (const goal of draftGoals) {
@@ -198,6 +208,11 @@ export default function EditModulePage() {
           order: goal.order,
         });
       }
+
+      // Invalidate cache so next visit loads fresh data
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.learningGoals(moduleId),
+      });
 
       toast.success("Module saved successfully");
       reset();
@@ -262,7 +277,7 @@ export default function EditModulePage() {
     !isGeneratingOverview &&
     !isGeneratingGoals;
 
-  if (moduleLoading || goalsLoading || sourcesLoading) {
+  if (moduleLoading || goalsLoading || sourcesLoading || !initialized) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
@@ -281,14 +296,6 @@ export default function EditModulePage() {
             </Link>
           </Button>
         </div>
-      </div>
-    );
-  }
-
-  if (!initialized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="lg" />
       </div>
     );
   }

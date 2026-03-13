@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Plus, X } from "lucide-react";
@@ -42,29 +42,44 @@ export function CompetencyList({
   readOnly = false,
   className,
 }: CompetencyListProps) {
-  const items = parseCompetencies(value);
+  const [localItems, setLocalItems] = useState<string[]>(() =>
+    parseCompetencies(value)
+  );
+  const internalChangeRef = useRef(false);
+
+  // Sync from external value changes, but not when we triggered the change
+  useEffect(() => {
+    if (internalChangeRef.current) {
+      internalChangeRef.current = false;
+      return;
+    }
+    setLocalItems(parseCompetencies(value));
+  }, [value]);
 
   const update = useCallback(
     (newItems: string[]) => {
+      internalChangeRef.current = true;
+      setLocalItems(newItems);
       onChange(serializeCompetencies(newItems));
     },
     [onChange]
   );
 
   const handleChange = (index: number, newValue: string) => {
-    const next = [...items];
+    const next = [...localItems];
     next[index] = newValue;
     update(next);
   };
 
   const handleRemove = (index: number) => {
-    const next = items.filter((_, i) => i !== index);
+    const next = localItems.filter((_, i) => i !== index);
     update(next);
     onBlur?.();
   };
 
   const handleAdd = () => {
-    update([...items, ""]);
+    internalChangeRef.current = true;
+    setLocalItems((prev) => [...prev, ""]);
   };
 
   const handleKeyDown = (
@@ -73,9 +88,10 @@ export function CompetencyList({
   ) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      const next = [...items];
+      const next = [...localItems];
       next.splice(index + 1, 0, "");
-      update(next);
+      internalChangeRef.current = true;
+      setLocalItems(next);
       // Focus new item after render
       setTimeout(() => {
         const inputs = document.querySelectorAll<HTMLInputElement>(
@@ -83,9 +99,9 @@ export function CompetencyList({
         );
         inputs[index + 1]?.focus();
       }, 0);
-    } else if (e.key === "Backspace" && items[index] === "" && items.length > 1) {
+    } else if (e.key === "Backspace" && localItems[index] === "" && localItems.length > 1) {
       e.preventDefault();
-      const next = items.filter((_, i) => i !== index);
+      const next = localItems.filter((_, i) => i !== index);
       update(next);
       setTimeout(() => {
         const inputs = document.querySelectorAll<HTMLInputElement>(
@@ -97,6 +113,7 @@ export function CompetencyList({
   };
 
   if (readOnly || disabled) {
+    const readOnlyItems = parseCompetencies(value);
     return (
       <div
         className={cn(
@@ -105,11 +122,11 @@ export function CompetencyList({
           className
         )}
       >
-        {items.length === 0 ? (
+        {readOnlyItems.length === 0 ? (
           <span className="text-muted-foreground italic">{placeholder}</span>
         ) : (
           <ul className="space-y-1">
-            {items.map((item, i) => (
+            {readOnlyItems.map((item, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-primary">
                 <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-secondary flex items-center justify-center text-[10px] font-medium text-muted-foreground">
                   {i + 1}
@@ -125,10 +142,10 @@ export function CompetencyList({
 
   return (
     <div className={cn("space-y-1.5", className)}>
-      {items.length === 0 && (
+      {localItems.length === 0 && (
         <p className="text-sm text-muted-foreground italic px-1">{placeholder}</p>
       )}
-      {items.map((item, index) => (
+      {localItems.map((item, index) => (
         <div key={index} className="flex items-center gap-2">
           <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary flex items-center justify-center text-[10px] font-medium text-muted-foreground">
             {index + 1}
