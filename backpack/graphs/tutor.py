@@ -97,8 +97,10 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Check: is this a context gap (forgot the scenario) or a knowledge gap "
         "  (forgot the formula)? If context gap, restate the scenario instead.\n"
         "- 2-3 sentences typical\n"
-        "- If the fact is a formula or definition, set new_artifact with a short label "
-        "  and the LaTeX/markdown content."
+        "- If the fact is a formula or definition, set new_artifact with the general form — "
+        "  check ESTABLISHED ARTIFACTS first; if the formula is just an existing one applied to this problem, "
+        "  add the general wrapper formula instead and let the student combine them. "
+        "  Apply it to the specific problem in message, not in the artifact."
     ),
     "explain": (
         "The student is genuinely stuck on this concept. Explain it clearly and "
@@ -110,7 +112,10 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- End with: \"Does that help? Any questions about this, or should we move on?\"\n"
         "- Don't quiz them on this concept again after explaining\n"
         "- Stay conversational — \"here's how I think about it...\" not \"the answer is...\"\n"
-        "- Put any equations or formal definitions in new_artifact, not in the message\n"
+        "- Put equations and formal definitions in new_artifact, not in the message — "
+        "  but use the most general form: check ESTABLISHED ARTIFACTS first, and if the equation "
+        "  is just an existing artifact substituted into another formula, add the general wrapper instead. "
+        "  Problem-specific steps, substitutions, and derivation work-throughs go in message.\n"
         "- For structural concepts (networks, trees, state machines, graphs), set image_prompt "
         "  instead of trying to describe the structure in text"
     ),
@@ -125,7 +130,8 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Bridge through the problem, a conceptual connection, or a follow-up to what they just said\n"
         "- Don't name the competency rubric text\n"
         "- 2-3 sentences typical\n"
-        "- You may set new_artifact to capture a key formula or takeaway being summarized."
+        "- You may set new_artifact to capture a key formula or takeaway being summarized — "
+        "  use the most general reusable form, not the problem-specific version."
     ),
     "tangent": (
         "The student asked a side question. Answer it directly and helpfully — "

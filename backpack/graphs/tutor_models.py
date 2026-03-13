@@ -252,8 +252,21 @@ class GoalProgress(BaseModel):
 class NewArtifact(BaseModel):
     """A new artifact to add to the session's reference collection."""
 
-    label: str = Field(..., description="Short display name, e.g. 'Poisson PMF'")
-    content: str = Field(..., description="LaTeX/markdown content to display")
+    label: str = Field(
+        ...,
+        description=(
+            "Short display name for the general concept, e.g. 'Poisson PMF' or 'Joint likelihood'. "
+            "Name the concept, not the problem application — e.g. 'Joint likelihood' not 'Poisson joint likelihood for two days'."
+        ),
+    )
+    content: str = Field(
+        ...,
+        description=(
+            "LaTeX/markdown content to display. Must be the most general useful form of the formula or definition. "
+            "Do not specialize to the current problem values or substitute in specific distributions — "
+            "that composition is for the student to do using other artifacts already on the board."
+        ),
+    )
 
 
 class TutorResponse(BaseModel):
@@ -274,7 +287,10 @@ class TutorResponse(BaseModel):
             "Create a new artifact (formula, definition, or derivation) to add to the reference panel. "
             "ONLY allowed in give_fact, explain, and transition modes. "
             "MUST be null in guide, nudge, tangent, and opening modes — the student must work through formulas themselves. "
-            "Set label to a short display name (e.g. 'Poisson PMF') and content to the LaTeX/markdown. "
+            "Toolkit philosophy: artifacts are composable building blocks. Check existing artifacts first — "
+            "if the needed formula is just an existing artifact substituted into another, add the general wrapper formula instead "
+            "and let the student combine them. Never pre-compose what the student should be figuring out. "
+            "Set label to a short display name (e.g. 'Poisson PMF') and content to the general LaTeX/markdown form. "
             "Use LaTeX: $expr$ for inline, $$expr$$ on its own line for display math."
         ),
     )
