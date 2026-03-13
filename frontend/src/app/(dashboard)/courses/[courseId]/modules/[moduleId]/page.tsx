@@ -201,9 +201,15 @@ function TeacherView({
         </div>
       )}
 
-      {/* Module header */}
-      <div className="flex items-start justify-between gap-4">
-        <h2 className="text-title text-primary">{moduleName}</h2>
+      {/* Module actions */}
+      <div className="flex items-center justify-between gap-4">
+        <Link
+          href={`/courses/${encodeURIComponent(courseId)}`}
+          className="inline-flex items-center gap-1.5 text-base text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to modules
+        </Link>
         <div className="flex items-center gap-2 flex-shrink-0">
           {canEdit && moduleStatus === "published" && (
             <Button
@@ -253,7 +259,7 @@ function TeacherView({
       {/* Overview */}
       {overviewContent && (
         <section className="flex flex-col gap-3">
-          <h3 className="text-title-sm text-primary">Overview</h3>
+          <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Overview</h2>
           <div className="prose prose-sm max-w-none bg-secondary rounded-md p-4">
             <MathMarkdown>{overviewContent}</MathMarkdown>
           </div>
@@ -265,7 +271,7 @@ function TeacherView({
         {/* Sources column */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <h3 className="text-title-sm text-primary">Sources</h3>
+            <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Sources</h2>
             <Badge variant="secondary" className="text-xs">
               {sources.length}
             </Badge>
@@ -312,7 +318,7 @@ function TeacherView({
         {/* Learning Goals column */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <h3 className="text-title-sm text-primary">Learning Goals</h3>
+            <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Learning Goals</h2>
             <Badge variant="secondary" className="text-xs">
               {learningGoals.length}
             </Badge>
@@ -393,18 +399,16 @@ function StudentView({
 
   return (
     <div className="flex flex-col gap-8 pb-8">
-      {/* Module header + actions */}
-      <div className="flex flex-col gap-4">
-        <h2 className="text-title text-primary">{moduleName}</h2>
-
-        {overviewContent && (
-          <div className="prose prose-sm max-w-none bg-secondary rounded-md p-4">
-            <MathMarkdown>{overviewContent}</MathMarkdown>
-          </div>
-        )}
-
-        {/* Primary actions */}
-        <div className="flex items-center gap-3 flex-wrap">
+      {/* Actions row */}
+      <div className="flex items-center justify-between gap-4">
+        <Link
+          href={`/courses/${encodeURIComponent(courseId)}`}
+          className="inline-flex items-center gap-1.5 text-base text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to modules
+        </Link>
+        <div className="flex items-center gap-2 flex-shrink-0">
           {isPaused ? (
             <div className="flex items-center gap-2 rounded-md border border-border bg-secondary px-4 py-2 text-sm text-muted-foreground">
               <PauseCircle className="h-4 w-4 flex-shrink-0" />
@@ -429,12 +433,22 @@ function StudentView({
         </div>
       </div>
 
+      {/* Overview */}
+      {overviewContent && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Overview</h2>
+          <div className="prose prose-sm max-w-none bg-secondary rounded-md p-4">
+            <MathMarkdown>{overviewContent}</MathMarkdown>
+          </div>
+        </section>
+      )}
+
       {/* Two-column: Sources (1/3) + Study Tools (2/3) */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_3fr] gap-8 items-start">
         {/* Sources column */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <h3 className="text-title-sm text-primary">Sources</h3>
+            <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Sources</h2>
             <Badge variant="secondary" className="text-xs">
               {sources.length}
             </Badge>
@@ -463,7 +477,7 @@ function StudentView({
 
         {/* Study Tools column */}
         <section className="flex flex-col gap-3">
-          <h3 className="text-title-sm text-primary">Study Tools</h3>
+          <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Study Tools</h2>
           <StudyToolsPanel moduleId={moduleId} moduleName={moduleName} />
         </section>
       </div>
@@ -537,20 +551,12 @@ export default function CourseModuleOverviewPage() {
               courseId={courseId}
               courseName={course.title}
               membershipRole={course.membership_role}
+              moduleName={module.name}
             />
           )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-8">
-          {/* Back navigation */}
-          <Link
-            href={`/courses/${encodeURIComponent(courseId)}`}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Back to modules
-          </Link>
-
           {isStudent ? (
             <StudentView
               courseId={courseId}
