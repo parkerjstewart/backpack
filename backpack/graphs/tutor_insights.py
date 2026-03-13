@@ -49,8 +49,9 @@ def generate_insights(
     goal_data: List[Dict[str, Any]],
     module_name: str = "",
     model_id: Optional[str] = None,
+    messages: Optional[List[Dict[str, str]]] = None,
 ) -> SessionInsights:
-    """Generate session insights from evaluator data.
+    """Generate session insights from evaluator data and conversation transcript.
 
     Args:
         goal_data: List of dicts, each containing:
@@ -64,10 +65,13 @@ def generate_insights(
             - final_understanding: float or None
         module_name: Module name for prompt context.
         model_id: Optional model override (provider/model-name format).
+        messages: Optional conversation transcript as list of
+            {"role": "tutor"|"student", "content": "..."} dicts.
 
     Returns:
         SessionInsights with programmatic stats merged with LLM-generated
-        knowledge gaps and overall summary.
+        knowledge gaps, stumbling concepts, tutor nudges, reinforcement
+        topics, and overall summary.
     """
     logger.info(f"Generating session insights for {len(goal_data)} goals")
 
@@ -117,13 +121,14 @@ def generate_insights(
     prompt_data = {
         "module_name": module_name,
         "goals": goal_data,
+        "messages": messages or [],
     }
     system_prompt = Prompter(prompt_template="tutor/generate_insights").render(
         data=prompt_data
     )
 
     overall_summary = ""
-    gap_by_goal: Dict[str, str] = {}
+    llm_by_goal: Dict[str, Dict[str, Any]] = {}
 
     try:
         def _provision():
@@ -131,7 +136,7 @@ def generate_insights(
                 system_prompt,
                 model_id,
                 "tools",
-                max_tokens=1500,
+                max_tokens=3000,
                 reasoning_effort="low",
             )
 
@@ -142,7 +147,12 @@ def generate_insights(
 
         overall_summary = result.overall_summary or ""
         for gi in result.goal_insights:
-            gap_by_goal[gi.goal_id] = gi.knowledge_gap or ""
+            llm_by_goal[gi.goal_id] = {
+                "knowledge_gap": gi.knowledge_gap or "",
+                "stumbling_concepts": gi.stumbling_concepts or [],
+                "tutor_nudges": gi.tutor_nudges or [],
+                "reinforcement_topics": gi.reinforcement_topics or [],
+            }
 
         logger.info("Session insight LLM call succeeded")
     except Exception as e:
@@ -150,7 +160,11 @@ def generate_insights(
 
     # -- Merge LLM output into programmatic GoalInsights --
     for gi in goal_insights:
-        gi.knowledge_gap = gap_by_goal.get(gi.goal_id, "")
+        llm_data = llm_by_goal.get(gi.goal_id, {})
+        gi.knowledge_gap = llm_data.get("knowledge_gap", "")
+        gi.stumbling_concepts = llm_data.get("stumbling_concepts", [])
+        gi.tutor_nudges = llm_data.get("tutor_nudges", [])
+        gi.reinforcement_topics = llm_data.get("reinforcement_topics", [])
 
     insights = SessionInsights(
         goal_insights=goal_insights,

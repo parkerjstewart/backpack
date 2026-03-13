@@ -1683,6 +1683,19 @@ def generate_session_insights(state: TutorState, config: RunnableConfig) -> dict
             "final_understanding": progress.get("final_understanding"),
         })
 
+    # Extract conversation transcript for qualitative analysis
+    raw_messages = state.get("messages", [])
+    messages = []
+    for msg in raw_messages:
+        role = "tutor" if (isinstance(msg, AIMessage) or (hasattr(msg, "type") and msg.type == "ai")) else "student"
+        content = msg.content if hasattr(msg, "content") else str(msg)
+        if isinstance(content, list):
+            content = " ".join(
+                part.get("text", "") if isinstance(part, dict) else str(part)
+                for part in content
+            )
+        messages.append({"role": role, "content": content})
+
     model_id = (
         config.get("configurable", {}).get("model_id")
         or state.get("model_override")
@@ -1691,6 +1704,7 @@ def generate_session_insights(state: TutorState, config: RunnableConfig) -> dict
         goal_data=goal_data,
         module_name=state.get("module_name", ""),
         model_id=model_id,
+        messages=messages,
     )
 
     return {"session_insights": insights.model_dump()}

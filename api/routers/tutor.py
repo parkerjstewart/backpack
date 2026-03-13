@@ -140,6 +140,9 @@ class GoalInsightResponse(BaseModel):
     final_score: float = 0.0
     score_progression: List[float] = []
     knowledge_gap: str = ""
+    stumbling_concepts: List[str] = []
+    tutor_nudges: List[str] = []
+    reinforcement_topics: List[str] = []
     competency_results: List[Dict[str, Any]] = []
 
 

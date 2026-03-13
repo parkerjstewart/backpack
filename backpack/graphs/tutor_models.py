@@ -348,6 +348,18 @@ class GoalInsight(BaseModel):
         default="",
         description="1-sentence LLM-generated summary of remaining knowledge gaps (empty if fully mastered)",
     )
+    stumbling_concepts: List[str] = Field(
+        default_factory=list,
+        description="Specific concepts the student showed confusion or incorrect reasoning about",
+    )
+    tutor_nudges: List[str] = Field(
+        default_factory=list,
+        description="Key hints, leading questions, or scaffolding the tutor provided",
+    )
+    reinforcement_topics: List[str] = Field(
+        default_factory=list,
+        description="Topics the student should revisit to solidify understanding",
+    )
     competency_results: List[CompetencyResult] = Field(
         default_factory=list,
         description="Final status and score for each competency in this goal",
@@ -384,6 +396,27 @@ class GeneratedGoalInsight(BaseModel):
         description=(
             "1-sentence description of what the student still doesn't fully grasp. "
             "Empty string if all competencies were mastered."
+        ),
+    )
+    stumbling_concepts: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Specific concepts/ideas where the student showed confusion, gave incorrect "
+            "reasoning, or needed correction. Empty list if none."
+        ),
+    )
+    tutor_nudges: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Key hints, leading questions, or scaffolding the tutor provided for this goal. "
+            "Each entry is a 1-sentence summary of a nudge."
+        ),
+    )
+    reinforcement_topics: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Topics the student should revisit to solidify understanding. "
+            "Broader than gaps — includes prerequisite concepts and adjacent ideas."
         ),
     )
 
