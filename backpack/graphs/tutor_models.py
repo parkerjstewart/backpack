@@ -316,3 +316,93 @@ class SessionSummary(BaseModel):
 
     # Narrative summary
     narrative: str = Field(default="")
+
+
+# ============================================================================
+# Session Insight Models
+# ============================================================================
+
+
+class CompetencyResult(BaseModel):
+    """Final status of a single competency at goal completion."""
+
+    name: str = Field(..., description="Competency criterion text")
+    status: str = Field(..., description="Final status: mastered, explained, or pending")
+    score: float = Field(default=0.0, ge=0.0, le=1.0, description="Final score 0-1")
+
+
+class GoalInsight(BaseModel):
+    """Digestible insight for a single learning goal."""
+
+    goal_id: str = Field(..., description="Learning goal ID")
+    goal_description: str = Field(..., description="Learning goal description")
+    final_score: float = Field(
+        ..., ge=0.0, le=1.0,
+        description="Average of final competency scores for this goal",
+    )
+    score_progression: List[float] = Field(
+        default_factory=list,
+        description="Per-exchange understanding scores showing how the student progressed",
+    )
+    knowledge_gap: str = Field(
+        default="",
+        description="1-sentence LLM-generated summary of remaining knowledge gaps (empty if fully mastered)",
+    )
+    competency_results: List[CompetencyResult] = Field(
+        default_factory=list,
+        description="Final status and score for each competency in this goal",
+    )
+
+
+class SessionInsights(BaseModel):
+    """Complete session insights combining programmatic stats and LLM-generated summaries."""
+
+    goal_insights: List[GoalInsight] = Field(
+        default_factory=list,
+        description="Per-goal insights ordered by goal order",
+    )
+    overall_summary: str = Field(
+        default="",
+        description="2-3 sentence LLM-generated summary of the session for the student",
+    )
+    strongest_goal_id: Optional[str] = Field(
+        default=None,
+        description="Goal ID with the highest final score",
+    )
+    weakest_goal_id: Optional[str] = Field(
+        default=None,
+        description="Goal ID with the lowest final score",
+    )
+
+
+class GeneratedGoalInsight(BaseModel):
+    """LLM-generated qualitative insight for a single goal."""
+
+    goal_id: str = Field(..., description="Learning goal ID — must match an input goal")
+    knowledge_gap: str = Field(
+        default="",
+        description=(
+            "1-sentence description of what the student still doesn't fully grasp. "
+            "Empty string if all competencies were mastered."
+        ),
+    )
+
+
+class GeneratedInsights(BaseModel):
+    """LLM structured output for session insight generation.
+
+    Merged with programmatic stats to produce the final SessionInsights.
+    """
+
+    goal_insights: List[GeneratedGoalInsight] = Field(
+        ...,
+        description="One insight per learning goal, in the same order as the input",
+    )
+    overall_summary: str = Field(
+        ...,
+        description=(
+            "2-3 sentence summary of the student's session. "
+            "Mention their strongest area, remaining gaps, and overall trajectory. "
+            "Written for the student — encouraging but honest."
+        ),
+    )

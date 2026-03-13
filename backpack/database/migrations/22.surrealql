@@ -1,0 +1,28 @@
+-- ============================================
+-- Migration 22: Revamp student_progress for session-level insights
+-- Changes from per-learning-goal rows to per-session records
+-- with nested goal insights.
+-- ============================================
+
+-- Remove old per-learning-goal fields and indexes
+REMOVE FIELD IF EXISTS learning_goal ON TABLE student_progress;
+REMOVE FIELD IF EXISTS status ON TABLE student_progress;
+REMOVE FIELD IF EXISTS confidence_score ON TABLE student_progress;
+REMOVE FIELD IF EXISTS notes ON TABLE student_progress;
+REMOVE INDEX IF EXISTS idx_progress_goal ON TABLE student_progress;
+
+-- Remove old cascade event that references the old schema
+REMOVE EVENT IF EXISTS learning_goal_delete ON TABLE learning_goal;
+
+-- Add new session-level fields
+DEFINE FIELD IF NOT EXISTS module ON TABLE student_progress TYPE record<module>;
+DEFINE FIELD IF NOT EXISTS session_id ON TABLE student_progress TYPE string;
+DEFINE FIELD IF NOT EXISTS overall_summary ON TABLE student_progress TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS strongest_goal_id ON TABLE student_progress TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS weakest_goal_id ON TABLE student_progress TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS goal_insights ON TABLE student_progress TYPE option<array>;
+DEFINE FIELD IF NOT EXISTS updated ON TABLE student_progress TYPE datetime DEFAULT time::now();
+
+-- Add indexes for common query patterns
+DEFINE INDEX IF NOT EXISTS idx_progress_module ON TABLE student_progress COLUMNS user, module;
+DEFINE INDEX IF NOT EXISTS idx_progress_session ON TABLE student_progress COLUMNS session_id UNIQUE;

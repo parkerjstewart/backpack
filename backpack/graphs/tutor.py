@@ -13,7 +13,7 @@ Graph flow (per goal):
         → explain_competency → tutor_turn → evaluate → advance to next → tutor_turn (loop)
         → all competencies addressed → mark_goal_complete
     → mark_goal_complete → [more goals?] → select_goal | summary
-    → summary → END
+    → summary → generate_session_insights → END
 """
 
 import asyncio
@@ -45,6 +45,7 @@ from backpack.graphs.tutor_models import (
     TangentEvaluationResult,
     TutorResponse,
 )
+from backpack.graphs.tutor_insights import generate_insights
 from backpack.utils import clean_thinking_content
 from backpack.utils.context_builder import ContextBuilder
 
@@ -250,6 +251,9 @@ class TutorState(TypedDict):
 
     # Generated image data URI from the most recent tutor_turn (if any)
     latest_image_url: Optional[str]
+
+    # Session insights generated at session end (populated by generate_session_insights node)
+    session_insights: Optional[Dict[str, Any]]
 
 
 # ============================================================================
@@ -1654,6 +1658,45 @@ def generate_summary(state: TutorState, config: RunnableConfig) -> dict:
 
 
 # ============================================================================
+# Node: generate_session_insights
+# ============================================================================
+
+
+def generate_session_insights(state: TutorState, config: RunnableConfig) -> dict:
+    """Thin wrapper that extracts goal data from state and delegates to generate_insights()."""
+    logger.info("Generating session insights")
+
+    learning_goals = state.get("learning_goals", [])
+    goal_progress = state.get("goal_progress", {})
+
+    goal_data = []
+    for goal in learning_goals:
+        progress = goal_progress.get(goal["id"], {})
+        goal_data.append({
+            "goal_id": goal["id"],
+            "description": goal.get("description", ""),
+            "takeaways": goal.get("takeaways", ""),
+            "competencies": goal.get("competencies", ""),
+            "competency_statuses": progress.get("competency_statuses", []),
+            "trajectory": progress.get("trajectory", []),
+            "initial_understanding": progress.get("initial_understanding"),
+            "final_understanding": progress.get("final_understanding"),
+        })
+
+    model_id = (
+        config.get("configurable", {}).get("model_id")
+        or state.get("model_override")
+    )
+    insights = generate_insights(
+        goal_data=goal_data,
+        module_name=state.get("module_name", ""),
+        model_id=model_id,
+    )
+
+    return {"session_insights": insights.model_dump()}
+
+
+# ============================================================================
 # Graph construction
 # ============================================================================
 
@@ -1669,6 +1712,7 @@ tutor_state.add_node("tutor_turn", tutor_turn)
 tutor_state.add_node("evaluate", evaluate_and_update_model)
 tutor_state.add_node("mark_goal_complete", mark_goal_complete)
 tutor_state.add_node("summary", generate_summary)
+tutor_state.add_node("insights", generate_session_insights)
 
 tutor_state.add_edge(START, "initialize")
 tutor_state.add_edge("initialize", "select_goal")
@@ -1680,6 +1724,7 @@ tutor_state.add_conditional_edges(
     check_more_goals,
     {"more_goals": "select_goal", "all_complete": "summary"},
 )
-tutor_state.add_edge("summary", END)
+tutor_state.add_edge("summary", "insights")
+tutor_state.add_edge("insights", END)
 
 tutor_graph = tutor_state.compile(checkpointer=memory)

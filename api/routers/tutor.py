@@ -12,14 +12,16 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from api.routers.authz import get_current_user_id_from_auth, require_authenticated_user_id
 from backpack.domain.module import Module
+from backpack.domain.student_progress import StudentProgress
 from backpack.graphs.tutor import tutor_graph
 
 router = APIRouter()
@@ -131,6 +133,27 @@ class SessionSummaryResponse(BaseModel):
     narrative: str
 
 
+class GoalInsightResponse(BaseModel):
+    """Per-goal insight in a student progress response."""
+    goal_id: str
+    goal_description: str = ""
+    final_score: float = 0.0
+    score_progression: List[float] = []
+    knowledge_gap: str = ""
+    competency_results: List[Dict[str, Any]] = []
+
+
+class StudentProgressResponse(BaseModel):
+    """A single session's progress record for a student."""
+    session_id: str
+    module_id: str
+    overall_summary: Optional[str] = None
+    strongest_goal_id: Optional[str] = None
+    weakest_goal_id: Optional[str] = None
+    goal_insights: List[GoalInsightResponse] = []
+    created: Optional[str] = None
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -162,6 +185,48 @@ def count_goals(state: Dict[str, Any]) -> tuple[int, int]:
     total = len(state.get("learning_goals", []))
     completed = len(state.get("completed_goal_ids", []))
     return completed, total - completed
+
+
+async def _save_session_insights(
+    session_id: str,
+    state_values: Dict[str, Any],
+    authorization: Optional[str],
+) -> None:
+    """Persist session insights to SurrealDB when a session completes.
+
+    Fails silently — insights remain available in the LangGraph checkpoint as fallback.
+    """
+    try:
+        user_id = get_current_user_id_from_auth(authorization)
+        if not user_id:
+            logger.warning(
+                f"No authenticated user for session {session_id}; skipping insight save"
+            )
+            return
+
+        insights = state_values.get("session_insights")
+        if not insights:
+            logger.warning(f"No session_insights in state for session {session_id}")
+            return
+
+        module_id = state_values.get("module_id")
+        if not module_id:
+            logger.warning(f"No module_id in state for session {session_id}")
+            return
+
+        progress = StudentProgress(
+            user=user_id,
+            module=module_id,
+            session_id=session_id,
+            overall_summary=insights.get("overall_summary"),
+            strongest_goal_id=insights.get("strongest_goal_id"),
+            weakest_goal_id=insights.get("weakest_goal_id"),
+            goal_insights=insights.get("goal_insights", []),
+        )
+        await progress.save()
+        logger.info(f"Saved session insights for session {session_id}")
+    except Exception as e:
+        logger.error(f"Failed to save session insights for {session_id}: {e}")
 
 
 # ============================================================================
@@ -306,11 +371,16 @@ async def get_session(session_id: str):
 
 
 @router.post("/tutor/sessions/{session_id}/respond", response_model=TutorResponsePayload)
-async def submit_response(session_id: str, request: StudentResponseRequest):
+async def submit_response(
+    session_id: str,
+    request: StudentResponseRequest,
+    authorization: Optional[str] = Header(None),
+):
     """Submit a student response and get the tutor's reply.
 
     Resumes the graph with the student's message, evaluates their response,
     and returns either a Socratic follow-up or advances to the next question/goal.
+    When the session completes, persists insights to the database.
     """
     logger.info(f"Submitting response to session: {session_id}")
 
@@ -383,6 +453,13 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
             phase = "goal_complete"
         else:
             phase = "in_progress"
+
+        if phase == "session_complete":
+            await _save_session_insights(
+                session_id=session_id,
+                state_values=state_values,
+                authorization=authorization,
+            )
 
         return TutorResponsePayload(
             session_id=session_id,
@@ -726,4 +803,39 @@ async def export_session(session_id: str):
         raise
     except Exception as e:
         logger.error(f"Error exporting session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/tutor/modules/{module_id}/progress",
+    response_model=List[StudentProgressResponse],
+)
+async def get_student_module_progress(
+    module_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Get a student's session-level progress for a module (most recent first)."""
+    user_id = require_authenticated_user_id(authorization)
+
+    try:
+        records = await StudentProgress.get_for_student(user_id, module_id)
+
+        return [
+            StudentProgressResponse(
+                session_id=r.session_id,
+                module_id=str(r.module),
+                overall_summary=r.overall_summary,
+                strongest_goal_id=r.strongest_goal_id,
+                weakest_goal_id=r.weakest_goal_id,
+                goal_insights=[
+                    GoalInsightResponse(**gi) for gi in (r.goal_insights or [])
+                ],
+                created=str(r.created) if r.created else None,
+            )
+            for r in records
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching student progress for module {module_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

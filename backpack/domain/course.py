@@ -174,8 +174,9 @@ class Course(ObjectModel):
 
     async def get_students_needing_attention(self) -> List[Dict[str, Any]]:
         """
-        Get students who may need attention based on progress.
-        Returns students with 'struggling' status on any learning goal in this course.
+        Get students who may need attention based on session insights.
+        Returns students whose latest session on any module in this course
+        has a learning goal with final_score < 0.4.
         """
         try:
             result = await repo_query(
@@ -184,8 +185,8 @@ class Course(ObjectModel):
                     user as user,
                     count() as struggling_count
                 FROM student_progress
-                WHERE status = 'struggling'
-                  AND learning_goal.module.course = $course_id
+                WHERE module.course = $course_id
+                  AND goal_insights[WHERE final_score < 0.4] IS NOT NONE
                 GROUP BY user
                 ORDER BY struggling_count DESC
                 FETCH user
@@ -297,35 +298,28 @@ class Course(ObjectModel):
         """
         Get a student's mastery status for each module in this course.
 
-        Returns a list of module mastery summaries.
+        Derives status from the latest session's goal_insights per module:
+        - All goals with final_score >= 0.65 -> "mastered"
+        - Any goal with final_score < 0.4 -> "struggling"
+        - Has records but mixed -> "progressing"
+        - No records -> "incomplete"
         """
         try:
             result = await repo_query(
                 """
                 SELECT
-                    module.id as module_id,
-                    module.name as module_name,
-                    module.order as module_order,
-                    count(lg.id) as total_goals,
-                    count(
-                        SELECT VALUE id FROM student_progress
-                        WHERE learning_goal IN lg.*.id
-                          AND user = $user_id
-                          AND status = 'mastered'
-                    ) as mastered_goals,
-                    count(
-                        SELECT VALUE id FROM student_progress
-                        WHERE learning_goal IN lg.*.id
-                          AND user = $user_id
-                          AND status = 'struggling'
-                    ) as struggling_goals
-                FROM (
-                    SELECT *,
-                           (SELECT * FROM learning_goal WHERE module = parent.id) as lg
-                    FROM module
-                    WHERE course = $course_id AND (status != "draft" OR status = NONE)
-                ) as module
-                ORDER BY module.order ASC
+                    id as module_id,
+                    name as module_name,
+                    order as module_order,
+                    (
+                        SELECT * FROM student_progress
+                        WHERE user = $user_id AND module = $parent.id
+                        ORDER BY created DESC
+                        LIMIT 1
+                    ) as latest_progress
+                FROM module
+                WHERE course = $course_id AND (status != "draft" OR status = NONE)
+                ORDER BY order ASC
                 """,
                 {
                     "course_id": ensure_record_id(self.id),
