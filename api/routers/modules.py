@@ -12,6 +12,7 @@ from api.models import (
     LearningGoalResponse,
     LearningGoalUpdate,
     ModuleCreate,
+    ModuleReorderRequest,
     ModuleResponse,
     ModuleUpdate,
     PreviewModuleContentRequest,
@@ -131,6 +132,7 @@ async def get_modules(
                 note_count=nb.get("note_count", 0),
                 learning_goal_count=nb.get("learning_goal_count", 0),
                 course_id=str(nb.get("course")) if nb.get("course") else None,
+                order=nb.get("order") or 0,
             )
             for nb in result
         ]
@@ -149,11 +151,22 @@ async def create_module(module: ModuleCreate, authorization: Optional[str] = Hea
             user_id = require_authenticated_user_id(authorization)
             await require_teaching_role(module.course_id, user_id)
 
+        # Auto-assign order = max existing order + 1 for course modules
+        order = 0
+        if module.course_id:
+            existing = await repo_query(
+                "SELECT order FROM module WHERE course = $course_id ORDER BY order DESC LIMIT 1",
+                {"course_id": ensure_record_id(module.course_id)},
+            )
+            if existing:
+                order = (existing[0].get("order") or 0) + 1
+
         new_module = Module(
             name=module.name,
             description=module.description,
             course=module.course_id,
             status=module.status,
+            order=order,
         )
         await new_module.save()
 
@@ -170,6 +183,7 @@ async def create_module(module: ModuleCreate, authorization: Optional[str] = Hea
             note_count=0,
             learning_goal_count=0,
             course_id=str(new_module.course) if new_module.course else None,
+            order=new_module.order,
         )
     except InvalidInputError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -252,6 +266,8 @@ async def update_module(
             module.overview = module_update.overview
         if module_update.course_id is not None:
             module.course = module_update.course_id
+        if module_update.order is not None:
+            module.order = module_update.order
 
         await module.save()
 
@@ -280,6 +296,7 @@ async def update_module(
                 note_count=nb.get("note_count", 0),
                 learning_goal_count=nb.get("learning_goal_count", 0),
                 course_id=str(nb.get("course")) if nb.get("course") else None,
+                order=nb.get("order") or 0,
             )
 
         # Fallback if query fails
@@ -296,6 +313,7 @@ async def update_module(
             note_count=0,
             learning_goal_count=0,
             course_id=str(module.course) if module.course else None,
+            order=module.order,
         )
     except HTTPException:
         raise
@@ -352,6 +370,7 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
                 note_count=nb.get("note_count", 0),
                 learning_goal_count=nb.get("learning_goal_count", 0),
                 course_id=str(nb.get("course")) if nb.get("course") else None,
+                order=nb.get("order") or 0,
             )
 
         return ModuleResponse(

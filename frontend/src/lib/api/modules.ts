@@ -128,4 +128,9 @@ export const modulesApi = {
     )
     return response.data
   },
+
+  reorderModules: async (courseId: string, modules: { module_id: string; order: number }[]) => {
+    const response = await apiClient.put(`/courses/${encodeURIComponent(courseId)}/modules/reorder`, { modules })
+    return response.data
+  },
 }

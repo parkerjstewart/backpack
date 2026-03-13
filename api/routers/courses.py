@@ -14,6 +14,7 @@ from api.models import (
     CourseResponse,
     CourseUpdate,
     ModuleMasteryResponse,
+    ModuleReorderRequest,
     StudentWithMasteryResponse,
 )
 from api.routers.authz import (
@@ -26,6 +27,7 @@ from api.routers.authz import (
 )
 from backpack.database.repository import ensure_record_id, repo_query
 from backpack.domain.course import Course, User
+from backpack.domain.module import Module
 from backpack.domain.invitation import Invitation
 
 router = APIRouter()
@@ -608,3 +610,28 @@ async def leave_course(
     except Exception as e:
         logger.error(f"Error leaving course {course_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error leaving course: {str(e)}")
+
+
+@router.put("/courses/{course_id}/modules/reorder")
+async def reorder_course_modules(
+    course_id: str,
+    request: ModuleReorderRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """Reorder modules within a course. Requires teaching role."""
+    try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_teaching_role(course_id, user_id)
+
+        for item in request.modules:
+            module = await Module.get(item.module_id)
+            if module and str(module.course) == str(ensure_record_id(course_id)):
+                module.order = item.order
+                await module.save()
+
+        return {"message": "Modules reordered successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reordering modules for course {course_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reordering modules: {str(e)}")

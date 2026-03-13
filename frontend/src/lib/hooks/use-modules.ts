@@ -234,3 +234,15 @@ export function usePreviewModuleContent() {
       modulesApi.previewContent(data),
   })
 }
+
+export function useReorderModules() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ courseId, modules }: { courseId: string; modules: { module_id: string; order: number }[] }) =>
+      modulesApi.reorderModules(courseId, modules),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.modules })
+    },
+  })
+}

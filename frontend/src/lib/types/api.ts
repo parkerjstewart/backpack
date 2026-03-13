@@ -11,6 +11,7 @@ export interface ModuleResponse {
   note_count: number
   learning_goal_count: number
   course_id?: string | null
+  order: number
 }
 
 export interface NoteResponse {

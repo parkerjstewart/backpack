@@ -22,6 +22,7 @@ class ModuleUpdate(BaseModel):
     )
     overview: Optional[str] = Field(None, description="AI-generated overview of the module")
     course_id: Optional[str] = Field(None, description="ID of the course this module belongs to")
+    order: Optional[int] = Field(None, description="Display order within the course")
 
 
 class ModuleResponse(BaseModel):
@@ -37,6 +38,16 @@ class ModuleResponse(BaseModel):
     note_count: int
     learning_goal_count: int = 0
     course_id: Optional[str] = None
+    order: int = 0
+
+
+class ModuleReorderItem(BaseModel):
+    module_id: str
+    order: int
+
+
+class ModuleReorderRequest(BaseModel):
+    modules: List[ModuleReorderItem]
 
 
 # Learning Goals models
