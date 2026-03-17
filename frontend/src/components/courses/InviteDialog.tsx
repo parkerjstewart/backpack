@@ -18,7 +18,6 @@ import { FormLabel } from "@/components/ui/form-label";
 import { useCreateInvitation } from "@/lib/hooks/use-invitations";
 
 const inviteSchema = z.object({
-  name: z.string().min(1, "Name is required"),
   email: z.string().email("Please enter a valid email address"),
   role: z.enum(["student", "instructor", "ta"]),
 });
@@ -55,7 +54,6 @@ export function InviteDialog({
     resolver: zodResolver(inviteSchema),
     mode: "onChange",
     defaultValues: {
-      name: "",
       email: "",
       role: defaultRole,
     },
@@ -65,7 +63,6 @@ export function InviteDialog({
   useEffect(() => {
     if (open) {
       reset({
-        name: "",
         email: "",
         role: defaultRole,
       });
@@ -80,7 +77,6 @@ export function InviteDialog({
   const onSubmit = async (data: InviteFormData) => {
     try {
       await createInvitation.mutateAsync({
-        name: data.name,
         email: data.email,
         role: data.role,
       });
@@ -120,23 +116,6 @@ export function InviteDialog({
         </DialogTitle>
 
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8 mt-8">
-          {/* Name field */}
-          <div className="flex flex-col gap-3">
-            <FormLabel htmlFor="invite-name" required>
-              First and Last Name
-            </FormLabel>
-            <Input
-              id="invite-name"
-              type="text"
-              {...register("name")}
-              placeholder="Name"
-              autoComplete="name"
-            />
-            {errors.name && (
-              <p className="text-sm text-destructive">{errors.name.message}</p>
-            )}
-          </div>
-
           {/* Email field */}
           <div className="flex flex-col gap-3">
             <FormLabel htmlFor="invite-email" required>

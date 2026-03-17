@@ -109,6 +109,32 @@ export const coursesApi = {
   removeMember: async (courseId: string, userId: string): Promise<void> => {
     await apiClient.delete(`/courses/${courseId}/members/${userId}`)
   },
+
+  // ============================================
+  // Enrollment requests
+  // ============================================
+
+  /**
+   * Student submits a request to join a course by course ID.
+   */
+  requestEnrollment: async (
+    courseId: string
+  ): Promise<{ status: string; message: string }> => {
+    const response = await apiClient.post<{ status: string; message: string }>(
+      `/courses/${encodeURIComponent(courseId)}/request-enrollment`
+    )
+    return response.data
+  },
+
+  /**
+   * Student leaves a course (removes own membership).
+   */
+  leaveCourse: async (courseId: string): Promise<{ message: string }> => {
+    const response = await apiClient.delete<{ message: string }>(
+      `/courses/${encodeURIComponent(courseId)}/leave`
+    )
+    return response.data
+  },
 }
 
 export default coursesApi

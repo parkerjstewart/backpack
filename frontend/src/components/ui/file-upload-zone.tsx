@@ -151,7 +151,7 @@ function FileUploadZone({
             )}
           />
           <div className="text-center">
-            <span className="text-body text-teal-800">
+            <span className="text-body text-primary">
               {hasFiles
                 ? `${files.length} file${files.length > 1 ? "s" : ""} selected`
                 : placeholder}

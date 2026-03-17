@@ -65,7 +65,7 @@ export function SidebarNavLink({
   const variantStyles = {
     course: cn(
       "flex flex-col items-start w-full px-2 py-2 rounded-md text-sm font-normal overflow-hidden",
-      "text-teal-800",
+      "text-primary",
       isActive && "bg-sidebar-accent text-foreground",
     ),
     heading: cn(

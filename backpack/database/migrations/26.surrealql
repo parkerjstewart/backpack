@@ -1,0 +1,5 @@
+-- Recreate study_tool_result as SCHEMALESS to fix CBOR serialization issue
+-- with FLEXIBLE TYPE object on empty SCHEMAFULL tables
+REMOVE TABLE IF EXISTS study_tool_result;
+DEFINE TABLE study_tool_result SCHEMALESS;
+DEFINE INDEX idx_study_tool_module ON study_tool_result FIELDS module;

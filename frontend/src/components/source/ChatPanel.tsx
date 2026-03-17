@@ -6,7 +6,24 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Bot,
   User,
@@ -17,13 +34,12 @@ import {
   StickyNote,
   Clock,
   Mic,
+  Plus,
+  Trash2,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
-import { normalizeLatexDelimiters } from "@/lib/utils";
+import { MathMarkdown } from "@/components/ui/math-markdown";
+import { formatDistanceToNow } from "date-fns";
+import { getDateLocale } from "@/lib/utils/date-locale";
 import {
   SourceChatMessage,
   SourceChatContextIndicator,
@@ -31,7 +47,6 @@ import {
   VoiceContextPayload,
 } from "@/lib/types/api";
 import { ContextIndicator } from "@/components/common/ContextIndicator";
-import { SessionManager } from "@/components/source/SessionManager";
 import { MessageActions } from "@/components/source/MessageActions";
 import {
   convertReferencesToCompactMarkdown,
@@ -95,12 +110,13 @@ export function ChatPanel({
   getVoiceContextPayload,
   onAppendVoiceTurn,
 }: ChatPanelProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const chatInputId = useId();
   const [input, setInput] = useState("");
   const [voiceTranscript, setVoiceTranscript] = useState("");
   const voiceTranscriptRef = useRef("");
-  const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { openModal } = useModalManager();
@@ -168,64 +184,119 @@ export function ChatPanel({
       onError: (message) => toast.error(message),
     });
 
+  const handleDeleteConfirm = () => {
+    if (deleteSessionId && onDeleteSession) {
+      onDeleteSession(deleteSessionId);
+      setDeleteConfirmOpen(false);
+      setDeleteSessionId(null);
+    }
+  };
+
   return (
     <>
       <Card className="flex flex-col h-full flex-1 overflow-hidden">
-        <CardHeader className="pb-3 flex-shrink-0">
+        <CardHeader className="py-4 px-5 flex-shrink-0 border-b">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="h-5 w-5" />
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Bot className="h-4 w-4 text-muted-foreground" />
               {title ||
                 (contextType === "source"
                   ? t.chat.chatWith.replace("{name}", t.navigation.sources)
                   : t.chat.chatWith.replace("{name}", t.common.module))}
-            </CardTitle>
-            {onSelectSession && onCreateSession && onDeleteSession && (
-              <Dialog
-                open={sessionManagerOpen}
-                onOpenChange={setSessionManagerOpen}
-              >
+            </div>
+            <div className="flex items-center gap-1">
+              {/* Create new session */}
+              {onCreateSession && (
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="gap-2"
-                  onClick={() => setSessionManagerOpen(true)}
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => onCreateSession(t.chat.newChat)}
                   disabled={loadingSessions}
+                  title={t.chat.newChat}
                 >
-                  <Clock className="h-4 w-4" />
-                  <span className="text-xs">{t.chat.sessions}</span>
+                  <Plus className="h-3.5 w-3.5" />
                 </Button>
-                <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
-                  <DialogTitle className="sr-only">
-                    {t.chat.sessionsTitle}
-                  </DialogTitle>
-                  <SessionManager
-                    sessions={sessions}
-                    currentSessionId={currentSessionId ?? null}
-                    onCreateSession={(title) => onCreateSession?.(title)}
-                    onSelectSession={(sessionId) => {
-                      onSelectSession(sessionId);
-                      setSessionManagerOpen(false);
-                    }}
-                    onUpdateSession={(sessionId, title) =>
-                      onUpdateSession?.(sessionId, title)
-                    }
-                    onDeleteSession={(sessionId) =>
-                      onDeleteSession?.(sessionId)
-                    }
-                    loadingSessions={loadingSessions}
-                  />
-                </DialogContent>
-              </Dialog>
-            )}
+              )}
+              {/* Session history dropdown */}
+              {onSelectSession && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      disabled={loadingSessions}
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-72">
+                    <DropdownMenuLabel>{t.chat.sessions}</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {sessions.length === 0 ? (
+                      <div className="px-2 py-3 text-sm text-muted-foreground text-center">
+                        {t.chat.noSessions}
+                      </div>
+                    ) : (
+                      sessions.map((session) => (
+                        <DropdownMenuItem
+                          key={session.id}
+                          onClick={() => onSelectSession(session.id)}
+                          className="flex items-start justify-between gap-2 py-2"
+                        >
+                          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span
+                              className={`text-sm truncate ${
+                                currentSessionId === session.id
+                                  ? "font-semibold"
+                                  : ""
+                              }`}
+                            >
+                              {session.title}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatDistanceToNow(new Date(session.created), {
+                                addSuffix: true,
+                                locale: getDateLocale(language),
+                              })}
+                              {session.message_count != null &&
+                                session.message_count > 0 &&
+                                ` · ${t.chat.messagesCount.replace(
+                                  "{count}",
+                                  session.message_count.toString()
+                                )}`}
+                            </span>
+                          </div>
+                          {onDeleteSession && (
+                            <button
+                              type="button"
+                              className="flex-shrink-0 p-1 rounded hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setDeleteSessionId(session.id);
+                                setDeleteConfirmOpen(true);
+                              }}
+                              title={t.chat.deleteSession}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col min-h-0 p-0">
-          <ScrollArea className="flex-1 min-h-0 px-4" ref={scrollAreaRef}>
-            <div className="space-y-4 py-4">
+          <ScrollArea className="flex-1 min-h-0 px-6" ref={scrollAreaRef}>
+            <div className="space-y-5 py-5">
               {messages.length === 0 ? (
                 <div className="text-center text-muted-foreground py-8">
-                  <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p className="text-sm">
                     {t.chat.startConversation.replace(
                       "{type}",
@@ -345,7 +416,7 @@ export function ChatPanel({
 
           {/* Context Indicators */}
           {contextIndicators && (
-            <div className="border-t px-4 py-2">
+            <div className="border-t px-5 py-3">
               <div className="flex flex-wrap gap-2 text-xs">
                 {contextIndicators.sources?.length > 0 && (
                   <Badge variant="outline" className="gap-1">
@@ -387,7 +458,7 @@ export function ChatPanel({
           )}
 
           {/* Input Area */}
-          <div className="flex-shrink-0 p-4 space-y-3 border-t">
+          <div className="flex-shrink-0 px-5 py-4 space-y-3 border-t">
             {(isRecording || voiceTranscript) && (
               <p className="text-xs text-muted-foreground">
                 {isRecording ? "Recording..." : voiceTranscript}
@@ -401,27 +472,14 @@ export function ChatPanel({
                   size="icon"
                   className="h-[40px] w-[40px] flex-shrink-0"
                   disabled={isStreaming}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    startRecording();
-                  }}
-                  onPointerUp={(e) => {
-                    e.preventDefault();
-                    stopRecording();
-                  }}
-                  onPointerCancel={(e) => {
-                    e.preventDefault();
+                  onClick={() => {
                     if (isRecording) {
                       stopRecording();
+                    } else {
+                      startRecording();
                     }
                   }}
-                  onPointerLeave={(e) => {
-                    e.preventDefault();
-                    if (isRecording) {
-                      stopRecording();
-                    }
-                  }}
-                  title={isRecording ? "Release to send" : "Hold to talk"}
+                  title={isRecording ? "Click to stop and send" : "Click to start recording"}
                 >
                   <Mic className="h-4 w-4" />
                 </Button>
@@ -456,6 +514,26 @@ export function ChatPanel({
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.chat.deleteSession}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t.chat.deleteSessionDesc}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>
+              {t.common.delete}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -480,9 +558,7 @@ function AIMessageContent({
 
   return (
     <div className="prose prose-sm prose-neutral max-w-none break-words prose-headings:font-semibold prose-a:text-info prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+      <MathMarkdown
         components={{
           a: LinkComponent,
           p: ({ children }) => <p className="mb-4">{children}</p>,
@@ -519,8 +595,8 @@ function AIMessageContent({
           ),
         }}
       >
-        {normalizeLatexDelimiters(markdownWithCompactRefs)}
-      </ReactMarkdown>
+        {markdownWithCompactRefs}
+      </MathMarkdown>
     </div>
   );
 }

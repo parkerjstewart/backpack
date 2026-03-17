@@ -215,7 +215,7 @@ export function LearningGoalsPanel({
     <div className="h-full min-w-0 flex flex-col min-h-0">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between mb-4">
-        <Label className="text-title text-teal-800">Learning Goals</Label>
+        <Label className="text-title text-primary">Learning Goals</Label>
         <Button
           type="button"
           variant="ghost"
@@ -293,7 +293,7 @@ export function LearningGoalsPanel({
 
           {/* Empty state */}
           {!isGenerating && learningGoals.length === 0 && (
-            <p className="font-sans text-[16px] font-normal tracking-[-0.01em] text-teal-800 text-center py-4">
+            <p className="font-sans text-[16px] font-normal tracking-[-0.01em] text-primary text-center py-4">
               No learning goals yet. Add a goal or wait for auto-generation.
             </p>
           )}

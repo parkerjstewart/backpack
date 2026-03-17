@@ -47,16 +47,20 @@ Design ONE anchor problem that:
 4. **Is "fill-in-the-gap" style** — present a partial scenario and ask the student to work through it, not "explain X from scratch"
 5. **Sounds like a real tutor talking** — conversational, not exam-like
 
-Also write a natural **opening_framing**: the first thing the tutor says to introduce this problem. Should sound casual and engaging — "Let's work through..." or "Alright, here's a problem..."
+Also write a natural **opening_framing**: the first thing the tutor says to introduce this problem. Should sound casual and engaging.
 
-**Important**: Don't assume the student remembers the specific lecture example. Introduce the scenario as fresh context: "Let's try a Poisson problem. Imagine a doctor who records the number of calls she gets per day..." — NOT "Remember the doctor example from lecture?"
+**Critical rules for opening_framing:**
+- Introduce the scenario as **fresh context** — never say "that X example" or "remember the Y problem." The student may not have read the materials. Write as if introducing the scenario for the first time: "Imagine a doctor who records the number of calls she gets per day..." not "Let's use that doctor example."
+- Set up the scenario/context only — do NOT define or explain the concept being assessed (e.g., do NOT say "MLE is basically..." — that's what the student should tell you)
+- Ask ONE open-ended question at the end: "Where would you start?" or "What's your first instinct?" — NOT a multiple-choice question that telegraphs the steps
+- 2-3 sentences total
 
 # OUTPUT FORMAT
 
 ```json
 {
   "anchor_problem": "The full description of the problem scenario (2-4 sentences setting up what you're asking them to work through)",
-  "opening_framing": "The natural intro message the tutor says to kick things off (2-3 sentences, casual tone, introduces the scenario as fresh context without assuming lecture recall)"
+  "opening_framing": "The natural intro message the tutor says to kick things off (2-3 sentences). Sets up the scenario as fresh context. Ends with one open-ended question ('Where would you start?'). Does NOT define or explain the target concept — that is for the student to demonstrate."
 }
 ```
 

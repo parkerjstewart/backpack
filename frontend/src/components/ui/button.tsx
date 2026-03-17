@@ -21,7 +21,7 @@ const buttonVariants = cva(
         // Outline button - Figma: 2px dashed border, border/strong, text/secondary
         // Hover: surface/secondary background (neutral, not sage accent)
         outline:
-          "border-2 border-dashed border-teal-800 bg-transparent text-teal-800 hover:bg-secondary",
+          "border-2 border-dashed border-primary bg-transparent text-primary hover:bg-secondary",
         // Destructive (hard red)
         destructive:
           "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20",

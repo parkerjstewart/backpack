@@ -30,6 +30,8 @@ interface CreateModuleWizardProps {
   courseId?: string;
   /** When true, skips draft reset and closes instead of navigating to the review page. */
   addMoreMode?: boolean;
+  /** Called for each successfully created source (useful in addMoreMode to link to a module). */
+  onSourceCreated?: (sourceId: string) => void;
 }
 
 export function CreateModuleWizard({
@@ -37,6 +39,7 @@ export function CreateModuleWizard({
   onOpenChange,
   courseId,
   addMoreMode = false,
+  onSourceCreated,
 }: CreateModuleWizardProps) {
   const router = useRouter();
   const { addPendingSource, setTargetCourseId, reset } = useModuleDraftStore();
@@ -106,7 +109,10 @@ export function CreateModuleWizard({
           delete_source: false,
           file,
         } as Parameters<typeof createSource.mutateAsync>[0]);
-        if (result?.id) addPendingSource(result.id);
+        if (result?.id) {
+          addPendingSource(result.id);
+          onSourceCreated?.(result.id);
+        }
       }
       navigateToReview();
     } catch (error) {
@@ -146,7 +152,10 @@ export function CreateModuleWizard({
             async_processing: true,
             delete_source: false,
           });
-          if (result?.id) addPendingSource(result.id);
+          if (result?.id) {
+            addPendingSource(result.id);
+            onSourceCreated?.(result.id);
+          }
         }
       } else {
         if (!textContent.trim()) {
@@ -163,7 +172,10 @@ export function CreateModuleWizard({
           async_processing: true,
           delete_source: false,
         });
-        if (result?.id) addPendingSource(result.id);
+        if (result?.id) {
+          addPendingSource(result.id);
+          onSourceCreated?.(result.id);
+        }
       }
       navigateToReview();
     } catch (error) {
@@ -260,7 +272,7 @@ export function CreateModuleWizard({
                   "inline-flex flex-1 items-center justify-center gap-2 h-12 px-8 rounded-md text-base font-medium tracking-[-0.01em] transition-colors disabled:pointer-events-none disabled:opacity-50",
                   value === mode
                     ? "bg-primary text-primary-foreground"
-                    : "border border-border text-teal-800 hover:bg-secondary"
+                    : "border border-border text-primary hover:bg-secondary"
                 )}
               >
                 <Icon className="h-4 w-4" />

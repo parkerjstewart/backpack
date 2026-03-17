@@ -12,8 +12,9 @@ import { modulesApi } from '@/lib/api/modules'
 import { useModuleDraftStore } from '@/lib/stores/module-draft-store'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, CheckCircle2, Trash2, RotateCcw, Bug, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Trash2, RotateCcw, Bug } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -34,6 +35,14 @@ export default function TryTutorPage() {
   const moduleId = params?.id ? decodeURIComponent(params.id as string) : ''
   const hasInitializedRef = useRef(false)
 
+  const { isCollapsed, setCollapsed } = useSidebarStore()
+  useEffect(() => {
+    const prev = isCollapsed
+    setCollapsed(true)
+    return () => setCollapsed(prev)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const { reset: resetDraftStore } = useModuleDraftStore()
   const { data: module, isLoading: moduleLoading } = useModule(moduleId)
 
@@ -41,7 +50,7 @@ export default function TryTutorPage() {
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
-  const [showCanvas, setShowCanvas] = useState(true)
+  const [showCanvas, setShowCanvas] = useState(false)
 
   // Resizable chat panel width
   const [chatWidth, setChatWidth] = useState(420)
@@ -71,6 +80,7 @@ export default function TryTutorPage() {
 
   const {
     messages,
+    artifacts,
     isSending,
     isInitializing,
     currentGoal,
@@ -81,6 +91,9 @@ export default function TryTutorPage() {
     latestDebugInfo,
     setExportCanvas,
     getWhiteboardPng,
+    suggestions,
+    isSuggestionsLoading,
+    streamingMessage,
     initializeSession,
     sendMessage,
     resetSession,
@@ -179,10 +192,9 @@ export default function TryTutorPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowDiscardDialog(true)}
+                onClick={() => router.back()}
               >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                {t.common.back}
+                <ArrowLeft className="h-4 w-4" />
               </Button>
               <h1 className="text-xl font-semibold">
                 {t.tutor.tryTutor}: {module.name}
@@ -190,7 +202,7 @@ export default function TryTutorPage() {
             </div>
             <div className="flex items-center gap-2">
               <Button
-                variant="outline"
+                variant="light"
                 size="sm"
                 onClick={handleTryAgain}
                 disabled={!isDraftModule || isInitializing || isSending}
@@ -199,19 +211,7 @@ export default function TryTutorPage() {
                 {t.tutor.tryAgain}
               </Button>
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowCanvas(v => !v)}
-                title={showCanvas ? 'Hide whiteboard' : 'Show whiteboard'}
-              >
-                {showCanvas ? (
-                  <PanelRightClose className="h-4 w-4" />
-                ) : (
-                  <PanelRightOpen className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant={showDebug ? 'default' : 'outline'}
+                variant="light"
                 size="sm"
                 onClick={() => setShowDebug(v => !v)}
                 title="Toggle agent debug panel"
@@ -219,7 +219,7 @@ export default function TryTutorPage() {
                 <Bug className="h-4 w-4" />
               </Button>
               <Button
-                variant="outline"
+                variant="light"
                 size="sm"
                 onClick={() => setShowDiscardDialog(true)}
                 disabled={!isDraftModule || isDiscarding}
@@ -244,7 +244,7 @@ export default function TryTutorPage() {
         </div>
 
         {/* Chat + Canvas + Debug Area */}
-        <div ref={containerRef} className="flex-1 min-h-0 flex overflow-hidden">
+        <div ref={containerRef} className="flex-1 min-h-0 flex overflow-hidden relative">
           {/* Chat panel */}
           <div
             className="flex flex-col min-h-0 p-6 flex-shrink-0"
@@ -252,6 +252,7 @@ export default function TryTutorPage() {
           >
             <TutorChat
               messages={messages}
+              artifacts={artifacts}
               isSending={isSending}
               isInitializing={isInitializing}
               onSendMessage={sendMessage}
@@ -265,6 +266,9 @@ export default function TryTutorPage() {
               onAppendVoiceTurn={appendVoiceTurn}
               canAttachDrawing={showCanvas}
               getWhiteboardPng={showCanvas ? getWhiteboardPng : undefined}
+              suggestions={suggestions}
+              isSuggestionsLoading={isSuggestionsLoading}
+              streamingMessage={streamingMessage}
               className="flex-1 min-w-0"
             />
           </div>
@@ -295,9 +299,9 @@ export default function TryTutorPage() {
             </div>
           )}
 
-          {/* Debug panel */}
+          {/* Debug panel — absolute overlay so it doesn't push content off-screen */}
           {showDebug && (
-            <div className="w-80 flex-shrink-0 min-h-0 border-l p-4 overflow-y-auto">
+            <div className="absolute right-0 top-0 bottom-0 w-80 max-w-[85vw] p-4 overflow-y-auto bg-background border-l border-border z-10 shadow-lg">
               <TutorDebugPanel debugInfo={latestDebugInfo} currentGoal={currentGoal} />
             </div>
           )}

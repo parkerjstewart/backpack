@@ -132,13 +132,13 @@ The evaluator's guidance tells the LLM *what* to address; the behavioral profile
 
 | Profile | When selected | Key behavior |
 |---------|--------------|--------------|
-| `opening` | First turn on a goal | Present anchor problem naturally, invite initial thinking |
-| `guide` | Default — `continue` or `probe` action | Collaborative back-and-forth; can ask, tell, or do both |
+| `opening` | First turn on a goal | Present anchor problem as fresh context (never "that X example from class"), no concept definitions, one open-ended question |
+| `guide` | Default — `continue` or `probe` action | Ask questions only — never state what a concept "is", never preview upcoming steps; one question then stop |
 | `nudge` | `continue` + active score ≥ 0.55 | Short 1-2 sentence push toward specific gap |
-| `give_fact` | `macro_hint` action | Give the missing fact directly, then re-engage |
-| `explain` | `explain_competency` action or stagnation | Comprehensive explanation; use Key Takeaways |
-| `transition` | Competency mastered → advancing | Celebrate, clarify minor gaps, bridge naturally |
-| `tangent` | `tangent` action | Help directly with off-topic question; reconnect after |
+| `give_fact` | `macro_hint` action | Give the missing fact directly, create artifact if formula, acknowledge artifact in message |
+| `explain` | `explain_competency` action or stagnation | Comprehensive explanation; use Key Takeaways; create artifact for equations, acknowledge it in message |
+| `transition` | Competency mastered → advancing | Celebrate, briefly fill any remaining gap conversationally, bridge naturally; only artifact things already covered |
+| `tangent` | `tangent` action | Brief answer (1-2 sentences); reconnect to exactly where they left off, not forward-looking |
 
 **Routing priority**: `tangent` → `advance` → safety net → mastery check → `explain_competency` → `macro_hint` → `probe/needs_more_info` → stagnation → score-based (`nudge` vs `guide`).
 
@@ -146,7 +146,25 @@ The evaluator's guidance tells the LLM *what* to address; the behavioral profile
 
 **Competency names stay internal**: All profiles NEVER quote the competency rubric text to the student. The competency is the agent's internal assessment target — questions should feel natural, framed through the problem.
 
-### Tangent Handling
+### Artifact System
+
+Artifacts are formula/definition cards on the student's reference board. They are created by the tutor LLM via the `new_artifact` field in `TutorResponse`.
+
+**When artifacts are created**:
+- **Rescue**: Student is genuinely stuck (evaluator routed to `give_fact` or `explain`). Artifact unblocks them.
+- **Confirmation**: Student just demonstrated understanding of the concept. Artifact formalizes what they proved they know.
+- **Never preemptively**: Do not create an artifact for a concept the student hasn't engaged with yet or is still being asked to demonstrate.
+- Modes that may create artifacts: `give_fact`, `explain`, `transition` (covered material only). Modes that must not: `guide`, `nudge`, `tangent`, `opening` (unless the student explicitly asked for a formula to be written down).
+
+**Acknowledgment rule**: When an artifact is created, the tutor's `message` must naturally reference it. The artifact should never silently appear. Examples:
+- Rescue: "Here's the general likelihood formula for your board — try plugging in the Poisson PMF we already have."
+- Confirmation: "Exactly — I've put the formal version on your board for reference."
+
+**Toolkit philosophy (composability over specificity)**: Artifacts are reusable building blocks. Always check `ESTABLISHED ARTIFACTS` before creating a new one — if the new artifact is just an existing one plugged into another formula, add the general wrapper formula instead. Example: board has "Poisson PMF"; student needs likelihood → add "Joint likelihood" `L(θ) = ∏ P(Xᵢ=xᵢ; θ)`, not "Poisson joint likelihood."
+
+**Artifact tracking in hint scoring**: When an artifact is created in `give_fact` or `explain` mode, `hint_count` is incremented on the active competency and the artifact label is added to `artifacts_given`. The evaluator sees `artifacts_given` and applies the same scoring penalty as a macro hint (recall-level: student demonstrated application but not independent recall).
+
+**`reference_artifact_label`**: The tutor can also highlight an existing artifact by label (any mode), without creating a new one.
 
 When the evaluator returns `"tangent"`:
 - Router sets `is_tangent=True`, `tangent_turns=1`, `tutor_mode="tangent"`
@@ -166,9 +184,9 @@ Each competency progresses through: `pending` → `active` → `mastered` (score
 - **`mastered`**: Score ≥ 0.65 achieved through probing or spontaneous demonstration. Stagnation at score ≥ 0.65 also triggers mastery (not explain).
 - **`explained`**: Student couldn't demonstrate — tutor explained it and advanced.
 
-**Transition on mastery**: When a competency is mastered and the agent advances to the next, it uses `transition` mode — celebrates mastery, clarifies any minor remaining gap, and naturally bridges to the next topic. Previous competency info (evidence, gap, hypotheses) is passed via `transitioning_from_competency` state field.
+**Transition on mastery**: When a competency is mastered and the agent advances to the next, it uses `transition` mode — celebrates mastery, fills any remaining gap conversationally ("just to round things out…"), and naturally bridges to the next topic. Previous competency info (evidence, gap, hypotheses) is passed via `transitioning_from_competency` state field. The `transition_guidance` string always includes the gap text when one exists.
 
-**hint_count**: Each `macro_hint` on a competency increments its `hint_count`. The evaluator applies a recall-vs-conceptual scoring penalty: recall hints (forgot formula but used it expertly) → mild penalty; conceptual hints (needed the relationship explained) → larger penalty.
+**hint_count**: Each `macro_hint` on a competency increments its `hint_count`. When an artifact is created in `give_fact` or `explain` mode, it also increments `hint_count` and records the artifact label in `artifacts_given`. The evaluator applies a recall-vs-conceptual scoring penalty: recall hints (forgot formula but used it expertly) → mild penalty; conceptual hints (needed the relationship explained) → larger penalty. Artifacts are treated the same as recall hints.
 
 Goal completes when all competencies are `mastered` or `explained`.
 
@@ -186,9 +204,9 @@ The evaluator produces two key outputs per exchange:
 | `"probe"` | Response too vague to score active competency, specific new angle exists | Must be specific: name what to demonstrate |
 | `"macro_hint"` | Same factual gap on active competency probed 2+ times, no progress | Recall gap vs. reasoning gap |
 | `"explain_competency"` | Student can't reason about this specific competency at all | Would more probing ever help on THIS one? |
-| `"advance"` | Active competency clearly mastered | Explicitly move to next |
+| `"advance"` | Active competency mastered AND gaps have been addressed | Score ≥ 0.85: unconditional. Score 0.65-0.84: only if identified gap has been probed at least once |
 | `"continue"` | Normal flow | Default — use score-based routing |
-| `"tangent"` | Student's response/question is off-topic for assessing the active competency | Distinguish from in-scope help requests |
+| `"tangent"` | Student's response/question is off-topic for assessing the active competency | Distinguish from in-scope help requests; asking for the answer to the active competency is NOT tangent |
 
 `tutor_guidance` is specific and actionable — like a note from a teaching assistant to the lead tutor. It tells the tutor what the student did, what to address, and how to respond.
 
@@ -412,3 +430,4 @@ INFO  Macro hint triggered: Probed Poisson PMF from 3 angles...
 | v6.2 | Flexible socratic mode + probe loop fix. Removed `probe` as a no-LLM mode — probe evaluator action now routes to `socratic` with evaluator's `probe_question` as `suggested_focus` (LLM responds to student's actual words, not a verbatim script). Socratic mode expanded with scaffolding guidance: when student asks for help, tutor gives a stepping stone (context, prior step, related formula) before asking a question. Fixed routing priority bug: `macro_hint` and `explain_competency` now checked before `needs_more_info`, so explicit evaluator escalation is respected. Evaluator updated: student requests for help are scaffolding opportunities (not macro_hint triggers); probe diversity check (repeated identical probes replaced by `continue`); strengthened consistency check (engaging student = not `explain_competency`). |
 | v7 | Autonomy redesign. Replaced rigid mode-specific prompt blocks with a unified tutor prompt: evaluator's `tutor_guidance` (what to do) + behavioral profile (how to do it) + general guidelines (always apply). Profiles: `opening`, `guide`, `nudge`, `give_fact`, `explain`, `transition`, `tangent`. Evaluator now produces `tutor_guidance` — natural-language recommendation for the tutor — in addition to `suggested_next_action`. Added tangent handling: new `"tangent"` evaluator action, lightweight `evaluate_tangent.jinja` for subsequent tangent turns, `is_tangent`/`tangent_turns`/`tangent_topic` state fields. Added `demonstrated_knowledge` section to tutor prompt (prevents re-testing). Removed explain auto-advance: after explaining, evaluator runs normally on next response (student can ask follow-ups before advancing). Fixed stagnation: now `turns_since_progress >= MAX_NO_PROGRESS_TURNS (3)` instead of encounters-based. Mode renames: `open`→`opening`, `socratic`→`guide`, `macro_hint`→`give_fact`, `explain_competency`→`explain`. Debug panel updated: new mode colors, `evaluator_guidance` shown prominently. |
 | v7.1 | Tangent detection fix + post-budget handling. Evaluator was never selecting `"tangent"` action because: (1) Step 0 anchored on scoring before checking topic relevance, (2) no tangent output example in OUTPUT FORMAT biased LLM away from it. Fix: added "Step -1: Tangent pre-check" before model answer drafting — evaluator now checks if response is on-topic first and short-circuits to tangent if not. Added tangent output example alongside existing `explain_competency` and `probe` examples. Post-budget tangent handling: when `tangent_episodes >= MAX_TANGENT_EPISODES_PER_COMPETENCY`, tutor now firmly redirects WITHOUT answering the off-topic question (previously used evaluator's "answer them" guidance which bypassed the redirect). Budget-exhausted turns count toward encounters/stagnation since they go through the full eval pipeline. |
+| v7.2 | Artifact system overhaul + Socratic tightening. **Artifacts**: Added timing rules (rescue or confirmation only — never preemptive); added acknowledgment rule (message must reference the artifact); added toolkit composability rules (add general wrapper, not problem-specific compositions). Artifact creation in `give_fact`/`explain` now increments `hint_count` and records label in `artifacts_given`; evaluator receives `artifacts_given` and applies recall-level scoring penalty (same as macro hint). **Tangent behavior**: Tangent answers now brief (1-2 sentences); reconnect returns to exactly where they left off, not forward-looking. **Tangent classification**: Tightened — student asking for the answer to the active competency is NOT a tangent (`probe`/`macro_hint`); vague/evasive answers are NOT tangents (`continue`/`probe`). **Incidental mastery**: Higher bar — student must independently demonstrate (≥0.75) not just parrot tutor's explanation. **Opening**: Added rule to introduce scenario as fresh context — never assume prior student exposure to source examples ("that X setup"). **Guide mode**: Strengthened against info-giving — must not define concepts, must not preview steps; one question then stop. **Advance logic**: Score 0.65-0.84 advance only if identified gap has been probed at least once; score ≥0.85 unconditional. **Transition**: `transition_guidance` now always includes gap text; tutor fills gaps conversationally during transition ("just to round things out…") rather than silently advancing past them. |

@@ -8,7 +8,7 @@ class ModuleCreate(BaseModel):
     name: str = Field(..., description="Name of the module")
     description: str = Field(default="", description="Description of the module")
     course_id: Optional[str] = Field(None, description="ID of the course this module belongs to")
-    status: Literal["draft", "published"] = Field(
+    status: Literal["draft", "published", "paused"] = Field(
         default="published",
         description="Module status",
     )
@@ -22,6 +22,7 @@ class ModuleUpdate(BaseModel):
     )
     overview: Optional[str] = Field(None, description="AI-generated overview of the module")
     course_id: Optional[str] = Field(None, description="ID of the course this module belongs to")
+    order: Optional[int] = Field(None, description="Display order within the course")
 
 
 class ModuleResponse(BaseModel):
@@ -29,7 +30,7 @@ class ModuleResponse(BaseModel):
     name: str
     description: str
     archived: bool
-    status: Literal["draft", "published"] = "published"
+    status: Literal["draft", "published", "paused"] = "published"
     overview: Optional[str] = None
     created: str
     updated: str
@@ -37,6 +38,16 @@ class ModuleResponse(BaseModel):
     note_count: int
     learning_goal_count: int = 0
     course_id: Optional[str] = None
+    order: int = 0
+
+
+class ModuleReorderItem(BaseModel):
+    module_id: str
+    order: int
+
+
+class ModuleReorderRequest(BaseModel):
+    modules: List[ModuleReorderItem]
 
 
 # Learning Goals models
@@ -644,7 +655,6 @@ class StudentWithMasteryResponse(BaseModel):
 # Invitation API models
 # ============================================
 class CreateInvitationRequest(BaseModel):
-    name: str = Field(..., description="Name of the invitee")
     email: str = Field(..., description="Email of the invitee")
     role: Literal["student", "instructor", "ta"] = Field(
         "student", description="Role in the course"
@@ -670,6 +680,25 @@ class InvitationResponse(BaseModel):
 # Study Tools API models
 # ============================================
 
-class StudyToolResponse(BaseModel):
-    content: str
+class StudyToolResultResponse(BaseModel):
+    id: str
     module_id: str
+    tool_type: str
+    title: str
+    data: dict
+    status: str = "completed"  # "generating" | "completed" | "failed"
+    created: str
+    updated: str
+
+
+class EnrollmentRequestResponse(BaseModel):
+    """Response model for a student-initiated enrollment request."""
+    id: str
+    course_id: str
+    course_title: Optional[str] = None
+    student_name: Optional[str] = None
+    student_email: str
+    student_id: str  # The user who requested (invitation.invited_by)
+    role: str        # Always "student" for self-initiated requests
+    status: str      # "requested" | "accepted" | "declined"
+    created: Optional[str] = None

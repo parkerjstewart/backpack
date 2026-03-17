@@ -14,6 +14,7 @@ from api.models import (
     CourseResponse,
     CourseUpdate,
     ModuleMasteryResponse,
+    ModuleReorderRequest,
     StudentWithMasteryResponse,
 )
 from api.routers.authz import (
@@ -21,10 +22,13 @@ from api.routers.authz import (
     get_current_user_id_from_auth,
     require_authenticated_user_id,
     require_course_membership_role,
+    require_instructor_role,
     require_teaching_role,
 )
 from backpack.database.repository import ensure_record_id, repo_query
 from backpack.domain.course import Course, User
+from backpack.domain.module import Module
+from backpack.domain.invitation import Invitation
 
 router = APIRouter()
 
@@ -193,10 +197,15 @@ async def update_course(
     course_update: CourseUpdate,
     authorization: Optional[str] = Header(None),
 ):
-    """Update a course."""
+    """Update a course. Archiving requires instructor role; title/description allow TA."""
     try:
         user_id = require_authenticated_user_id(authorization)
-        membership_role = await require_teaching_role(course_id, user_id)
+
+        # Archiving is a destructive action — instructor only
+        if course_update.archived is not None:
+            membership_role = await require_instructor_role(course_id, user_id)
+        else:
+            membership_role = await require_teaching_role(course_id, user_id)
 
         course = await Course.get(course_id)
         if not course:
@@ -244,10 +253,10 @@ async def update_course(
 
 @router.delete("/courses/{course_id}")
 async def delete_course(course_id: str, authorization: Optional[str] = Header(None)):
-    """Delete a course."""
+    """Delete a course. Instructor only."""
     try:
         user_id = require_authenticated_user_id(authorization)
-        await require_teaching_role(course_id, user_id)
+        await require_instructor_role(course_id, user_id)
 
         course = await Course.get(course_id)
         if not course:
@@ -494,3 +503,135 @@ async def remove_course_member(
     except Exception as e:
         logger.error(f"Error removing member from course {course_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error removing member: {str(e)}")
+
+
+# ============================================
+# Enrollment request endpoints (student-initiated)
+# ============================================
+
+
+@router.post("/courses/{course_id}/request-enrollment")
+async def request_enrollment(
+    course_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Student requests to join a course using the course ID.
+    Creates an enrollment request for teaching staff to approve or deny.
+    """
+    try:
+        user_id = require_authenticated_user_id(authorization)
+
+        # Accept bare IDs (e.g. "sm9odef...") or full IDs ("course:sm9odef...")
+        if ":" not in course_id:
+            course_id = f"course:{course_id}"
+
+        course = await Course.get(course_id)
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+        if course.archived:
+            raise HTTPException(
+                status_code=400, detail="Cannot request enrollment in an archived course"
+            )
+
+        user = await User.get(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Check if already enrolled
+        existing_role = await get_course_membership_role(course_id, user_id)
+        if existing_role:
+            raise HTTPException(
+                status_code=409, detail="You are already enrolled in this course"
+            )
+
+        # Check for duplicate pending request (student-initiated) or existing invitation (instructor-sent)
+        existing_request = await Invitation.get_request_by_user_and_course(
+            user_id, course_id, email=user.email
+        )
+        if existing_request:
+            raise HTTPException(
+                status_code=409,
+                detail="You already have a pending enrollment request for this course",
+            )
+
+        invitation = Invitation(
+            course_id=course_id,
+            email=user.email,
+            name=user.name or user.email,
+            role="student",
+            status="requested",
+            invited_by=user_id,
+        )
+        await invitation.save()
+
+        return {"status": "requested", "message": "Enrollment request submitted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error requesting enrollment for course {course_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error submitting enrollment request: {str(e)}"
+        )
+
+
+@router.delete("/courses/{course_id}/leave")
+async def leave_course(
+    course_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Student or TA leaves a course (removes their own membership).
+    Instructors cannot leave their own course; they must archive or delete it.
+    """
+    try:
+        user_id = require_authenticated_user_id(authorization)
+
+        # Normalize bare IDs (e.g. "sm9odef...") to full IDs ("course:sm9odef...")
+        if ":" not in course_id:
+            course_id = f"course:{course_id}"
+
+        role = await require_course_membership_role(course_id, user_id)
+
+        if role == "instructor":
+            raise HTTPException(
+                status_code=400,
+                detail="Instructors cannot leave a course. Archive or delete it instead.",
+            )
+
+        course = await Course.get(course_id)
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        await course.remove_member(user_id)
+        return {"message": "You have left the course successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error leaving course {course_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error leaving course: {str(e)}")
+
+
+@router.put("/courses/{course_id}/modules/reorder")
+async def reorder_course_modules(
+    course_id: str,
+    request: ModuleReorderRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """Reorder modules within a course. Requires teaching role."""
+    try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_teaching_role(course_id, user_id)
+
+        for item in request.modules:
+            module = await Module.get(item.module_id)
+            if module and str(module.course) == str(ensure_record_id(course_id)):
+                module.order = item.order
+                await module.save()
+
+        return {"message": "Modules reordered successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reordering modules for course {course_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reordering modules: {str(e)}")

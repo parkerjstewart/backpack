@@ -73,3 +73,14 @@ async def require_teaching_role(course_id: str, user_id: str) -> str:
             detail="Only instructors and TAs can perform this action",
         )
     return role
+
+
+async def require_instructor_role(course_id: str, user_id: str) -> str:
+    """Require instructor role for destructive or privileged course-level actions."""
+    role = await require_course_membership_role(course_id, user_id)
+    if role != "instructor":
+        raise HTTPException(
+            status_code=403,
+            detail="Only the course instructor can perform this action",
+        )
+    return role

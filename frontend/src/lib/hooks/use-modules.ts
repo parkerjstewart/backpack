@@ -78,6 +78,56 @@ export function useUpdateModule() {
   })
 }
 
+export function usePublishModule() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const { t } = useTranslation()
+
+  return useMutation({
+    mutationFn: (id: string) => modulesApi.publish(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.modules })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.module(id) })
+      toast({
+        title: t.common.success,
+        description: 'Module published. Students can now start tutoring sessions.',
+      })
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: t.common.error,
+        description: t(getApiErrorKey(error, t.common.error)),
+        variant: 'destructive',
+      })
+    },
+  })
+}
+
+export function useUnpublishModule() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const { t } = useTranslation()
+
+  return useMutation({
+    mutationFn: (id: string) => modulesApi.unpublish(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.modules })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.module(id) })
+      toast({
+        title: t.common.success,
+        description: 'Module paused. Students can no longer start tutoring sessions.',
+      })
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: t.common.error,
+        description: t(getApiErrorKey(error, t.common.error)),
+        variant: 'destructive',
+      })
+    },
+  })
+}
+
 export function useDeleteModule() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -232,5 +282,17 @@ export function usePreviewModuleContent() {
   return useMutation({
     mutationFn: (data: PreviewModuleContentRequest) =>
       modulesApi.previewContent(data),
+  })
+}
+
+export function useReorderModules() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ courseId, modules }: { courseId: string; modules: { module_id: string; order: number }[] }) =>
+      modulesApi.reorderModules(courseId, modules),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.modules })
+    },
   })
 }

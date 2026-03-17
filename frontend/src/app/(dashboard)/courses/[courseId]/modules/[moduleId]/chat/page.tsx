@@ -17,13 +17,13 @@ import { ChatPanel } from "@/components/source/ChatPanel";
 import { getCoursePermissions } from "@/lib/permissions/course";
 import { cn } from "@/lib/utils";
 import {
-  ArrowLeft,
   ExternalLink,
   Upload,
   FileText,
 } from "lucide-react";
 import { SourceListResponse } from "@/lib/types/api";
 import { useModalManager } from "@/lib/hooks/use-modal-manager";
+import { useTranslation } from "@/lib/hooks/use-translation";
 import type { ContextSelections, ContextMode } from "@/app/(dashboard)/modules/[id]/page";
 
 // ─── Source type helpers ─────────────────────────────────────────────────────
@@ -126,6 +126,7 @@ export default function StudentChatPage() {
   const { data: module, isLoading: moduleLoading } = useModule(moduleId);
   const { sources, isLoading: sourcesLoading } = useModuleSources(moduleId);
   const { openModal } = useModalManager();
+  const { t } = useTranslation();
 
   // Redirect non-students — only students should access this route
   const permissions = getCoursePermissions(course?.membership_role);
@@ -164,10 +165,6 @@ export default function StudentChatPage() {
     }));
   };
 
-  const includedCount = sources.filter(
-    (s) => contextSelections.sources[s.id] !== "off"
-  ).length;
-
   if (moduleLoading || courseLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -180,7 +177,7 @@ export default function StudentChatPage() {
     return (
       <AppShell>
         <div className="p-8">
-          <h1 className="text-title text-teal-800 mb-2">Module not found</h1>
+          <h1 className="text-title text-primary mb-2">Module not found</h1>
           <Button asChild>
             <Link href={`/courses/${encodeURIComponent(courseId)}`}>
               Back to course
@@ -201,31 +198,22 @@ export default function StudentChatPage() {
               courseId={courseId}
               courseName={course.title}
               membershipRole={course.membership_role}
+              moduleName={module.name}
             />
           )}
         </div>
 
         {/* Chat area */}
-        <div className="flex flex-1 min-h-0 mt-4">
+        <div className="flex flex-1 min-h-0 mt-6">
           {/* Left sidebar: source context selection */}
           <div className="w-64 flex-shrink-0 flex flex-col border-r border-border">
             {/* Sidebar header */}
-            <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-border">
-              <Link
-                href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(moduleId)}`}
-                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Back to module
-              </Link>
-              <h3 className="text-sm font-medium text-teal-800 truncate">{module.name}</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {includedCount} of {sources.length} sources in context
-              </p>
+            <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-border">
+              <h3 className="text-title-sm text-primary">{t.navigation.sources}</h3>
             </div>
 
             {/* Source list */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {sourcesLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <LoadingSpinner size="sm" />
@@ -245,12 +233,7 @@ export default function StudentChatPage() {
                   return (
                     <div
                       key={source.id}
-                      className={cn(
-                        "flex items-start gap-2 p-2 rounded-md border transition-colors cursor-pointer",
-                        isIncluded
-                          ? "border-border bg-sidebar-accent"
-                          : "border-transparent hover:bg-secondary"
-                      )}
+                      className="flex items-start gap-2.5 p-2.5 rounded-md transition-colors cursor-pointer hover:bg-secondary"
                       onClick={() => openModal("source", source.id)}
                     >
                       {/* Toggle button */}
@@ -296,7 +279,7 @@ export default function StudentChatPage() {
                           </span>
                         </div>
                         {source.insights_count > 0 && (
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-xs text-muted-foreground">
                             {source.insights_count} insight
                             {source.insights_count !== 1 ? "s" : ""}
                           </span>
@@ -310,7 +293,7 @@ export default function StudentChatPage() {
           </div>
 
           {/* Right panel: Chat */}
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden p-6">
             <ModuleChatPanelWrapper
               moduleId={moduleId}
               contextSelections={contextSelections}

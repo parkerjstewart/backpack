@@ -1,13 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
 import { Pencil } from "lucide-react";
-import { cn, normalizeLatexDelimiters } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { MathMarkdown } from "@/components/ui/math-markdown";
 
 interface MarkdownViewEditProps {
   value: string;
@@ -105,12 +101,7 @@ export function MarkdownViewEdit({
     >
       {value ? (
         <div className="prose prose-sm max-w-none text-primary [&_p]:mb-2 [&_p:last-child]:mb-0 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:mb-2 [&_li]:mb-0.5">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeKatex]}
-          >
-            {normalizeLatexDelimiters(value)}
-          </ReactMarkdown>
+          <MathMarkdown>{value}</MathMarkdown>
         </div>
       ) : (
         <span className="text-muted-foreground italic text-sm">{placeholder}</span>

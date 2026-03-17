@@ -9,6 +9,7 @@ import { Button, IconButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   CourseHeader,
+  EnrollmentRequestRow,
   InviteDialog,
   StudentListRow,
   StudentProfileCard,
@@ -24,6 +25,9 @@ import {
   useCourseInvitations,
   useCancelInvitation,
   useCreateInvitation,
+  useCourseEnrollmentRequests,
+  useApproveEnrollmentRequest,
+  useDenyEnrollmentRequest,
 } from "@/lib/hooks/use-invitations";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import {
@@ -55,6 +59,22 @@ export default function CourseStudentsPage() {
   const cancelInvitation = useCancelInvitation(courseId);
   const resendInvitation = useCreateInvitation(courseId);
 
+  // Enrollment requests (student-initiated)
+  const { data: enrollmentRequests } = useCourseEnrollmentRequests(
+    permissions.canManageMembers ? courseId : undefined
+  );
+  const approveRequest = useApproveEnrollmentRequest(courseId);
+  const denyRequest = useDenyEnrollmentRequest(courseId);
+  // Track which request ID is being acted on for per-row loading state
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+
+  const pendingStudentInvitations = pendingInvitations?.filter(
+    (inv) => inv.role === "student"
+  );
+  const pendingStaffInvitations = pendingInvitations?.filter(
+    (inv) => inv.role === "instructor" || inv.role === "ta"
+  );
+
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<"student" | "instructor" | "ta">(
@@ -64,7 +84,6 @@ export default function CourseStudentsPage() {
   const isLoading =
     courseLoading || studentsLoading || teamLoading || attentionLoading;
 
-  // Filter students by search query
   const filteredStudents = students?.filter((student) => {
     const query = searchQuery.toLowerCase();
     return (
@@ -102,7 +121,6 @@ export default function CourseStudentsPage() {
     <AppShell>
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-8 p-8">
-          {/* Course Header with tabs */}
           <CourseHeader
             courseId={courseId}
             courseName={course.title}
@@ -111,7 +129,6 @@ export default function CourseStudentsPage() {
             )}
           />
 
-          {/* Search bar */}
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -123,12 +140,41 @@ export default function CourseStudentsPage() {
             />
           </div>
 
+          {/* Pending enrollment requests (student-initiated) */}
+          {permissions.canManageMembers &&
+            enrollmentRequests &&
+            enrollmentRequests.length > 0 && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-title text-primary">
+                Pending Requests ({enrollmentRequests.length})
+              </h2>
+              <div className="flex flex-col divide-y divide-border rounded-xl border border-border overflow-hidden">
+                {enrollmentRequests.map((req) => (
+                  <EnrollmentRequestRow
+                    key={req.id}
+                    request={req}
+                    onApprove={(id) => {
+                      setPendingRequestId(id)
+                      approveRequest.mutate(id, { onSettled: () => setPendingRequestId(null) })
+                    }}
+                    onDeny={(id) => {
+                      setPendingRequestId(id)
+                      denyRequest.mutate(id, { onSettled: () => setPendingRequestId(null) })
+                    }}
+                    isApproving={approveRequest.isPending && pendingRequestId === req.id}
+                    isDenying={denyRequest.isPending && pendingRequestId === req.id}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Needs Attention section */}
           {permissions.canManageMembers &&
             needsAttention &&
             needsAttention.length > 0 && (
             <section className="flex flex-col gap-4">
-              <h2 className="text-title text-teal-800">Needs Attention</h2>
+              <h2 className="text-title text-primary">Needs Attention</h2>
               <div className="flex flex-wrap gap-6">
                 {needsAttention.map((student) => (
                   <StudentProfileCard
@@ -144,7 +190,7 @@ export default function CourseStudentsPage() {
 
           {/* Teaching Team section */}
           <section className="flex flex-col gap-4">
-            <h2 className="text-title text-teal-800">Teaching Team</h2>
+            <h2 className="text-title text-primary">Teaching Team</h2>
             <div className="flex flex-wrap gap-6">
               {teachingTeam?.map((member) => (
                 <StudentProfileCard
@@ -154,7 +200,6 @@ export default function CourseStudentsPage() {
                   avatarUrl={member.avatar_url}
                 />
               ))}
-              {/* Add Teacher button with dotted outline */}
               {permissions.canManageMembers && (
                 <button
                   onClick={() => openInviteDialog("instructor")}
@@ -169,12 +214,31 @@ export default function CourseStudentsPage() {
                 </button>
               )}
             </div>
+            {permissions.canManageMembers && pendingStaffInvitations && pendingStaffInvitations.length > 0 && (
+              <div className="flex flex-col divide-y divide-border rounded-xl border border-border overflow-hidden mt-2">
+                {pendingStaffInvitations.map((inv) => (
+                  <StudentListRow
+                    key={inv.id}
+                    variant="pending"
+                    name={inv.name}
+                    email={inv.email}
+                    onCancel={() => cancelInvitation.mutate(inv.id)}
+                    onResend={() =>
+                      resendInvitation.mutate({
+                        email: inv.email,
+                        role: inv.role as "student" | "instructor" | "ta",
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            )}
           </section>
 
           {/* All Students section */}
           <section className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-title text-teal-800">
+              <h2 className="text-title text-primary">
                 All Students ({filteredStudents?.length ?? 0})
               </h2>
               {permissions.canManageMembers && (
@@ -182,13 +246,13 @@ export default function CourseStudentsPage() {
                   onClick={() => openInviteDialog("student")}
                   aria-label="Add student"
                 >
-                  <Plus className="h-6 w-6 text-teal-800" />
+                  <Plus className="h-6 w-6 text-primary" />
                 </IconButton>
               )}
             </div>
 
             {(filteredStudents && filteredStudents.length > 0) ||
-            (pendingInvitations && pendingInvitations.length > 0) ? (
+            (pendingStudentInvitations && pendingStudentInvitations.length > 0) ? (
               <div className="flex flex-col divide-y divide-border rounded-xl border border-border overflow-hidden">
                 {filteredStudents?.map((student) => (
                   <StudentListRow
@@ -204,9 +268,8 @@ export default function CourseStudentsPage() {
                     }
                   />
                 ))}
-                {/* Pending invitation rows (Figma: faded italic style) */}
                 {permissions.canManageMembers &&
-                  pendingInvitations?.map((inv) => (
+                  pendingStudentInvitations?.map((inv) => (
                   <StudentListRow
                     key={inv.id}
                     variant="pending"
@@ -215,7 +278,6 @@ export default function CourseStudentsPage() {
                     onCancel={() => cancelInvitation.mutate(inv.id)}
                     onResend={() =>
                       resendInvitation.mutate({
-                        name: inv.name,
                         email: inv.email,
                         role: inv.role as "student" | "instructor" | "ta",
                       })
@@ -245,7 +307,6 @@ export default function CourseStudentsPage() {
         </div>
       </div>
 
-      {/* Invite Dialog */}
       {permissions.canManageMembers && (
         <InviteDialog
           open={inviteDialogOpen}

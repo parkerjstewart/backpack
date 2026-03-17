@@ -3,7 +3,7 @@ export interface ModuleResponse {
   name: string
   description: string
   archived: boolean
-  status: 'draft' | 'published'
+  status: 'draft' | 'published' | 'paused'
   overview: string | null
   created: string
   updated: string
@@ -11,6 +11,7 @@ export interface ModuleResponse {
   note_count: number
   learning_goal_count: number
   course_id?: string | null
+  order: number
 }
 
 export interface NoteResponse {
@@ -68,7 +69,7 @@ export interface CreateModuleRequest {
   name: string
   description?: string
   course_id?: string
-  status?: 'draft' | 'published'
+  status?: 'draft' | 'published' | 'paused'
 }
 
 export interface UpdateModuleRequest {
@@ -449,9 +450,20 @@ export interface InvitationResponse {
 }
 
 export interface CreateInvitationRequest {
-  name: string
   email: string
   role?: 'student' | 'instructor' | 'ta'
+}
+
+export interface EnrollmentRequestResponse {
+  id: string
+  course_id: string
+  course_title?: string
+  student_name?: string
+  student_email: string
+  student_id: string
+  role: string
+  status: 'requested' | 'accepted' | 'declined'
+  created?: string
 }
 
 export type MasteryStatus = 'mastered' | 'progressing' | 'struggling' | 'incomplete'
@@ -473,13 +485,24 @@ export interface StudentWithMasteryResponse {
 // ============================================
 // Tutor Types
 // ============================================
+
+export interface Artifact {
+  id: string
+  label: string
+  content: string
+  source_mode: string
+  goal_id?: string | null
+  exchange?: number | null
+}
+
 export interface TutorSessionResponse {
   session_id: string
   module_id: string
   module_name: string
   first_message: string
-  first_supplement?: string | null
   first_image_url?: string | null
+  artifacts: Artifact[]
+  highlighted_artifact_id?: string | null
   current_goal_id: string | null
   current_goal_description: string | null
   total_goals: number
@@ -492,8 +515,10 @@ export interface TutorResponsePayload {
   current_goal_description: string | null
   anchor_problem: string | null
   tutor_message: string
-  tutor_supplement?: string | null
   tutor_image_url?: string | null
+  artifact_content?: string | null
+  artifacts: Artifact[]
+  highlighted_artifact_id?: string | null
   latest_understanding_score: number | null
   competency_scores: Record<string, number> | null
   goals_completed: number

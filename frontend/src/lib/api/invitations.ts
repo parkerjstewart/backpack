@@ -2,6 +2,7 @@ import apiClient from './client'
 import type {
   InvitationResponse,
   CreateInvitationRequest,
+  EnrollmentRequestResponse,
 } from '@/lib/types/api'
 
 export const invitationsApi = {
@@ -73,6 +74,56 @@ export const invitationsApi = {
   ): Promise<{ status: string; message: string }> => {
     const response = await apiClient.post<{ status: string; message: string }>(
       `/invitations/${invitationId}/cancel`
+    )
+    return response.data
+  },
+
+  // ============================================
+  // Enrollment requests (student-initiated)
+  // ============================================
+
+  /**
+   * Get pending enrollment requests for a course (teaching staff view).
+   */
+  getEnrollmentRequests: async (
+    courseId: string
+  ): Promise<EnrollmentRequestResponse[]> => {
+    const response = await apiClient.get<EnrollmentRequestResponse[]>(
+      `/courses/${encodeURIComponent(courseId)}/enrollment-requests`
+    )
+    return response.data
+  },
+
+  /**
+   * Approve a student enrollment request (teaching staff action).
+   */
+  approveRequest: async (
+    requestId: string
+  ): Promise<{ status: string; message: string }> => {
+    const response = await apiClient.post<{ status: string; message: string }>(
+      `/enrollment-requests/${requestId}/approve`
+    )
+    return response.data
+  },
+
+  /**
+   * Deny a student enrollment request (teaching staff action).
+   */
+  denyRequest: async (
+    requestId: string
+  ): Promise<{ status: string; message: string }> => {
+    const response = await apiClient.post<{ status: string; message: string }>(
+      `/enrollment-requests/${requestId}/deny`
+    )
+    return response.data
+  },
+
+  /**
+   * Get all enrollment requests submitted by the current user.
+   */
+  getMyEnrollmentRequests: async (): Promise<EnrollmentRequestResponse[]> => {
+    const response = await apiClient.get<EnrollmentRequestResponse[]>(
+      '/users/me/enrollment-requests'
     )
     return response.data
   },

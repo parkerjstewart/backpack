@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
+import queue as _queue
+import re
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Optional
 
@@ -14,6 +17,7 @@ from backpack.ai.models import model_manager
 from backpack.domain.module import ChatSession
 from backpack.graphs.chat import graph as chat_graph
 from backpack.graphs.tutor import tutor_graph
+from backpack.utils.token_stream import drain_token_queue
 from backpack.utils.voice_text import format_for_voice
 
 
@@ -35,6 +39,34 @@ def _iter_text_deltas(text: str, chunk_size: int = 32) -> list[str]:
     if not text:
         return []
     return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+
+
+_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
+# Abbreviations that should NOT trigger sentence splits
+_ABBREV_RE = re.compile(r'\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|e\.g|i\.e)\.\s*$', re.IGNORECASE)
+
+
+def _split_into_sentences(text: str, min_length: int = 60) -> list[str]:
+    """Split text into sentence groups for streaming TTS.
+
+    Short fragments are merged with the next sentence to avoid many tiny
+    TTS calls.  Returns [text] unchanged if splitting produces only one part.
+    """
+    if not text:
+        return []
+    parts = _SENTENCE_SPLIT_RE.split(text.strip())
+    result: list[str] = []
+    buffer = ""
+    for part in parts:
+        buffer = f"{buffer} {part}".strip() if buffer else part
+        # Don't split after common abbreviations
+        if len(buffer) >= min_length and not _ABBREV_RE.search(buffer):
+            result.append(buffer)
+            buffer = ""
+    if buffer:
+        result.append(buffer)
+    return result if result else [text]
+
 
 
 class VoiceService:
@@ -100,21 +132,103 @@ class VoiceService:
         yield VoiceServerEvent(type="final_transcript", payload={"text": transcript})
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "start"})
 
-        assistant_text, supplement, image_url = await self._dispatch_to_agent(state.context, transcript, whiteboard_png)
-        display_text, speech_text = format_for_voice(assistant_text)
+        async for event in self._dispatch_to_agent_streaming(state.context, transcript, whiteboard_png):
+            yield event
+
+    async def _dispatch_to_agent_streaming(
+        self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
+    ) -> AsyncIterator[VoiceServerEvent]:
+        if context.surface == "tutor":
+            async for event in self._stream_tutor(context, text, whiteboard_png):
+                yield event
+        else:
+            assistant_text = await self._run_module_chat(context, text)
+            display_text, speech_text = format_for_voice(assistant_text)
+            yield VoiceServerEvent(type="assistant_thinking", payload={"status": "end"})
+            for delta in _iter_text_deltas(display_text):
+                yield VoiceServerEvent(type="assistant_text_delta", payload={"text": delta})
+            final_payload: dict[str, Any] = {"text": display_text}
+            yield VoiceServerEvent(type="assistant_text_final", payload=final_payload)
+            async for audio_event in self._emit_audio_sentences(speech_text):
+                yield audio_event
+
+    async def _stream_tutor(
+        self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
+    ) -> AsyncIterator[VoiceServerEvent]:
+        session_id = context.session_id
+        from langgraph.types import Command
+
+        token_queue: _queue.Queue = _queue.Queue()
+        config = {"configurable": {"thread_id": session_id, "token_queue": token_queue}}
+
+        current_state = tutor_graph.get_state(config=RunnableConfig(**{"configurable": {"thread_id": session_id}}))
+        if not current_state or not current_state.values:
+            raise ValueError("Tutor session not found")
+
+        resume_value: str | dict = {"text": text, "whiteboard_png": whiteboard_png} if whiteboard_png else text
+
+        loop = asyncio.get_event_loop()
+        graph_task = asyncio.ensure_future(
+            loop.run_in_executor(None, tutor_graph.invoke, Command(resume=resume_value), config)
+        )
+
         yield VoiceServerEvent(type="assistant_thinking", payload={"status": "end"})
 
-        for delta in _iter_text_deltas(display_text):
-            yield VoiceServerEvent(type="assistant_text_delta", payload={"text": delta})
+        display_text = ""
+        async for token in drain_token_queue(token_queue, graph_task, session_id):
+            display_text += token
+            yield VoiceServerEvent(type="assistant_text_delta", payload={"text": token})
+
+        result = await graph_task
+        interrupt_data = _extract_interrupt_data(result)
+        artifact_content: Optional[str] = None
+        image_url: Optional[str] = None
+        artifacts_raw: list = []
+        highlighted_artifact_id: Optional[str] = None
+        if interrupt_data:
+            # Use the cleaned message from interrupt_data as the authoritative text
+            display_text = str(interrupt_data.get("message", display_text)).strip()
+            # Support new artifact_content field; fall back to legacy supplement
+            artifact_content = (
+                interrupt_data.get("artifact_content")
+                or interrupt_data.get("supplement")
+                or None
+            )
+            image_url = interrupt_data.get("image_url") or None
+            artifacts_raw = interrupt_data.get("artifacts", []) or []
+            highlighted_artifact_id = interrupt_data.get("highlighted_artifact_id") or None
+            logger.info(
+                f"voice [{session_id}]: interrupt_data resolved | "
+                f"message_len={len(display_text)} | artifact={'yes' if artifact_content else 'no'} | "
+                f"artifacts={len(artifacts_raw)}"
+            )
+
+        _, speech_text = format_for_voice(display_text)
         final_payload: dict[str, Any] = {"text": display_text}
-        if supplement:
-            final_payload["supplement"] = supplement
+        if artifact_content:
+            final_payload["artifact_content"] = artifact_content
         if image_url:
             final_payload["image_url"] = image_url
+        if artifacts_raw:
+            final_payload["artifacts"] = artifacts_raw
+        if highlighted_artifact_id:
+            final_payload["highlighted_artifact_id"] = highlighted_artifact_id
         yield VoiceServerEvent(type="assistant_text_final", payload=final_payload)
 
-        audio_output = await self._synthesize(speech_text)
-        if audio_output:
+        async for audio_event in self._emit_audio_sentences(speech_text):
+            yield audio_event
+
+    async def _emit_audio_sentences(self, speech_text: str) -> AsyncIterator[VoiceServerEvent]:
+        """Synthesize speech_text sentence-by-sentence and stream each clip immediately.
+
+        Each sentence produces its own assistant_audio_chunk(s) + assistant_audio_end
+        so the frontend can start playback before the full response is synthesized.
+        """
+        sentences = _split_into_sentences(speech_text)
+        for sentence in sentences:
+            audio_output = await self._synthesize(sentence)
+            if not audio_output:
+                continue
             for i in range(0, len(audio_output), 16_000):
                 chunk = audio_output[i : i + 16_000]
                 yield VoiceServerEvent(
@@ -131,42 +245,6 @@ class VoiceService:
         async for event in self.stream_end_turn(state):
             events.append(event)
         return events
-
-    async def _dispatch_to_agent(
-        self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
-    ) -> tuple[str, Optional[str], Optional[str]]:
-        if context.surface == "tutor":
-            return await self._run_tutor(context, text, whiteboard_png)
-        return await self._run_module_chat(context, text), None, None
-
-    async def _run_tutor(
-        self, context: VoiceContextPayload, text: str, whiteboard_png: Optional[str] = None
-    ) -> tuple[str, Optional[str], Optional[str]]:
-        session_id = context.session_id
-        from langgraph.types import Command
-
-        config = {"configurable": {"thread_id": session_id}}
-        current_state = tutor_graph.get_state(config=RunnableConfig(**config))
-        if not current_state or not current_state.values:
-            raise ValueError("Tutor session not found")
-
-        resume_value: str | dict = {"text": text, "whiteboard_png": whiteboard_png} if whiteboard_png else text
-        result = tutor_graph.invoke(Command(resume=resume_value), config=config)
-        interrupt_data = _extract_interrupt_data(result)
-        if interrupt_data:
-            message = str(interrupt_data.get("message", "")).strip()
-            supplement = interrupt_data.get("supplement") or None
-            image_url = interrupt_data.get("image_url") or None
-            return message, supplement, image_url
-
-        updated = tutor_graph.get_state(config=RunnableConfig(**config))
-        state_values = updated.values if updated else result
-        for msg in reversed(state_values.get("messages", [])):
-            if isinstance(msg, AIMessage) or (
-                hasattr(msg, "type") and getattr(msg, "type", "") == "ai"
-            ):
-                return str(getattr(msg, "content", "")).strip(), None, None
-        return "I am ready for your next response.", None, None
 
     async def _run_module_chat(self, context: VoiceContextPayload, text: str) -> str:
         full_session_id = (

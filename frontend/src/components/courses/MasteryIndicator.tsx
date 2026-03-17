@@ -25,7 +25,7 @@ export function MasteryIndicator({
 }: MasteryIndicatorProps) {
   const statusStyles: Record<MasteryStatus, string> = {
     mastered: "bg-sage-500 text-white border-transparent",
-    progressing: "bg-amber-400 text-teal-800 border-transparent",
+    progressing: "bg-amber-400 text-primary border-transparent",
     struggling: "bg-coral-500 text-white border-transparent",
     incomplete: "bg-transparent text-muted-foreground border-dashed border-muted-foreground",
   };

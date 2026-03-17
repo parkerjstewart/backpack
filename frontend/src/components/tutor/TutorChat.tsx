@@ -1,33 +1,31 @@
 'use client'
 
-import { useState, useRef, useEffect, useId } from 'react'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { useState, useRef, useEffect } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { GraduationCap, User, Send, Loader2, Target, CheckCircle2, Mic, Pencil } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
-import { normalizeLatexDelimiters } from '@/lib/utils'
+import { Target, CheckCircle2 } from 'lucide-react'
+import { TutorLoadingAnimation } from './TutorLoadingAnimation'
+import { ChatInput } from '@/components/common/ChatInput'
+import { MathMarkdown } from '@/components/ui/math-markdown'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useVoiceSession } from '@/lib/hooks/useVoiceSession'
 import { toast } from 'sonner'
+import { Artifact } from '@/lib/types/api'
+
 
 interface Message {
   id: string
   type: 'tutor' | 'student'
   content: string
-  supplement?: string | null
+  artifact_content?: string | null
+  highlighted_artifact_id?: string | null
   image_url?: string | null
   timestamp: string
 }
 
 interface TutorChatProps {
   messages: Message[]
+  artifacts?: Artifact[]
   isSending: boolean
   isInitializing: boolean
   onSendMessage: (message: string, attachDrawing?: boolean) => void
@@ -38,14 +36,18 @@ interface TutorChatProps {
   moduleName?: string
   moduleId?: string
   sessionId?: string | null
-  onAppendVoiceTurn?: (studentText: string, tutorText: string, supplement?: string | null, imageUrl?: string | null) => void
+  onAppendVoiceTurn?: (studentText: string, tutorText: string, artifactContent?: string | null, imageUrl?: string | null, newArtifacts?: Artifact[], highlightedArtifactId?: string | null) => void
   canAttachDrawing?: boolean
   getWhiteboardPng?: () => Promise<string | null>
+  suggestions?: string[]
+  isSuggestionsLoading?: boolean
+  streamingMessage?: string
   className?: string
 }
 
 export function TutorChat({
   messages,
+  artifacts = [],
   isSending,
   isInitializing,
   onSendMessage,
@@ -57,22 +59,22 @@ export function TutorChat({
   moduleId,
   sessionId,
   onAppendVoiceTurn,
-  canAttachDrawing = false,
   getWhiteboardPng,
+  suggestions = [],
+  isSuggestionsLoading = false,
+  streamingMessage = '',
   className,
 }: TutorChatProps) {
+  // Determine which artifact is highlighted by the most recent tutor message
+  const lastTutorMessage = [...messages].reverse().find(m => m.type === 'tutor')
+  const activeHighlightId = lastTutorMessage?.highlighted_artifact_id ?? null
+
   const { t } = useTranslation()
-  const inputId = useId()
-  const [input, setInput] = useState('')
-  const [attachDrawing, setAttachDrawing] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const voiceTranscriptRef = useRef('')
   const scrollAreaRef = useRef<HTMLDivElement>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom when new messages arrive.
-  // Scroll the Radix viewport directly to avoid scrollIntoView bubbling up
-  // to outer containers and collapsing the visible chat area.
   useEffect(() => {
     if (scrollAreaRef.current) {
       const viewport = scrollAreaRef.current.querySelector(
@@ -82,24 +84,7 @@ export function TutorChat({
         viewport.scrollTop = viewport.scrollHeight
       }
     }
-  }, [messages])
-
-  const handleSend = () => {
-    if (input.trim() && !isSending && !isSessionComplete) {
-      onSendMessage(input.trim(), attachDrawing)
-      setInput('')
-      setAttachDrawing(false)
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
-  const keyHint = 'Enter'
+  }, [messages, streamingMessage])
 
   const {
     isRecording,
@@ -121,9 +106,9 @@ export function TutorChat({
       setVoiceTranscript(text)
       voiceTranscriptRef.current = text
     },
-    onAssistantTextFinal: (text, supplement, imageUrl) => {
+    onAssistantTextFinal: (text, artifactContent, imageUrl, artifacts, highlightedArtifactId) => {
       if (voiceTranscriptRef.current && onAppendVoiceTurn) {
-        onAppendVoiceTurn(voiceTranscriptRef.current, text, supplement, imageUrl)
+        onAppendVoiceTurn(voiceTranscriptRef.current, text, artifactContent, imageUrl, artifacts, highlightedArtifactId)
       }
       setVoiceTranscript('')
       voiceTranscriptRef.current = ''
@@ -135,262 +120,209 @@ export function TutorChat({
 
   if (isInitializing) {
     return (
-      <Card className={`flex flex-col h-full flex-1 overflow-hidden ${className ?? ''}`}>
-        <CardContent className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
-            <p className="text-muted-foreground">{t.tutor.initializing}</p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className={`flex flex-col h-full flex-1 overflow-hidden items-center justify-center ${className ?? ''}`}>
+        <div className="text-center space-y-4">
+          <div className="mx-auto w-fit"><TutorLoadingAnimation size="lg" isLoading /></div>
+          <p className="text-muted-foreground">{t.tutor.initializing}</p>
+        </div>
+      </div>
     )
   }
 
   return (
-    <Card className={`flex flex-col h-full flex-1 overflow-hidden ${className ?? ''}`}>
-      <CardHeader className="pb-3 flex-shrink-0 border-b">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <GraduationCap className="h-5 w-5" />
-            {t.tutor.reviewSession}
-            {moduleName && <span className="text-muted-foreground font-normal">- {moduleName}</span>}
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            {isSessionComplete ? (
-              <Badge variant="default" className="gap-1 bg-green-600">
-                <CheckCircle2 className="h-3 w-3" />
-                {t.tutor.complete}
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="gap-1">
-                <Target className="h-3 w-3" />
-                {goalsCompleted}/{goalsCompleted + goalsRemaining} {t.tutor.goals}
-              </Badge>
-            )}
-          </div>
-        </div>
+    <div className={`flex flex-col h-full flex-1 overflow-hidden ${className ?? ''}`}>
+      {/* Goal / progress header — no card chrome */}
+      <div className="flex items-center justify-between px-4 py-2 flex-shrink-0">
         {currentGoal && !isSessionComplete && (
-          <div className="text-sm text-muted-foreground mt-2">
-            <span className="font-medium">{t.tutor.currentGoal}:</span> {currentGoal}
-          </div>
+          <p className="text-sm text-muted-foreground truncate">
+            <span className="font-medium">{t.tutor.currentGoal}:</span>{' '}{currentGoal}
+          </p>
         )}
-      </CardHeader>
+        {isSessionComplete ? (
+          <Badge variant="default" className="gap-1 bg-green-600 flex-shrink-0 ml-auto">
+            <CheckCircle2 className="h-3 w-3" />
+            {t.tutor.complete}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="gap-1 flex-shrink-0 ml-auto">
+            <Target className="h-3 w-3" />
+            {goalsCompleted}/{goalsCompleted + goalsRemaining} {t.tutor.goals}
+          </Badge>
+        )}
+      </div>
 
-      <CardContent className="flex-1 flex flex-col min-h-0 p-0">
-        <ScrollArea className="flex-1 min-h-0 px-4" ref={scrollAreaRef}>
-          <div className="space-y-4 py-4">
-            {messages.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                <GraduationCap className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-sm">{t.tutor.startingSession}</p>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex gap-3 ${
-                    message.type === 'student' ? 'justify-end' : 'justify-start'
-                  }`}
-                >
-                  {message.type === 'tutor' && (
-                    <div className="flex-shrink-0">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                        <GraduationCap className="h-4 w-4" />
-                      </div>
+      {/* Messages */}
+      <ScrollArea className="flex-1 min-h-0 px-4" ref={scrollAreaRef}>
+        <div className="space-y-4 pt-1 pb-24">
+          {messages.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8">
+              <p className="text-sm">{t.tutor.startingSession}</p>
+            </div>
+          ) : (() => {
+            // Find the indices of the last two tutor messages to compute exchange boundaries.
+            const tutorIndices = messages
+              .map((m, i) => (m.type === 'tutor' ? i : -1))
+              .filter(i => i !== -1)
+            const latestTutorIdx = tutorIndices.length > 0 ? tutorIndices[tutorIndices.length - 1] : -1
+            const prevTutorIdx = tutorIndices.length > 1 ? tutorIndices[tutorIndices.length - 2] : -1
+
+            return messages.map((message, idx) => {
+              const isLatestExchange = latestTutorIdx !== -1 && idx >= latestTutorIdx
+              const isPrevExchange = prevTutorIdx !== -1 && idx >= prevTutorIdx && !isLatestExchange
+              const opacityClass = isLatestExchange
+                ? 'opacity-100'
+                : isPrevExchange
+                  ? 'opacity-50 hover:opacity-100 transition-opacity duration-200'
+                  : 'opacity-30 hover:opacity-100 transition-opacity duration-200'
+
+              const showSeparator = idx === latestTutorIdx && latestTutorIdx > 0
+
+              return (
+                <div key={message.id}>
+                  {showSeparator && (
+                    <div className="flex items-center gap-3 my-2">
+                      <div className="flex-1 border-t border-border/50" />
+                      <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider flex-shrink-0">now</span>
+                      <div className="flex-1 border-t border-border/50" />
                     </div>
                   )}
-                  <div className="flex flex-col gap-2 max-w-[80%]">
-                    <div
-                      className={`rounded-lg px-4 py-2 ${
-                        message.type === 'student'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted'
-                      }`}
-                    >
-                      {message.type === 'tutor' ? (
-                        <div className="prose prose-sm prose-neutral max-w-none break-words">
-                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                            {normalizeLatexDelimiters(message.content)}
-                          </ReactMarkdown>
-                        </div>
-                      ) : (
+                  <div
+                    className={`flex ${opacityClass} ${
+                      message.type === 'student' ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    {message.type === 'student' ? (
+                      <div className="rounded-2xl px-4 py-2.5 bg-primary text-primary-foreground max-w-[80%]">
                         <p className="text-sm break-words overflow-wrap-anywhere">
                           {message.content}
                         </p>
-                      )}
-                    </div>
-                    {message.type === 'tutor' && message.supplement && (
-                      <div className="rounded-lg border bg-background px-4 py-3 text-sm">
-                        <div className="prose prose-sm prose-neutral max-w-none">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
-                          >
-                            {normalizeLatexDelimiters(message.supplement)}
-                          </ReactMarkdown>
-                        </div>
                       </div>
-                    )}
-                    {message.type === 'tutor' && message.image_url && (
-                      <div className="rounded-lg border bg-background p-3 overflow-hidden">
-                        <img
-                          src={message.image_url}
-                          alt="Tutor diagram"
-                          className="w-full max-h-72 object-contain rounded"
-                        />
+                    ) : (
+                      <div className="prose prose-sm prose-neutral max-w-[85%] break-words">
+                        <MathMarkdown>{message.content}</MathMarkdown>
                       </div>
                     )}
                   </div>
-                  {message.type === 'student' && (
-                    <div className="flex-shrink-0">
-                      <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
-                        <User className="h-4 w-4 text-primary-foreground" />
-                      </div>
-                    </div>
-                  )}
                 </div>
-              ))
-            )}
-            {isSending && (
-              <div className="flex gap-3 justify-start">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <GraduationCap className="h-4 w-4" />
-                  </div>
-                </div>
-                <div className="rounded-lg px-4 py-2 bg-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </div>
-              </div>
-            )}
-            {voiceTranscript && (
-              <div className="flex gap-3 justify-end">
-                <div className="flex flex-col gap-2 max-w-[80%]">
-                  <div className="rounded-lg px-4 py-2 bg-primary text-primary-foreground">
-                    <p className="text-sm break-words overflow-wrap-anywhere">{voiceTranscript}</p>
-                  </div>
-                </div>
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
-                    <User className="h-4 w-4 text-primary-foreground" />
-                  </div>
-                </div>
-              </div>
-            )}
-            {isAssistantThinking && !assistantStreamingText && (
-              <div className="flex gap-3 justify-start">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <GraduationCap className="h-4 w-4" />
-                  </div>
-                </div>
-                <div className="rounded-lg px-4 py-2 bg-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </div>
-              </div>
-            )}
-            {assistantStreamingText && (
-              <div className="flex gap-3 justify-start">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <GraduationCap className="h-4 w-4" />
-                  </div>
-                </div>
-                <div className="rounded-lg px-4 py-2 bg-muted text-sm">
-                  {assistantStreamingText}
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
+              )
+            })
+          })()}
 
-        {/* Input Area */}
-        <div className="flex-shrink-0 p-4 space-y-3 border-t">
-          {isSessionComplete ? (
-            <div className="text-center text-muted-foreground py-2">
-              <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-success-fg" />
-              <p className="text-sm">{t.tutor.sessionComplete}</p>
-            </div>
-          ) : (
-            <>
-              {(isRecording || voiceTranscript) && (
-                <p className="text-xs text-muted-foreground">
-                  {isRecording ? 'Recording...' : voiceTranscript}
-                </p>
-              )}
-              <div className="flex gap-2 items-end">
-              <Button
-                type="button"
-                variant={isRecording ? 'destructive' : 'outline'}
-                size="icon"
-                className="h-[40px] w-[40px] flex-shrink-0"
-                disabled={!sessionId || isSending}
-                onPointerDown={(e) => {
-                  e.preventDefault()
-                  startRecording()
-                }}
-                onPointerUp={(e) => {
-                  e.preventDefault()
-                  stopRecording()
-                }}
-                onPointerCancel={(e) => {
-                  e.preventDefault()
-                  if (isRecording) {
-                    stopRecording()
-                  }
-                }}
-                onPointerLeave={(e) => {
-                  e.preventDefault()
-                  if (isRecording) {
-                    stopRecording()
-                  }
-                }}
-                title={isRecording ? 'Release to send' : 'Hold to talk'}
-              >
-                <Mic className="h-4 w-4" />
-              </Button>
-              <Textarea
-                id={inputId}
-                name="student-response"
-                autoComplete="off"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={`${t.tutor.responsePlaceholder} (${t.chat.pressToSend.replace('{key}', keyHint)})`}
-                disabled={isSending}
-                className="flex-1 min-h-[40px] max-h-[100px] resize-none py-2 px-3"
-                rows={1}
-              />
-              {canAttachDrawing && (
-                <Button
-                  type="button"
-                  variant={attachDrawing ? 'default' : 'outline'}
-                  size="icon"
-                  className="h-[40px] w-[40px] flex-shrink-0"
-                  onClick={() => setAttachDrawing(v => !v)}
-                  title={attachDrawing ? 'Drawing will be attached to message' : 'Click to attach whiteboard drawing'}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              )}
-              <Button
-                onClick={handleSend}
-                disabled={!input.trim() || isSending}
-                size="icon"
-                className="h-[40px] w-[40px] flex-shrink-0"
-              >
-                {isSending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
+          {/* Streaming text (typed response) */}
+          {isSending && streamingMessage && (
+            <div className="flex justify-start">
+              <div className="prose prose-sm prose-neutral max-w-[85%] break-words">
+                <MathMarkdown>{streamingMessage}</MathMarkdown>
               </div>
-            </>
+            </div>
+          )}
+
+          {voiceTranscript && (
+            <div className="flex justify-end">
+              <div className="rounded-2xl px-4 py-2.5 bg-primary text-primary-foreground max-w-[80%]">
+                <p className="text-sm break-words overflow-wrap-anywhere">{voiceTranscript}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Streaming text (voice response) */}
+          {assistantStreamingText && (
+            <div className="flex justify-start">
+              <div className="prose prose-sm prose-neutral max-w-[85%] break-words">
+                <MathMarkdown>{assistantStreamingText}</MathMarkdown>
+              </div>
+            </div>
+          )}
+
+          {/* Tutor presence dot — always visible, uncurls when thinking */}
+          {!isSessionComplete && !streamingMessage && !assistantStreamingText && (
+            <div className="flex justify-start">
+              <TutorLoadingAnimation
+                size="sm"
+                isLoading={(isSending && !streamingMessage) || (isAssistantThinking && !assistantStreamingText)}
+              />
+            </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </ScrollArea>
+
+      {/* Input area — suggestions above, then unified card with references + input */}
+      <div className="flex-shrink-0 px-4 pb-4">
+        {isSessionComplete ? (
+          <div className="text-center text-muted-foreground py-2">
+            <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-green-600" />
+            <p className="text-sm">{t.tutor.sessionComplete}</p>
+          </div>
+        ) : (
+          <>
+            {/* Suggestion pills — outside and above the card */}
+            {(isSuggestionsLoading || suggestions.length > 0) && !isSending && (
+              <div className="flex flex-wrap gap-2 mt-3 mb-3 px-1">
+                {isSuggestionsLoading && suggestions.length === 0
+                  ? [1, 2, 3].map(i => (
+                      <div
+                        key={i}
+                        className="h-7 rounded-full bg-muted animate-pulse"
+                        style={{ width: `${60 + i * 20}px` }}
+                      />
+                    ))
+                  : suggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => onSendMessage(s)}
+                        className="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs text-foreground hover:bg-secondary transition-colors"
+                      >
+                        {s}
+                      </button>
+                    ))
+                }
+              </div>
+            )}
+
+          <div className="bg-white border border-border rounded-2xl overflow-hidden">
+            {/* Artifact cards — always shown when artifacts exist */}
+            {artifacts.length > 0 && (
+              <ScrollArea orientation="horizontal">
+                <div className="flex gap-3 px-4 pt-3 pb-3">
+                      {artifacts.map((art) => {
+                        const isHighlighted = art.id === activeHighlightId
+                        return (
+                          <div key={art.id} className="flex-shrink-0 flex flex-col gap-1">
+                            <p className="text-sm font-medium text-foreground px-0.5 whitespace-nowrap">
+                              {art.label}
+                            </p>
+                            <div
+                              className={`rounded-md text-sm px-4 py-3 transition-colors ${
+                                isHighlighted ? 'bg-accent/40' : 'bg-secondary'
+                              }`}
+                            >
+                              <div className="prose prose-sm prose-neutral max-w-none overflow-y-auto" style={{ maxHeight: '40vh' }}>
+                                <MathMarkdown>{art.content}</MathMarkdown>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                </div>
+              </ScrollArea>
+            )}
+            <ChatInput
+              noCard
+              onSend={(message) => onSendMessage(message)}
+              placeholder={`${t.tutor.responsePlaceholder} (Enter to send)`}
+              disabled={isSending}
+              sessionId={sessionId}
+              isRecording={isRecording}
+              onStartRecording={startRecording}
+              onStopRecording={stopRecording}
+              voiceStatus={isRecording ? 'Recording...' : voiceTranscript || undefined}
+            />
+          </div>
+          </>
+        )}
+      </div>
+    </div>
   )
 }
+
