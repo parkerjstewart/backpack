@@ -45,6 +45,11 @@ export const modulesApi = {
     return response.data
   },
 
+  unpublish: async (id: string) => {
+    const response = await apiClient.patch<ModuleResponse>(`/modules/${id}/unpublish`)
+    return response.data
+  },
+
   discardDraft: async (id: string) => {
     const response = await apiClient.delete(`/modules/${id}/discard-draft`)
     return response.data
@@ -126,6 +131,11 @@ export const modulesApi = {
       '/modules/refine-content',
       data
     )
+    return response.data
+  },
+
+  reorderModules: async (courseId: string, modules: { module_id: string; order: number }[]) => {
+    const response = await apiClient.put(`/courses/${encodeURIComponent(courseId)}/modules/reorder`, { modules })
     return response.data
   },
 }

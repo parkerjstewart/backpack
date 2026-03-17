@@ -1,14 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { VoiceContextPayload, VoiceServerEvent } from '@/lib/types/api'
+import { Artifact, VoiceContextPayload, VoiceServerEvent } from '@/lib/types/api'
 
 interface UseVoiceSessionParams {
   getContextPayload: () => Promise<VoiceContextPayload | null>
   getWhiteboardPng?: () => Promise<string | null>
   onFinalTranscript: (text: string) => void
   onAssistantTextDelta?: (text: string) => void
-  onAssistantTextFinal: (text: string, supplement?: string | null, imageUrl?: string | null) => void
+  onAssistantTextFinal: (text: string, artifactContent?: string | null, imageUrl?: string | null, artifacts?: Artifact[], highlightedArtifactId?: string | null) => void
   onError?: (message: string) => void
 }
 
@@ -139,8 +139,13 @@ export function useVoiceSession({
 
   const ensureConnected = useCallback(async () => {
     const existing = wsRef.current
-    if (existing && existing.readyState === WebSocket.OPEN) {
-      return
+    if (existing) {
+      if (existing.readyState === WebSocket.OPEN) return
+      // Close any stale socket (CONNECTING, CLOSING, or CLOSED) before reconnecting.
+      // Null out onclose first so the handler doesn't fire and overwrite wsRef mid-setup.
+      existing.onclose = null
+      existing.close()
+      wsRef.current = null
     }
 
     const token = getAuthToken()
@@ -153,11 +158,19 @@ export function useVoiceSession({
     wsRef.current = ws
 
     await new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        ws.close()
+        reject(new Error('Voice connection timed out'))
+      }, 10_000)
       ws.onopen = () => {
+        clearTimeout(timeoutId)
         setIsConnected(true)
         resolve()
       }
-      ws.onerror = () => reject(new Error('Unable to connect voice socket'))
+      ws.onerror = () => {
+        clearTimeout(timeoutId)
+        reject(new Error('Unable to connect voice socket'))
+      }
     })
 
     ws.onclose = () => {
@@ -180,11 +193,18 @@ export function useVoiceSession({
           onAssistantTextDelta?.(delta)
         } else if (data.type === 'assistant_text_final') {
           const text = String(data.payload?.text ?? '')
-          const supplement = data.payload?.supplement ? String(data.payload.supplement) : null
+          // Support both new 'artifact_content' and legacy 'supplement' from voice backend
+          const artifactContent = data.payload?.artifact_content
+            ? String(data.payload.artifact_content)
+            : data.payload?.supplement
+              ? String(data.payload.supplement)
+              : null
           const imageUrl = data.payload?.image_url ? String(data.payload.image_url) : null
+          const artifacts = Array.isArray(data.payload?.artifacts) ? (data.payload.artifacts as Artifact[]) : undefined
+          const highlightedArtifactId = data.payload?.highlighted_artifact_id ? String(data.payload.highlighted_artifact_id) : null
           setIsAssistantThinking(false)
           setAssistantStreamingText('')
-          onAssistantTextFinal(text, supplement, imageUrl)
+          onAssistantTextFinal(text, artifactContent, imageUrl, artifacts, highlightedArtifactId)
         } else if (data.type === 'assistant_audio_chunk') {
           const encoded = String(data.payload?.audio_base64 ?? '')
           if (encoded) {
@@ -310,6 +330,7 @@ export function useVoiceSession({
       if (recorder && recorder.state !== 'inactive') {
         recorder.stop()
       }
+      audioContextRef.current?.close()
       setIsAssistantThinking(false)
     }
   }, [concatUint8Arrays, drainAudioQueue])

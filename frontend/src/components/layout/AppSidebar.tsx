@@ -37,10 +37,10 @@ export function AppSidebar() {
 
   // Split courses by membership role
   const teachingCourses = activeCourses.filter((c) =>
-    isTeachingRole(c.membershipRole)
+    isTeachingRole(c.membershipRole),
   );
   const enrolledCourses = activeCourses.filter(
-    (c) => c.membershipRole === "student"
+    (c) => c.membershipRole === "student",
   );
 
   // Get display info
@@ -53,7 +53,7 @@ export function AppSidebar() {
   const UserAvatar = ({ size = 40 }: { size?: number }) => (
     <div
       className={cn(
-        "rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0"
+        "rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0",
       )}
       style={{ width: size, height: size }}
     >
@@ -69,7 +69,7 @@ export function AppSidebar() {
         <span
           className={cn(
             "font-medium text-muted-foreground",
-            size >= 40 ? "text-lg" : "text-sm"
+            size >= 40 ? "text-lg" : "text-sm",
           )}
         >
           {displayName.charAt(0).toUpperCase()}
@@ -137,12 +137,10 @@ export function AppSidebar() {
                   ))}
                 </div>
               </div>
-            )
+            ),
         )}
         {activeCourses.length === 0 && (
-          <p className="text-sm text-muted-foreground px-1">
-            No classes yet.
-          </p>
+          <p className="text-sm text-muted-foreground px-1">No classes yet.</p>
         )}
       </>
     );
@@ -153,14 +151,14 @@ export function AppSidebar() {
       <div
         className={cn(
           "app-sidebar flex h-full flex-col bg-sidebar border-sidebar-border border-r transition-all duration-300",
-          isCollapsed ? "w-16" : "w-60"
+          isCollapsed ? "w-16" : "w-60",
         )}
       >
         {/* Header - Brand name and collapse toggle */}
         <div
           className={cn(
             "flex items-center pt-4",
-            isCollapsed ? "justify-center px-2" : "justify-between pl-4 pr-2"
+            isCollapsed ? "justify-center px-2" : "justify-between pl-4 pr-2",
           )}
         >
           {isCollapsed ? (
@@ -177,7 +175,7 @@ export function AppSidebar() {
                 href="/courses"
                 className={cn(
                   "flex items-center px-2 py-1 rounded-xl transition-colors",
-                  pathname === "/courses" && "bg-sidebar-accent"
+                  pathname === "/courses" && "bg-sidebar-accent",
                 )}
               >
                 {/* Brand name using serif font (EB Garamond) - no logo icon */}
@@ -216,9 +214,9 @@ export function AppSidebar() {
                   href="/settings"
                   className={cn(
                     "flex items-center justify-center w-8 h-8 rounded-lg transition-all",
-                    "text-teal-800 hover:bg-secondary hover:text-foreground",
+                    "text-primary hover:bg-secondary hover:text-foreground",
                     pathname === "/settings" &&
-                      "bg-sidebar-accent text-foreground"
+                      "bg-sidebar-accent text-foreground",
                   )}
                 >
                   <Settings className="h-4 w-4" />
@@ -230,14 +228,13 @@ export function AppSidebar() {
             {/* User Avatar - navigates to settings */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Link
-                  href="/settings"
-                  className="cursor-pointer rounded-full"
-                >
+                <Link href="/settings" className="cursor-pointer rounded-full">
                   <UserAvatar size={32} />
                 </Link>
               </TooltipTrigger>
-              <TooltipContent side="right">Profile &amp; Settings</TooltipContent>
+              <TooltipContent side="right">
+                Profile &amp; Settings
+              </TooltipContent>
             </Tooltip>
           </div>
         ) : (

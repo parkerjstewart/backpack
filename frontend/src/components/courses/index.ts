@@ -1,8 +1,12 @@
 export { AddExistingModuleDialog } from "./AddExistingModuleDialog";
 export { CourseCard } from "./CourseCard";
+export { CourseModuleCard } from "./CourseModuleCard";
 export { CourseHeader } from "./CourseHeader";
 export { CreateCourseDialog } from "./CreateCourseDialog";
+export { EnrollmentRequestRow } from "./EnrollmentRequestRow";
 export { InviteDialog } from "./InviteDialog";
+export { JoinCourseDialog } from "./JoinCourseDialog";
+export { LeaveCourseDialog } from "./LeaveCourseDialog";
 export { MasteryIndicator } from "./MasteryIndicator";
 export { PendingInvitationCard } from "./PendingInvitationCard";
 export { StudentListRow } from "./StudentListRow";

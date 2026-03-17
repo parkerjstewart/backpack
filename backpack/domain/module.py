@@ -12,12 +12,42 @@ from backpack.domain.base import ObjectModel
 from backpack.exceptions import DatabaseOperationError, InvalidInputError
 
 
+class StudyToolResult(ObjectModel):
+    """Stores a generated study tool result (flashcards, quiz, mind map, podcast)."""
+
+    table_name: ClassVar[str] = "study_tool_result"
+    module: str  # record<module> reference
+    tool_type: str  # "flashcards" | "quiz" | "mind_map" | "podcast"
+    title: str
+    data: dict  # structured payload
+    status: str = "completed"  # "generating" | "completed" | "failed"
+    command_id: Optional[str] = None  # surreal-commands job ID for podcast
+
+    @field_validator("module", mode="before")
+    @classmethod
+    def parse_module(cls, value):
+        """Parse module field to ensure string format from RecordID."""
+        if value is None:
+            return value
+        if isinstance(value, RecordID):
+            return str(value)
+        return str(value) if value else None
+
+    def _prepare_save_data(self) -> dict:
+        """Override to ensure module field is always RecordID format for database."""
+        data = super()._prepare_save_data()
+        if data.get("module") is not None:
+            data["module"] = ensure_record_id(data["module"])
+        return data
+
+
 class LearningGoal(ObjectModel):
     """Represents a learning goal for a module."""
 
     table_name: ClassVar[str] = "learning_goal"
     module: str  # record<module> reference
     description: str
+    title: str = ""
     takeaways: str = ""
     competencies: str = ""
     anchor_examples: str = ""
@@ -57,7 +87,7 @@ class Module(ObjectModel):
     overview: Optional[str] = None
     course: Optional[str] = None  # record<course> reference
     order: int = 0  # Order within the course
-    status: Literal["draft", "published"] = "published"
+    status: Literal["draft", "published", "paused"] = "published"
 
     @field_validator("course", mode="before")
     @classmethod
@@ -83,6 +113,61 @@ class Module(ObjectModel):
         if data.get("course") is not None:
             data["course"] = ensure_record_id(data["course"])
         return data
+
+    async def get_study_tool_results(self) -> List["StudyToolResult"]:
+        """Get all study tool results for this module, ordered by created DESC."""
+        try:
+            results = await repo_query(
+                """
+                SELECT * FROM study_tool_result WHERE module = $id ORDER BY created DESC
+                """,
+                {"id": ensure_record_id(self.id)},
+            )
+            return [StudyToolResult(**r) for r in results] if results else []
+        except Exception as e:
+            error_msg = str(e)
+            if "null byte" in error_msg.lower():
+                # One or more records contain null bytes (malformed LLM output).
+                # Fall back to fetching records individually and skipping bad ones.
+                logger.warning(
+                    f"Null byte detected in study_tool_result for module {self.id}; "
+                    "falling back to per-record fetch"
+                )
+                return await self._get_study_tool_results_safe()
+            logger.error(f"Error fetching study tool results for module {self.id}: {error_msg}")
+            logger.exception(e)
+            raise DatabaseOperationError(e)
+
+    async def _get_study_tool_results_safe(self) -> List["StudyToolResult"]:
+        """Fetch study tool results one-by-one, skipping any with serialization errors."""
+        try:
+            id_rows = await repo_query(
+                "SELECT id FROM study_tool_result WHERE module = $id ORDER BY created DESC",
+                {"id": ensure_record_id(self.id)},
+            )
+        except Exception as e:
+            logger.error(f"Error fetching study tool result IDs for module {self.id}: {e}")
+            raise DatabaseOperationError(e)
+
+        results: List["StudyToolResult"] = []
+        for row in id_rows or []:
+            record_id = str(row.get("id", ""))
+            if not record_id:
+                continue
+            try:
+                rows = await repo_query("SELECT * FROM $id", {"id": ensure_record_id(record_id)})
+                if rows:
+                    results.append(StudyToolResult(**rows[0]))
+            except Exception as fetch_err:
+                logger.warning(
+                    f"Skipping corrupted study_tool_result {record_id}: {fetch_err}; "
+                    "deleting it to prevent future failures"
+                )
+                try:
+                    await repo_query("DELETE $id RETURN NONE", {"id": ensure_record_id(record_id)})
+                except Exception as del_err:
+                    logger.warning(f"Could not delete corrupted record {record_id}: {del_err}")
+        return results
 
     async def get_learning_goals(self) -> List["LearningGoal"]:
         """Get all learning goals for this module, ordered by order field."""

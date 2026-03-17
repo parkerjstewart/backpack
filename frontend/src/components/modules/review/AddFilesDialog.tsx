@@ -6,18 +6,21 @@ import { AddSourceDialog } from "@/components/sources/AddSourceDialog";
 interface AddFilesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSourceCreated?: (sourceId: string) => void;
   onFilesAdded?: () => void;
 }
 
 export function AddFilesDialog({
   open,
   onOpenChange,
+  onSourceCreated,
   onFilesAdded,
 }: AddFilesDialogProps) {
   const { addPendingSource } = useModuleDraftStore();
 
   const handleSourceCreated = (sourceId: string) => {
     addPendingSource(sourceId);
+    onSourceCreated?.(sourceId);
   };
 
   const handleComplete = () => {

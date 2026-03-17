@@ -52,22 +52,25 @@ export function SidebarNavLink({
 }: SidebarNavLinkProps) {
   const pathname = usePathname();
 
+  const decodedPathname = decodeURIComponent(pathname || "");
+  const decodedHref = decodeURIComponent(href);
+
   const isActive =
     matchMode === "exact"
-      ? pathname === href
-      : pathname?.startsWith(href) || false;
+      ? decodedPathname === decodedHref
+      : decodedPathname.startsWith(decodedHref);
 
   const baseStyles = "transition-all hover:bg-secondary hover:text-foreground";
 
   const variantStyles = {
     course: cn(
-      "flex flex-col items-start w-full px-1 py-2 rounded-lg text-sm font-normal overflow-hidden",
-      "text-teal-800",
-      isActive && "bg-sidebar-accent text-foreground"
+      "flex flex-col items-start w-full px-2 py-2 rounded-md text-sm font-normal overflow-hidden",
+      "text-primary",
+      isActive && "bg-sidebar-accent text-foreground",
     ),
     heading: cn(
       "inline-block font-heading text-lg font-normal text-foreground underline underline-offset-4 decoration-1 tracking-tight px-2 py-0.5 rounded-lg",
-      isActive && "bg-sidebar-accent"
+      isActive && "bg-sidebar-accent",
     ),
   };
 

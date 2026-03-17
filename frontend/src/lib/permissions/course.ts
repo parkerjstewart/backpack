@@ -6,9 +6,10 @@ export function isTeachingRole(role: CourseMembershipRole): boolean {
 
 export interface CoursePermissions {
   canManageMembers: boolean
-  canManageCourseSettings: boolean
+  canManageCourseSettings: boolean  // archive, delete, edit details — instructor only
   canCreateModules: boolean
   canEditModuleContent: boolean
+  canLeaveCourse: boolean           // students and TAs can leave; instructors cannot
 }
 
 export function getCoursePermissions(role: CourseMembershipRole): CoursePermissions {
@@ -16,8 +17,9 @@ export function getCoursePermissions(role: CourseMembershipRole): CoursePermissi
 
   return {
     canManageMembers: canTeach,
-    canManageCourseSettings: canTeach,
+    canManageCourseSettings: role === 'instructor',
     canCreateModules: canTeach,
     canEditModuleContent: canTeach,
+    canLeaveCourse: role === 'student' || role === 'ta',
   }
 }

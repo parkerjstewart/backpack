@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ModuleResponse } from '@/lib/types/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,8 +21,9 @@ interface ModuleHeaderProps {
 export function ModuleHeader({ module }: ModuleHeaderProps) {
   const { t, language } = useTranslation()
   const dfLocale = getDateLocale(language)
+  const router = useRouter()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  
+
   const updateModule = useUpdateModule()
   const deleteModule = useDeleteModule()
 
@@ -51,8 +53,10 @@ export function ModuleHeader({ module }: ModuleHeaderProps) {
   }
 
   const handleDelete = () => {
-    deleteModule.mutate(module.id)
     setShowDeleteDialog(false)
+    deleteModule.mutate(module.id, {
+      onSuccess: () => router.push('/modules'),
+    })
   }
 
   return (
@@ -106,7 +110,7 @@ export function ModuleHeader({ module }: ModuleHeaderProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowDeleteDialog(true)}
-                className="text-red-600 hover:text-red-700"
+                className="text-destructive hover:text-destructive/80"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 {t.common.delete}

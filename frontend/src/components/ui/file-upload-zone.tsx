@@ -113,7 +113,7 @@ function FileUploadZone({
       {/* Drop zone */}
       <div
         className={cn(
-          "relative rounded-lg p-6 transition-all",
+          "relative rounded-lg p-6 transition-all h-full",
           // Empty state: dashed border
           !hasFiles && "border-2 border-dashed border-input bg-secondary",
           // With files: solid border
@@ -121,7 +121,7 @@ function FileUploadZone({
           // Drag over state
           isDragOver && "border-sage-500 bg-sage-500/10",
           // Interactive states
-          !disabled && "cursor-pointer hover:border-sage-500/50",
+          !disabled && "cursor-pointer hover:bg-muted",
           disabled && "opacity-50 cursor-not-allowed"
         )}
         onDrop={handleDrop}
@@ -140,7 +140,7 @@ function FileUploadZone({
         <label
           htmlFor={id}
           className={cn(
-            "flex flex-col items-center justify-center gap-3",
+            "flex flex-col items-center justify-center gap-3 h-full",
             !disabled && "cursor-pointer"
           )}
         >
@@ -151,7 +151,7 @@ function FileUploadZone({
             )}
           />
           <div className="text-center">
-            <span className="text-body text-teal-800">
+            <span className="text-body text-primary">
               {hasFiles
                 ? `${files.length} file${files.length > 1 ? "s" : ""} selected`
                 : placeholder}

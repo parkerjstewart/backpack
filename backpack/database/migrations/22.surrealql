@@ -2,6 +2,7 @@
 -- Migration 22: Revamp student_progress for session-level insights
 -- Changes from per-learning-goal rows to per-session records
 -- with nested goal insights.
+-- Also adds title field to learning_goal.
 -- ============================================
 
 -- Remove old per-learning-goal fields and indexes
@@ -26,3 +27,6 @@ DEFINE FIELD IF NOT EXISTS updated ON TABLE student_progress TYPE datetime DEFAU
 -- Add indexes for common query patterns
 DEFINE INDEX IF NOT EXISTS idx_progress_module ON TABLE student_progress COLUMNS user, module;
 DEFINE INDEX IF NOT EXISTS idx_progress_session ON TABLE student_progress COLUMNS session_id UNIQUE;
+
+-- Add title field to learning_goal
+DEFINE FIELD title ON TABLE learning_goal TYPE option<string>;

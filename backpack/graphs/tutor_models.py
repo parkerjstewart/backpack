@@ -110,7 +110,7 @@ class EvaluationResult(BaseModel):
             "Never include to record a gap or absence — omission is not evidence."
         ),
     )
-    suggested_next_action: Literal["probe", "macro_hint", "explain_competency", "advance", "continue", "tangent"] = Field(
+    suggested_next_action: Literal["probe", "macro_hint", "explain_competency", "advance", "continue", "tangent", "defer"] = Field(
         default="continue",
         description=(
             "Evaluator's recommendation for what the tutor should do next. "
@@ -119,7 +119,8 @@ class EvaluationResult(BaseModel):
             "'explain_competency': student can't reason about this specific competency — explain it and advance. "
             "'advance': active competency is clearly mastered (>= 0.7) — move to next. "
             "'continue': normal Socratic flow on the active competency. "
-            "'tangent': student is asking about something outside the active competency assessment scope."
+            "'tangent': student is asking about something outside the scope of ALL competencies in this session. "
+            "'defer': student is asking about something that belongs to a FUTURE pending competency — do not answer, redirect."
         ),
     )
     action_rationale: Optional[str] = Field(
@@ -137,7 +138,15 @@ class EvaluationResult(BaseModel):
     )
     tangent_topic: Optional[str] = Field(
         default=None,
-        description="What the tangent is about — set when suggested_next_action is 'tangent'",
+        description="What the tangent/defer is about — set when suggested_next_action is 'tangent' or 'defer'",
+    )
+    defer_target_competency: Optional[str] = Field(
+        default=None,
+        description=(
+            "Name of the pending competency the student's question maps to — "
+            "set when suggested_next_action is 'defer'. Used to store a note on that competency "
+            "so the tutor knows the student already asked about it when it becomes active."
+        ),
     )
 
     @property
@@ -249,6 +258,26 @@ class GoalProgress(BaseModel):
     trajectory: List[UnderstandingPoint] = Field(default_factory=list)
 
 
+class NewArtifact(BaseModel):
+    """A new artifact to add to the session's reference collection."""
+
+    label: str = Field(
+        ...,
+        description=(
+            "Short display name for the general concept, e.g. 'Poisson PMF' or 'Joint likelihood'. "
+            "Name the concept, not the problem application — e.g. 'Joint likelihood' not 'Poisson joint likelihood for two days'."
+        ),
+    )
+    content: str = Field(
+        ...,
+        description=(
+            "LaTeX/markdown content to display. Must be the most general useful form of the formula or definition. "
+            "Do not specialize to the current problem values or substitute in specific distributions — "
+            "that composition is for the student to do using other artifacts already on the board."
+        ),
+    )
+
+
 class TutorResponse(BaseModel):
     """Structured output from the tutor_turn LLM call."""
 
@@ -258,17 +287,29 @@ class TutorResponse(BaseModel):
             "Conversational tutor message in plain spoken English only. "
             "MUST NOT contain any equations, LaTeX, math notation, or markdown. "
             "Write as if speaking aloud — no symbols like nabla, sigma, top, $, $$, etc. "
-            "Any formula or equation MUST go in the supplement field instead."
+            "Any formula or equation MUST go in new_artifact.content instead."
         ),
     )
-    supplement: Optional[str] = Field(
+    new_artifact: Optional["NewArtifact"] = Field(
         default=None,
         description=(
-            "Supplemental block rendered below the message with full LaTeX and markdown support. "
-            "Use this whenever the message references a formula, equation, or formal definition. "
-            "Use LaTeX: $expr$ for inline, $$expr$$ on its own line for display. "
-            "Use markdown bullets/headers for multi-step derivations. "
-            "Set to null when no symbolic math is needed, or when image_prompt is used instead."
+            "Create a new artifact (formula, definition, or derivation) to add to the reference panel. "
+            "ONLY allowed in give_fact, explain, and transition modes. "
+            "MUST be null in guide, nudge, tangent, and opening modes — the student must work through formulas themselves. "
+            "Toolkit philosophy: artifacts are composable building blocks. Check existing artifacts first — "
+            "if the needed formula is just an existing artifact substituted into another, add the general wrapper formula instead "
+            "and let the student combine them. Never pre-compose what the student should be figuring out. "
+            "Set label to a short display name (e.g. 'Poisson PMF') and content to the general LaTeX/markdown form. "
+            "Use LaTeX: $expr$ for inline, $$expr$$ on its own line for display math."
+        ),
+    )
+    reference_artifact_label: Optional[str] = Field(
+        default=None,
+        description=(
+            "Label of an existing artifact to highlight in the reference panel. "
+            "Use when pointing the student to something already established (e.g. 'As we saw in the Poisson PMF...'). "
+            "Must exactly match the label field of an artifact in ESTABLISHED ARTIFACTS. "
+            "Leave null if not referencing a specific artifact."
         ),
     )
     image_prompt: Optional[str] = Field(

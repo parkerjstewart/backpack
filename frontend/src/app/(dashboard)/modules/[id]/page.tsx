@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { ModuleHeader } from "../components/ModuleHeader";
 import { SourcesColumn } from "../components/SourcesColumn";
@@ -26,11 +26,22 @@ export interface ContextSelections {
 export default function ModulePage() {
   const { t } = useTranslation();
   const params = useParams();
+  const router = useRouter();
 
   // Ensure the module ID is properly decoded from URL
   const moduleId = params?.id ? decodeURIComponent(params.id as string) : "";
 
   const { data: module, isLoading: moduleLoading } = useModule(moduleId);
+
+  // Redirect to course-scoped page if module belongs to a course
+  useEffect(() => {
+    if (module?.course_id) {
+      router.replace(
+        `/courses/${encodeURIComponent(module.course_id)}/modules/${encodeURIComponent(moduleId)}`
+      );
+    }
+  }, [module, moduleId, router]);
+
   const {
     sources,
     isLoading: sourcesLoading,
@@ -48,47 +59,19 @@ export default function ModulePage() {
 
   // Mobile tab state (Sources or Details)
   const [mobileActiveTab, setMobileActiveTab] = useState<"sources" | "details">(
-    "sources"
+    "sources",
   );
-
-  // Context selection state
-  const [contextSelections, setContextSelections] = useState<ContextSelections>(
-    {
-      sources: {},
-      notes: {},
-    }
-  );
-
-  // Initialize default selections when sources load
-  useEffect(() => {
-    if (sources && sources.length > 0) {
-      setContextSelections((prev) => {
-        const newSourceSelections = { ...prev.sources };
-        sources.forEach((source) => {
-          // Only set default if not already set
-          if (!(source.id in newSourceSelections)) {
-            // Default to 'insights' if has insights, otherwise 'full'
-            newSourceSelections[source.id] =
-              source.insights_count > 0 ? "insights" : "full";
-          }
-        });
-        return { ...prev, sources: newSourceSelections };
-      });
-    }
-  }, [sources]);
-
-  // Handler to update context selection
-  const handleContextModeChange = (itemId: string, mode: ContextMode) => {
-    setContextSelections((prev) => ({
-      ...prev,
-      sources: {
-        ...prev.sources,
-        [itemId]: mode,
-      },
-    }));
-  };
 
   if (moduleLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  // Redirect pending — show spinner while navigating
+  if (module?.course_id) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
@@ -146,10 +129,6 @@ export default function ModulePage() {
                     moduleId={moduleId}
                     moduleName={module?.name}
                     onRefresh={refetchSources}
-                    contextSelections={contextSelections.sources}
-                    onContextModeChange={(sourceId, mode) =>
-                      handleContextModeChange(sourceId, mode)
-                    }
                     hasNextPage={hasNextPage}
                     isFetchingNextPage={isFetchingNextPage}
                     fetchNextPage={fetchNextPage}
@@ -166,14 +145,14 @@ export default function ModulePage() {
           <div
             className={cn(
               "hidden lg:flex h-full min-h-0 gap-6 transition-all duration-150",
-              "flex-row"
+              "flex-row",
             )}
           >
             {/* Sources Column */}
             <div
               className={cn(
                 "transition-all duration-150",
-                sourcesCollapsed ? "w-12 flex-shrink-0" : "flex-none basis-1/3"
+                sourcesCollapsed ? "w-12 flex-shrink-0" : "flex-none basis-1/3",
               )}
             >
               <SourcesColumn
@@ -182,10 +161,6 @@ export default function ModulePage() {
                 moduleId={moduleId}
                 moduleName={module?.name}
                 onRefresh={refetchSources}
-                contextSelections={contextSelections.sources}
-                onContextModeChange={(sourceId, mode) =>
-                  handleContextModeChange(sourceId, mode)
-                }
                 hasNextPage={hasNextPage}
                 isFetchingNextPage={isFetchingNextPage}
                 fetchNextPage={fetchNextPage}

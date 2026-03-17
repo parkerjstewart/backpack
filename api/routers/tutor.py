@@ -8,11 +8,15 @@ Provides endpoints for:
 - Getting session summaries when complete
 """
 
+import asyncio
+import json
+import queue
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
@@ -20,9 +24,13 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from api.routers.authz import get_current_user_id_from_auth, require_authenticated_user_id
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from backpack.ai.provision import provision_langchain_model
 from backpack.domain.module import Module
 from backpack.domain.student_progress import StudentProgress
 from backpack.graphs.tutor import tutor_graph
+from backpack.utils.token_stream import drain_token_queue
 
 router = APIRouter()
 
@@ -40,14 +48,25 @@ class CreateSessionRequest(BaseModel):
     )
 
 
+class ArtifactResponse(BaseModel):
+    """A single artifact in the session's reference panel."""
+    id: str = Field(..., description="Unique artifact ID (art-XXXXXXXX)")
+    label: str = Field(..., description="Short display name")
+    content: str = Field(..., description="LaTeX/markdown content")
+    source_mode: str = Field(..., description="Tutor mode that created this artifact")
+    goal_id: Optional[str] = Field(None, description="Learning goal when artifact was created")
+    exchange: Optional[int] = Field(None, description="Exchange number when artifact was created")
+
+
 class CreateSessionResponse(BaseModel):
     """Response after creating a tutoring session."""
     session_id: str = Field(..., description="Unique session identifier")
     module_id: str = Field(..., description="Module ID")
     module_name: str = Field(..., description="Module name")
     first_message: str = Field(..., description="First message from tutor")
-    first_supplement: Optional[str] = Field(None, description="Optional supplemental content for first message")
     first_image_url: Optional[str] = Field(None, description="Optional generated image data URI for first message")
+    artifacts: List[ArtifactResponse] = Field(default_factory=list, description="Accumulated artifacts")
+    highlighted_artifact_id: Optional[str] = Field(None, description="Artifact to highlight this turn")
     current_goal_id: Optional[str] = Field(None, description="Current learning goal ID")
     current_goal_description: Optional[str] = Field(None, description="Current goal description")
     total_goals: int = Field(..., description="Total number of learning goals")
@@ -77,8 +96,10 @@ class TutorResponsePayload(BaseModel):
 
     # The tutor's response message
     tutor_message: str = Field(..., description="Tutor's response")
-    tutor_supplement: Optional[str] = Field(None, description="Optional supplemental equations/definitions block")
     tutor_image_url: Optional[str] = Field(None, description="Optional generated image data URI")
+    artifact_content: Optional[str] = Field(None, description="Content of newly created artifact (for inline display)")
+    artifacts: List[ArtifactResponse] = Field(default_factory=list, description="Accumulated artifacts")
+    highlighted_artifact_id: Optional[str] = Field(None, description="Artifact to highlight this turn")
 
     # Latest evaluation (for real-time feedback)
     latest_understanding_score: Optional[float] = Field(
@@ -93,6 +114,23 @@ class TutorResponsePayload(BaseModel):
     # Progress summary
     goals_completed: int = Field(default=0, description="Number of goals completed")
     goals_remaining: int = Field(default=0, description="Number of goals remaining")
+
+
+class SuggestionsRequest(BaseModel):
+    """Request to generate quick reply suggestions."""
+    messages: List[Dict[str, str]] = Field(
+        ..., description="Recent conversation messages with 'role' and 'content' keys"
+    )
+
+
+class SuggestionsResponse(BaseModel):
+    """Response with generated quick reply suggestions."""
+    suggestions: List[str] = Field(..., description="2-4 short conversational responses")
+
+
+class _SuggestionsOutput(BaseModel):
+    """Structured output for the suggestions LLM call."""
+    suggestions: List[str] = Field(..., description="2-4 short student responses")
 
 
 class SessionStateResponse(BaseModel):
@@ -232,6 +270,21 @@ async def _save_session_insights(
         logger.error(f"Failed to save session insights for {session_id}: {e}")
 
 
+def parse_artifacts(artifacts_raw: List[Any]) -> List[ArtifactResponse]:
+    """Safely parse a list of raw artifact dicts into ArtifactResponse objects.
+
+    Skips malformed entries rather than letting a single bad artifact raise
+    a 500 on the whole response.
+    """
+    result = []
+    for a in artifacts_raw:
+        try:
+            result.append(ArtifactResponse.model_validate(a))
+        except Exception as e:
+            logger.warning(f"Skipping malformed artifact (will not be shown): {e} | data={a}")
+    return result
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -284,13 +337,15 @@ async def create_session(request: CreateSessionRequest):
         current_goal_id, current_goal_description = get_current_goal_info(state_values)
         total_goals = len(state_values.get("learning_goals", []))
 
+        artifacts_raw = interrupt_data.get("artifacts", [])
         return CreateSessionResponse(
             session_id=session_id,
             module_id=request.module_id,
             module_name=state_values.get("module_name", module.name),
             first_message=interrupt_data.get("message", ""),
-            first_supplement=interrupt_data.get("supplement"),
             first_image_url=interrupt_data.get("image_url"),
+            artifacts=parse_artifacts(artifacts_raw),
+            highlighted_artifact_id=interrupt_data.get("highlighted_artifact_id"),
             current_goal_id=current_goal_id,
             current_goal_description=current_goal_description,
             total_goals=total_goals,
@@ -421,6 +476,7 @@ async def submit_response(
         if interrupt_data:
             # Still in progress - return the tutor's response
             latest_eval = state_values.get("latest_evaluation", {})
+            artifacts_raw = interrupt_data.get("artifacts", [])
 
             return TutorResponsePayload(
                 session_id=session_id,
@@ -429,8 +485,10 @@ async def submit_response(
                 current_goal_description=current_goal_description,
                 anchor_problem=state_values.get("anchor_problem"),
                 tutor_message=interrupt_data.get("message", ""),
-                tutor_supplement=interrupt_data.get("supplement"),
                 tutor_image_url=interrupt_data.get("image_url"),
+                artifact_content=interrupt_data.get("artifact_content"),
+                artifacts=parse_artifacts(artifacts_raw),
+                highlighted_artifact_id=interrupt_data.get("highlighted_artifact_id"),
                 latest_understanding_score=latest_eval.get("score"),
                 competency_scores=latest_eval.get("competency_score_dict"),
                 goals_completed=completed,
@@ -464,6 +522,15 @@ async def submit_response(
                 authorization=authorization,
             )
 
+        artifacts_raw = state_values.get("artifacts", [])
+        highlighted_id = state_values.get("highlighted_artifact_id")
+        artifact_content = None
+        if highlighted_id:
+            for art in artifacts_raw:
+                if art.get("id") == highlighted_id:
+                    artifact_content = art.get("content")
+                    break
+
         return TutorResponsePayload(
             session_id=session_id,
             phase=phase,
@@ -471,8 +538,10 @@ async def submit_response(
             current_goal_description=current_goal_description,
             anchor_problem=state_values.get("anchor_problem"),
             tutor_message=last_ai_message or "Session updated.",
-            tutor_supplement=state_values.get("latest_supplement"),
             tutor_image_url=state_values.get("latest_image_url"),
+            artifact_content=artifact_content,
+            artifacts=parse_artifacts(artifacts_raw),
+            highlighted_artifact_id=highlighted_id,
             latest_understanding_score=state_values.get("latest_evaluation", {}).get("score"),
             competency_scores=state_values.get("latest_evaluation", {}).get("competency_score_dict"),
             goals_completed=completed,
@@ -485,6 +554,129 @@ async def submit_response(
         logger.error(f"Error submitting response: {e}")
         logger.exception(e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tutor/sessions/{session_id}/respond/stream")
+async def stream_tutor_response(session_id: str, request: StudentResponseRequest):
+    """Submit a student response and stream the tutor's reply token-by-token via SSE.
+
+    Events emitted:
+      data: {"type": "token", "text": "..."}        — one per token chunk
+      data: {"type": "complete", "session_id": ..., "phase": ..., ...}  — full payload at end
+      data: {"type": "error", "message": "..."}     — on failure
+    """
+    logger.info(f"Streaming response for session: {session_id}")
+
+    # Validate session before committing to a streaming response (so we can return 404)
+    try:
+        current_state = tutor_graph.get_state(
+            config=RunnableConfig(**{"configurable": {"thread_id": session_id}})
+        )
+        if not current_state or not current_state.values:
+            raise HTTPException(status_code=404, detail="Session not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    token_queue: queue.Queue = queue.Queue()
+
+    if request.whiteboard_png:
+        resume_value: Any = {"text": request.message, "whiteboard_png": request.whiteboard_png}
+    else:
+        resume_value = request.message
+
+    config = {
+        "configurable": {
+            "thread_id": session_id,
+            "token_queue": token_queue,
+        }
+    }
+
+    async def generate():
+        loop = asyncio.get_running_loop()
+
+        # Run the graph in a thread so the sync invoke() doesn't block the event loop.
+        # ensure_future (not create_task) is required here: run_in_executor returns an
+        # asyncio.Future, and create_task only accepts coroutines.
+        graph_task = asyncio.ensure_future(
+            loop.run_in_executor(None, tutor_graph.invoke, Command(resume=resume_value), config)
+        )
+
+        tokens_emitted = 0
+        async for token in drain_token_queue(token_queue, graph_task, session_id):
+            yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
+            tokens_emitted += 1
+        logger.info(f"stream [{session_id}]: {tokens_emitted} tokens emitted to client")
+
+        # Await the graph result and build the complete payload
+        try:
+            result = await graph_task
+        except Exception as e:
+            logger.error(f"Graph error during streaming: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            return
+
+        updated_state = tutor_graph.get_state(config=RunnableConfig(**{"configurable": {"thread_id": session_id}}))
+        state_values = updated_state.values if updated_state else result
+
+        completed, remaining = count_goals(state_values)
+        current_goal_id, current_goal_description = get_current_goal_info(state_values)
+        interrupt_data = extract_interrupt_data(result)
+        latest_eval = state_values.get("latest_evaluation", {})
+
+        if interrupt_data:
+            phase = "in_progress"
+            tutor_message = interrupt_data.get("message", "")
+            tutor_image_url = interrupt_data.get("image_url")
+            artifact_content = interrupt_data.get("artifact_content")
+            highlighted_artifact_id = interrupt_data.get("highlighted_artifact_id")
+            artifacts_raw = interrupt_data.get("artifacts", [])
+        else:
+            messages = state_values.get("messages", [])
+            tutor_message = ""
+            for msg in reversed(messages):
+                if hasattr(msg, "type") and msg.type == "ai":
+                    tutor_message = msg.content
+                    break
+                elif isinstance(msg, AIMessage):
+                    tutor_message = msg.content
+                    break
+            tutor_image_url = state_values.get("latest_image_url")
+            artifacts_raw = state_values.get("artifacts", [])
+            highlighted_artifact_id = state_values.get("highlighted_artifact_id")
+            artifact_content = None
+            if highlighted_artifact_id:
+                for art in artifacts_raw:
+                    if art.get("id") == highlighted_artifact_id:
+                        artifact_content = art.get("content")
+                        break
+            phase = "session_complete" if remaining == 0 else ("goal_complete" if not current_goal_id else "in_progress")
+
+        logger.info(
+            f"stream [{session_id}]: complete | interrupt={'yes' if interrupt_data else 'no'} "
+            f"| phase={phase} | tutor_message_len={len(tutor_message)}"
+        )
+        payload = {
+            "type": "complete",
+            "session_id": session_id,
+            "phase": phase,
+            "current_goal_id": current_goal_id,
+            "current_goal_description": current_goal_description,
+            "anchor_problem": state_values.get("anchor_problem"),
+            "tutor_message": tutor_message,
+            "tutor_image_url": tutor_image_url,
+            "artifact_content": artifact_content,
+            "artifacts": [a.model_dump() for a in parse_artifacts(artifacts_raw)],
+            "highlighted_artifact_id": highlighted_artifact_id,
+            "latest_understanding_score": latest_eval.get("score"),
+            "competency_scores": latest_eval.get("competency_score_dict"),
+            "goals_completed": completed,
+            "goals_remaining": remaining,
+        }
+        yield f"data: {json.dumps(payload)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.get("/tutor/sessions/{session_id}/trajectory", response_model=TrajectoryResponse)
@@ -842,3 +1034,54 @@ async def get_student_module_progress(
     except Exception as e:
         logger.error(f"Error fetching student progress for module {module_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tutor/sessions/{session_id}/suggestions", response_model=SuggestionsResponse)
+async def get_suggestions(session_id: str, request: SuggestionsRequest):
+    """Generate 2-4 quick reply suggestions based on recent conversation.
+
+    These are short conversational reactions (not substantive answers) that the
+    student can tap to respond immediately, e.g. 'I forgot the formula' or
+    'Can you give me a hint?'. The session_id is accepted but not used — all
+    context comes from the messages passed in the request body.
+    """
+    logger.info(f"Generating suggestions for session: {session_id}")
+
+    try:
+        system_prompt = (
+            "You are helping a student in a Socratic tutoring session. "
+            "Based on the conversation so far, generate 2-4 short, honest conversational "
+            "reactions the student might naturally say next. These should NOT be substantive "
+            "answers to the tutor's question — they should be authentic student reactions like "
+            "'I forgot the formula', 'Can you give me a hint?', 'I think I understand now', "
+            "'Wait, can you explain that part again?', 'I'm not sure where to start', "
+            "'Oh, I see — so it's like...', 'That makes sense', 'I'm confused about X'. "
+            "Keep each suggestion under 10 words. Return 2-4 suggestions as a JSON list."
+        )
+
+        # Format the last few messages for context
+        conversation = "\n".join(
+            f"{m['role'].upper()}: {m['content']}" for m in request.messages
+        )
+        human_prompt = f"Conversation:\n{conversation}\n\nGenerate suggestions for the student's next reply."
+
+        model = await provision_langchain_model(conversation, None, "chat", max_tokens=200)
+        structured = model.with_structured_output(_SuggestionsOutput)
+        result: _SuggestionsOutput = await structured.ainvoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=human_prompt),
+        ])
+
+        return SuggestionsResponse(suggestions=result.suggestions)
+
+    except Exception as e:
+        logger.warning(f"Failed to generate suggestions for {session_id}: {e}")
+        # Non-fatal — return empty list so UI degrades gracefully
+        return SuggestionsResponse(suggestions=[])
+se(suggestions=[])
+>>>>>>> origin/main
+
+se(suggestions=[])
+>>>>>>> origin/main
+se(suggestions=[])
+>>>>>>> origin/main

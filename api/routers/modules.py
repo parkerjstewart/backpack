@@ -12,6 +12,7 @@ from api.models import (
     LearningGoalResponse,
     LearningGoalUpdate,
     ModuleCreate,
+    ModuleReorderRequest,
     ModuleResponse,
     ModuleUpdate,
     PreviewModuleContentRequest,
@@ -104,7 +105,8 @@ async def get_modules(
         query = f"""
             SELECT *,
             count(<-reference) as source_count,
-            count(<-artifact) as note_count
+            count(<-artifact) as note_count,
+            count((SELECT id FROM learning_goal WHERE module = $parent.id)) as learning_goal_count
             FROM module
             WHERE status != "draft" OR status = NONE
             ORDER BY {order_by}
@@ -128,7 +130,9 @@ async def get_modules(
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                learning_goal_count=nb.get("learning_goal_count", 0),
                 course_id=str(nb.get("course")) if nb.get("course") else None,
+                order=nb.get("order") or 0,
             )
             for nb in result
         ]
@@ -147,11 +151,22 @@ async def create_module(module: ModuleCreate, authorization: Optional[str] = Hea
             user_id = require_authenticated_user_id(authorization)
             await require_teaching_role(module.course_id, user_id)
 
+        # Auto-assign order = max existing order + 1 for course modules
+        order = 0
+        if module.course_id:
+            existing = await repo_query(
+                "SELECT order FROM module WHERE course = $course_id ORDER BY order DESC LIMIT 1",
+                {"course_id": ensure_record_id(module.course_id)},
+            )
+            if existing:
+                order = (existing[0].get("order") or 0) + 1
+
         new_module = Module(
             name=module.name,
             description=module.description,
             course=module.course_id,
             status=module.status,
+            order=order,
         )
         await new_module.save()
 
@@ -164,9 +179,11 @@ async def create_module(module: ModuleCreate, authorization: Optional[str] = Hea
             overview=new_module.overview,
             created=str(new_module.created),
             updated=str(new_module.updated),
-            source_count=0,  # New module has no sources
-            note_count=0,  # New module has no notes
+            source_count=0,
+            note_count=0,
+            learning_goal_count=0,
             course_id=str(new_module.course) if new_module.course else None,
+            order=new_module.order,
         )
     except InvalidInputError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -185,7 +202,8 @@ async def get_module(module_id: str):
         query = """
             SELECT *,
             count(<-reference) as source_count,
-            count(<-artifact) as note_count
+            count(<-artifact) as note_count,
+            count((SELECT id FROM learning_goal WHERE module = $parent.id)) as learning_goal_count
             FROM $module_id
         """
         result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
@@ -205,6 +223,7 @@ async def get_module(module_id: str):
             updated=str(nb.get("updated", "")),
             source_count=nb.get("source_count", 0),
             note_count=nb.get("note_count", 0),
+            learning_goal_count=nb.get("learning_goal_count", 0),
             course_id=str(nb.get("course")) if nb.get("course") else None,
         )
     except HTTPException:
@@ -247,6 +266,8 @@ async def update_module(
             module.overview = module_update.overview
         if module_update.course_id is not None:
             module.course = module_update.course_id
+        if module_update.order is not None:
+            module.order = module_update.order
 
         await module.save()
 
@@ -254,7 +275,8 @@ async def update_module(
         query = """
             SELECT *,
             count(<-reference) as source_count,
-            count(<-artifact) as note_count
+            count(<-artifact) as note_count,
+            count((SELECT id FROM learning_goal WHERE module = $parent.id)) as learning_goal_count
             FROM $module_id
         """
         result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
@@ -272,7 +294,9 @@ async def update_module(
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                learning_goal_count=nb.get("learning_goal_count", 0),
                 course_id=str(nb.get("course")) if nb.get("course") else None,
+                order=nb.get("order") or 0,
             )
 
         # Fallback if query fails
@@ -287,7 +311,9 @@ async def update_module(
             updated=str(module.updated),
             source_count=0,
             note_count=0,
+            learning_goal_count=0,
             course_id=str(module.course) if module.course else None,
+            order=module.order,
         )
     except HTTPException:
         raise
@@ -312,9 +338,9 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
             user_id = require_authenticated_user_id(authorization)
             await require_teaching_role(str(module.course), user_id)
 
-        if module.status != "draft":
+        if module.status not in ("draft", "paused"):
             raise HTTPException(
-                status_code=400, detail="Only draft modules can be published"
+                status_code=400, detail="Only draft or paused modules can be published"
             )
 
         module.status = "published"
@@ -323,7 +349,8 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
         query = """
             SELECT *,
             count(<-reference) as source_count,
-            count(<-artifact) as note_count
+            count(<-artifact) as note_count,
+            count((SELECT id FROM learning_goal WHERE module = $parent.id)) as learning_goal_count
             FROM $module_id
         """
         result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
@@ -341,7 +368,9 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                learning_goal_count=nb.get("learning_goal_count", 0),
                 course_id=str(nb.get("course")) if nb.get("course") else None,
+                order=nb.get("order") or 0,
             )
 
         return ModuleResponse(
@@ -355,6 +384,7 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
             updated=str(module.updated),
             source_count=0,
             note_count=0,
+            learning_goal_count=0,
             course_id=str(module.course) if module.course else None,
         )
     except HTTPException:
@@ -363,6 +393,75 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
         logger.error(f"Error publishing module {module_id}: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error publishing module: {str(e)}"
+        )
+
+
+@router.patch("/modules/{module_id}/unpublish", response_model=ModuleResponse)
+async def unpublish_module(module_id: str, authorization: Optional[str] = Header(None)):
+    """Pause a published module, blocking students from starting tutor sessions."""
+    try:
+        module = await Module.get(module_id)
+        if not module:
+            raise HTTPException(status_code=404, detail="Module not found")
+
+        if module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
+
+        if module.status != "published":
+            raise HTTPException(
+                status_code=400, detail="Only published modules can be unpublished"
+            )
+
+        module.status = "paused"
+        await module.save()
+
+        query = """
+            SELECT *,
+            count(<-reference) as source_count,
+            count(<-artifact) as note_count,
+            count((SELECT id FROM learning_goal WHERE module = $parent.id)) as learning_goal_count
+            FROM $module_id
+        """
+        result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
+
+        if result:
+            nb = result[0]
+            return ModuleResponse(
+                id=str(nb.get("id", "")),
+                name=nb.get("name", ""),
+                description=nb.get("description", ""),
+                archived=nb.get("archived", False),
+                status=nb.get("status") or "paused",
+                overview=nb.get("overview"),
+                created=str(nb.get("created", "")),
+                updated=str(nb.get("updated", "")),
+                source_count=nb.get("source_count", 0),
+                note_count=nb.get("note_count", 0),
+                learning_goal_count=nb.get("learning_goal_count", 0),
+                course_id=str(nb.get("course")) if nb.get("course") else None,
+            )
+
+        return ModuleResponse(
+            id=module.id or "",
+            name=module.name,
+            description=module.description,
+            archived=module.archived or False,
+            status=module.status or "paused",
+            overview=module.overview,
+            created=str(module.created),
+            updated=str(module.updated),
+            source_count=0,
+            note_count=0,
+            learning_goal_count=0,
+            course_id=str(module.course) if module.course else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error unpublishing module {module_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error unpublishing module: {str(e)}"
         )
 
 
@@ -653,6 +752,7 @@ async def get_module_learning_goals(module_id: str):
                 id=str(goal.id),
                 module=str(goal.module),
                 description=goal.description,
+                title=getattr(goal, "title", "") or "",
                 takeaways=goal.takeaways,
                 competencies=goal.competencies,
                 anchor_examples=getattr(goal, "anchor_examples", "") or "",
@@ -698,6 +798,7 @@ async def create_learning_goal(
         goal = LearningGoal(
             module=str(ensure_record_id(module_id)),
             description=request.description,
+            title=getattr(request, "title", "") or "",
             takeaways=request.takeaways,
             competencies=request.competencies,
             anchor_examples=getattr(request, "anchor_examples", "") or "",
@@ -709,6 +810,7 @@ async def create_learning_goal(
             id=str(goal.id),
             module=str(goal.module),
             description=goal.description,
+            title=getattr(goal, "title", "") or "",
             takeaways=goal.takeaways,
             competencies=goal.competencies,
             anchor_examples=getattr(goal, "anchor_examples", "") or "",
@@ -746,6 +848,8 @@ async def update_learning_goal(
 
         if request.description is not None:
             goal.description = request.description
+        if request.title is not None:
+            goal.title = request.title
         if request.takeaways is not None:
             goal.takeaways = request.takeaways
         if request.competencies is not None:
@@ -761,6 +865,7 @@ async def update_learning_goal(
             id=str(goal.id),
             module=str(goal.module),
             description=goal.description,
+            title=getattr(goal, "title", "") or "",
             takeaways=goal.takeaways,
             competencies=goal.competencies,
             anchor_examples=getattr(goal, "anchor_examples", "") or "",
@@ -841,6 +946,7 @@ async def generate_module_learning_goals(
                 goal = LearningGoal(
                     module=str(ensure_record_id(request.module_id)),
                     description=goal_data.description,
+                    title=getattr(goal_data, "title", "") or "",
                     takeaways=goal_data.takeaways,
                     competencies=goal_data.competencies,
                     anchor_examples=goal_data.anchor_examples,
@@ -850,6 +956,7 @@ async def generate_module_learning_goals(
                 created_goals.append(
                     LearningGoalPreview(
                         description=goal.description,
+                        title=getattr(goal, "title", "") or "",
                         takeaways=goal.takeaways,
                         competencies=goal.competencies,
                         anchor_examples=getattr(goal, "anchor_examples", "")
@@ -863,6 +970,7 @@ async def generate_module_learning_goals(
                 learning_goals=[
                     LearningGoalPreview(
                         description=g.description,
+                        title=getattr(g, "title", "") or "",
                         takeaways=g.takeaways,
                         competencies=g.competencies,
                         anchor_examples=getattr(g, "anchor_examples", "") or "",
@@ -939,6 +1047,7 @@ async def refine_module_content_endpoint(
             learning_goals=[
                 LearningGoalPreview(
                     description=g.description,
+                    title=getattr(g, "title", "") or "",
                     takeaways=g.takeaways,
                     competencies=g.competencies,
                 )

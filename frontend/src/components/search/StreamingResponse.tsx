@@ -6,8 +6,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { CheckCircle, Sparkles, Lightbulb, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { MathMarkdown } from '@/components/ui/math-markdown'
 import { convertReferencesToMarkdownLinks, createReferenceLinkComponent } from '@/lib/utils/source-references'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -173,9 +172,8 @@ function FinalAnswerContent({
   const LinkComponent = createReferenceLinkComponent(onReferenceClick)
 
   return (
-    <div className="prose prose-sm max-w-none dark:prose-invert break-words prose-a:break-all prose-p:leading-relaxed prose-headings:mt-4 prose-headings:mb-2">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+    <div className="prose prose-sm max-w-none break-words prose-a:break-all prose-p:leading-relaxed prose-headings:mt-4 prose-headings:mb-2">
+      <MathMarkdown
         components={{
           a: LinkComponent,
           table: ({ children }) => (
@@ -191,7 +189,7 @@ function FinalAnswerContent({
         }}
       >
         {markdownWithLinks}
-      </ReactMarkdown>
+      </MathMarkdown>
     </div>
   )
 }

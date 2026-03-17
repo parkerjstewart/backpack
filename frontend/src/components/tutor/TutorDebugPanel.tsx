@@ -54,7 +54,7 @@ const LIFECYCLE_STYLES: Record<CompetencyLifecycleStatus, { badge: string; borde
   mastered: {
     badge: 'bg-green-100 text-green-700 border-green-200',
     border: 'border-green-300 bg-green-50/30',
-    icon: <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />,
+    icon: <CheckCircle className="h-3 w-3 text-success-fg mt-0.5 flex-shrink-0" />,
   },
   explained: {
     badge: 'bg-amber-100 text-amber-700 border-amber-200',

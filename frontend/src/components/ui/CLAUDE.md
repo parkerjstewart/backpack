@@ -107,7 +107,7 @@ For sidebar navigation specifically, use the `SidebarNavLink` component from `co
 ### Form Labels
 - **`FormLabel`** (`form-label.tsx`): EB Garamond 24px labels for forms (uses `.text-title` class)
 - Supports `required` prop to show asterisk suffix
-- Color: `text-teal-800` (80% opacity teal)
+- Color: `text-primary` (#14302e teal)
 - **Use instead of `Label`** when form labels should match Figma's serif typography
 
 ### File Upload Zone

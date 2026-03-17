@@ -4,6 +4,7 @@ export type SourceStatus = 'processing' | 'completed' | 'failed'
 
 export interface DraftLearningGoal {
   description: string
+  title: string
   takeaways: string
   competencies: string
   order: number
@@ -122,7 +123,7 @@ export const useModuleDraftStore = create<ModuleDraftState>()((set, get) => ({
   addLearningGoal: (description: string) => {
     set((state) => ({
       learningGoals: [
-        { description, takeaways: '', competencies: '', order: 0 },
+        { description, title: '', takeaways: '', competencies: '', order: 0 },
         ...state.learningGoals.map((goal, i) => ({ ...goal, order: i + 1 })),
       ],
     }))

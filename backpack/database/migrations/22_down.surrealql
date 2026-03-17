@@ -24,3 +24,6 @@ DEFINE INDEX IF NOT EXISTS idx_progress_goal ON TABLE student_progress COLUMNS l
 DEFINE EVENT IF NOT EXISTS learning_goal_delete ON TABLE learning_goal WHEN ($after == NONE) THEN {
     DELETE student_progress WHERE learning_goal == $before.id;
 };
+
+-- Remove title field from learning_goal
+REMOVE FIELD title ON TABLE learning_goal;

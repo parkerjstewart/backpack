@@ -9,6 +9,7 @@ interface CourseHeaderProps {
   courseId: string;
   courseName: string;
   membershipRole?: CourseMembershipRole;
+  moduleName?: string;
 }
 
 interface Tab {
@@ -22,7 +23,7 @@ interface Tab {
  * Displays course name on the left and tabs (Modules | Students | Insights | Settings)
  * on the right. Should be used on all course subpages for consistent navigation.
  */
-export function CourseHeader({ courseId, courseName, membershipRole }: CourseHeaderProps) {
+export function CourseHeader({ courseId, courseName, membershipRole, moduleName }: CourseHeaderProps) {
   const pathname = usePathname();
   const permissions = getCoursePermissions(membershipRole);
 
@@ -31,9 +32,7 @@ export function CourseHeader({ courseId, courseName, membershipRole }: CourseHea
     { label: "Modules", href: `/courses/${courseId}` },
     { label: "Students", href: `/courses/${courseId}/students` },
   ];
-  if (permissions.canManageCourseSettings) {
-    tabs.push({ label: "Settings", href: `/courses/${courseId}/settings` });
-  }
+  tabs.push({ label: "Settings", href: `/courses/${courseId}/settings` });
 
   const isActiveTab = (href: string) => {
     // Decode pathname to handle URL-encoded characters (e.g. %3A for : in SurrealDB IDs)
@@ -54,10 +53,22 @@ export function CourseHeader({ courseId, courseName, membershipRole }: CourseHea
 
   return (
     <div className="flex items-center justify-between border-b border-border py-2">
-      {/* Course name */}
-      <h1 className="font-heading text-[32px] font-medium tracking-[-0.64px] text-primary">
-        {courseName}
-      </h1>
+      {/* Course name (or breadcrumb when inside a module) */}
+      {moduleName ? (
+        <h1 className="text-section text-primary flex items-baseline gap-2">
+          <Link href={`/courses/${courseId}`} className="hover:opacity-70 transition-opacity">
+            {courseName}
+          </Link>
+          <span className="text-muted-foreground">›</span>
+          <span>{moduleName}</span>
+        </h1>
+      ) : (
+        <h1 className="text-section text-primary">
+          <Link href={`/courses/${courseId}`} className="hover:opacity-70 transition-opacity">
+            {courseName}
+          </Link>
+        </h1>
+      )}
 
       {/* Tab navigation */}
       <nav className="flex items-center gap-1">
@@ -68,8 +79,8 @@ export function CourseHeader({ courseId, courseName, membershipRole }: CourseHea
             className={cn(
               "px-4 py-1 rounded-3xl text-[18px] leading-normal font-medium transition-colors",
               isActiveTab(tab.href)
-                ? "bg-accent text-teal-800 tracking-[-0.18px]"
-                : "border border-border text-teal-800 hover:bg-secondary tracking-[-0.36px]",
+                ? "bg-sidebar-accent text-primary tracking-[-0.18px]"
+                : "border border-border text-primary hover:bg-secondary tracking-[-0.36px]",
             )}
           >
             {tab.label}

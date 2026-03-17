@@ -112,7 +112,7 @@ export function CreateCourseDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[806px] rounded-[32px] px-16 pt-8 pb-16"
+        className="max-w-[806px] rounded-xl px-16 pt-8 pb-16"
         showCloseButton={false}
       >
         {/* Custom positioned close button (top-left per Figma) */}
