@@ -55,15 +55,16 @@ Set `resolved: false` if:
 - They have follow-up questions about the tangent
 - It's unclear whether they're done with the side topic
 
-## Step 2: Incidental evidence scan (upside-only)
+## Step 2: Incidental evidence scan (upside-only, high bar)
 
-Even during tangent exchanges, students sometimes spontaneously demonstrate understanding of pending competencies. For each pending competency listed above, check whether the student's response provides any clearly positive evidence (score ≥ 0.5).
+Even during tangent exchanges, students sometimes spontaneously demonstrate understanding of pending competencies. For each pending competency listed above, check whether the student's response provides any clearly positive evidence.
 
 **Rules:**
-- Only include if evidence is clearly positive (score ≥ 0.5)
-- Only include if the student demonstrably addressed the competency — not just mentioned it in passing
+- Only include if the student demonstrated the concept **independently and unprompted** — score ≥ 0.75 required (higher bar than main evaluation, because tangent context makes it easy to confuse "student understands" with "student parroted what the tutor just explained")
+- Only include if the student demonstrably addressed the competency in their OWN words, not just repeating or affirming what the tutor said in this exchange
 - NEVER include to record a gap — omission is not evidence
-- When in doubt, include it (positive observations help future competencies start with context)
+- NEVER credit mastery for a student affirming, paraphrasing, or saying "oh I see" to something the tutor explained — that is tutor-demonstrated understanding, not student-demonstrated understanding
+- When genuinely in doubt, omit — the main evaluator will catch it on the next focused exchange
 
 ## Step 3: Tangent observation
 
@@ -82,7 +83,7 @@ If `resolved: true` → guide the tutor to smoothly return to the main problem.
 If `resolved: false` and tangent_turns < 3 → guide the tutor to continue helping with the tangent naturally.
 If `resolved: false` and tangent_turns >= 3 → guide the tutor to gently reconnect to the problem.
 
-In all reconnect scenarios: tell the tutor to invite the student back with a question ("shall we get back to X?" or "want to pick up where we left off?") — NOT by filling in the gap or stating the next step for the active competency. The tutor has the competency gap visible in its context; if the guidance reveals the answer, the tutor will give it away.
+In all reconnect scenarios: tell the tutor to invite the student back to **exactly where they left off** — NOT by revealing the next step, NOT by summarizing what they should do next. Just a simple invitation back ("shall we get back to where we were?" or "want to pick up where we left off?"). The tutor already has the competency gap visible in its context — if your guidance specifies the next step, the tutor will say it out loud and hand the student the answer.
 
 # OUTPUT FORMAT
 
@@ -99,7 +100,7 @@ In all reconnect scenarios: tell the tutor to invite the student back with a que
     }
   ],
   "tangent_observation": "Student needed a reminder about log derivative rules — calculus mechanics gap, not conceptual gap on the main topic",
-  "tutor_guidance": "The log derivative question has been answered. Student seems satisfied. Now reconnect: ask them to go ahead and take the derivative of the log-likelihood they set up, since they now know log(k!) drops out as a constant."
+  "tutor_guidance": "The log derivative question has been answered. Student seems satisfied. Invite them back to the main problem — just ask if they're ready to pick up where they left off."
 }
 ```
 

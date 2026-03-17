@@ -263,6 +263,47 @@
     border-color: var(--sage-500) !important;
   }
 
+  /* Tutor presence: fuzzy dot + spring uncurl */
+  .tutor-presence {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    transition: width 0.4s ease, height 0.4s ease;
+  }
+
+  .tutor-fuzzy-dot {
+    border-radius: 50%;
+    background: var(--sage-300);
+    box-shadow: 0 0 6px 3px color-mix(in srgb, var(--sage-300) 50%, transparent);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    flex-shrink: 0;
+  }
+
+  .tutor-spring-svg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transition: opacity 0.35s ease;
+  }
+
+  .tutor-spring-line {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+  }
+
+  .tutor-spring-active {
+    animation: tutor-spring-draw 2.5s ease-in-out infinite;
+  }
+
+  @keyframes tutor-spring-draw {
+    0%    { stroke-dashoffset: 1; opacity: 1; }
+    55%   { stroke-dashoffset: 0; opacity: 1; }
+    70%   { stroke-dashoffset: 0; opacity: 1; }
+    85%   { stroke-dashoffset: 0; opacity: 0; }
+    85.1% { stroke-dashoffset: 1; opacity: 0; }
+    100%  { stroke-dashoffset: 1; opacity: 1; }
+  }
+
   /* Excalidraw: suppress welcome-screen robot illustration */
   .excalidraw .welcome-screen-decor-bottom-left,
   .excalidraw .welcome-screen-decor-bottom-right {

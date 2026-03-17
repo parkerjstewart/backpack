@@ -18,8 +18,10 @@ Graph flow (per goal):
 
 import asyncio
 import concurrent.futures
+import json
 import os
 import sqlite3
+import uuid
 from datetime import datetime
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
@@ -64,24 +66,36 @@ MASTERY_THRESHOLD = 0.65
 BEHAVIORAL_PROFILES: dict[str, str] = {
     "guide": (
         "You're guiding the student through the problem. Your goal is to help them "
-        "demonstrate and build understanding.\n"
-        "- When the student is engaging and progressing, prefer asking over telling — "
-        "  invite them to reason through the next step rather than giving it to them "
-        "  ('What would you try next?' instead of 'Now take the derivative.')\n"
-        "- Give information when: (a) the evaluator's guidance says to, (b) the student "
-        "  explicitly asked, (c) they're genuinely stuck after you've asked, or "
-        "  (d) a brief context reminder is needed\n"
+        "demonstrate and build understanding through dialogue — ask, listen, respond.\n"
+        "- Default: ask a question that invites the student to reason through the next step. "
+        "  ('What would you try next?' not 'Now take the derivative.')\n"
+        "- Do NOT state what a concept is or means — that's for the student to demonstrate. "
+        "  Bad: 'MLE is basically picking the parameters that make the data most plausible.' "
+        "  Good: 'What does it mean to find the best parameter here?' "
+        "  If you catch yourself saying 'X is basically...' or 'the idea is...', turn it into a question.\n"
+        "- Do NOT preview upcoming steps or reveal what comes next in the derivation. "
+        "  Bad: 'We usually take the log to turn the product into a sum.' "
+        "  Good: 'That product is going to get messy — any ideas for simplifying?'\n"
+        "- One question, then stop. Don't add a bonus explanation as a lead-in to your question.\n"
+        "- Guide mode is NOT for delivering substantive information. If the evaluator says "
+        "  to give a fact or formula, keep it to one brief sentence, then immediately follow "
+        "  with a question. Substantive info-giving belongs in give_fact or explain modes — "
+        "  it gets properly tracked there. Burying it in guide mode means the scoring system "
+        "  never learns the student was helped.\n"
         "- Follow the evaluator's assessment closely — it tells you what the student needs\n"
-        "- If giving info, give enough to unblock, then follow with a question\n"
         "- If prior evidence exists, build on it — don't re-test demonstrated understanding\n"
         "- 2-4 sentences typical, shorter or longer as the exchange calls for\n"
-        "- If you reference a formula or formal definition, put it in the supplement field"
+        "- Do NOT set new_artifact unless the student explicitly asked you to write something "
+        "  as an artifact or write out a formula. "
+        "  If an existing artifact is relevant, set reference_artifact_label to its label."
     ),
     "nudge": (
         "The student is close — they almost have it. Give a brief, targeted push.\n"
         "- 1-2 sentences — short reaction + one specific question or prompt\n"
         "- Name the specific concept or formula they're missing\n"
-        "- Don't re-explain — they're almost there"
+        "- Don't re-explain — they're almost there\n"
+        "- Do NOT set new_artifact unless the student explicitly asked you to write something "
+        "  as an artifact or write out a formula. You can set reference_artifact_label if an existing one is helpful."
     ),
     "give_fact": (
         "The student is stuck on a specific fact you've already probed from multiple "
@@ -91,7 +105,13 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- Check: is this a context gap (forgot the scenario) or a knowledge gap "
         "  (forgot the formula)? If context gap, restate the scenario instead.\n"
         "- 2-3 sentences typical\n"
-        "- If the fact is a formula, put it in the supplement field as a LaTeX equation"
+        "- If the fact is a formula or definition, set new_artifact with the general form — "
+        "  check ESTABLISHED ARTIFACTS first; if the formula is just an existing one applied to this problem, "
+        "  add the general wrapper formula instead and let the student combine them. "
+        "  Apply it to the specific problem in message, not in the artifact.\n"
+        "- When you create a new_artifact, your message MUST naturally reference it — "
+        "  tell the student what you've put on the board and how to use it. "
+        "  Example: 'Here's the general likelihood formula on your board — try plugging in the Poisson PMF we already have.'"
     ),
     "explain": (
         "The student is genuinely stuck on this concept. Explain it clearly and "
@@ -103,7 +123,13 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "- End with: \"Does that help? Any questions about this, or should we move on?\"\n"
         "- Don't quiz them on this concept again after explaining\n"
         "- Stay conversational — \"here's how I think about it...\" not \"the answer is...\"\n"
-        "- Put any equations or formal definitions in the supplement field, not in the message\n"
+        "- Put equations and formal definitions in new_artifact, not in the message — "
+        "  but use the most general form: check ESTABLISHED ARTIFACTS first, and if the equation "
+        "  is just an existing artifact substituted into another formula, add the general wrapper instead. "
+        "  Problem-specific steps, substitutions, and derivation work-throughs go in message.\n"
+        "- When you create a new_artifact, your message MUST naturally reference it — "
+        "  explain what you've put on the board and why it's useful. "
+        "  Example: 'I've put the general definition on your board — you can refer back to it as we work through the steps.'\n"
         "- For structural concepts (networks, trees, state machines, graphs), set image_prompt "
         "  instead of trying to describe the structure in text"
     ),
@@ -117,26 +143,43 @@ BEHAVIORAL_PROFILES: dict[str, str] = {
         "In both cases:\n"
         "- Bridge through the problem, a conceptual connection, or a follow-up to what they just said\n"
         "- Don't name the competency rubric text\n"
-        "- 2-3 sentences typical"
+        "- 2-3 sentences typical\n"
+        "- If the evaluator mentions a remaining gap, briefly fill it in conversationally during "
+        "  the transition — 'You've got the right idea. Just to round things out: [gap].' "
+        "  Don't quiz them on it, just share it as a casual addition and move on.\n"
+        "- You may set new_artifact to capture a key formula or takeaway being summarized — "
+        "  use the most general reusable form, not the problem-specific version. "
+        "  ONLY create an artifact for something already covered in this session — "
+        "  do NOT create artifacts for the upcoming competency that the student hasn't engaged with yet.\n"
+        "- When you create a new_artifact, your message MUST naturally reference it — "
+        "  tell the student what you've captured for them. "
+        "  Example: 'I've added that to your board so you have it handy.'"
     ),
     "tangent": (
-        "The student asked a side question. Answer it directly and helpfully — "
-        "this is a teaching moment, not an assessment.\n"
-        "- Answer their question directly and completely\n"
+        "The student asked a side question. Answer it briefly and helpfully — "
+        "this is a quick teaching moment, not a lecture.\n"
+        "- Answer briefly — a sentence or two of plain English. Don't over-explain.\n"
         "- Don't assess or quiz — just help\n"
-        "- Follow the evaluator's guidance on whether to reconnect. If the guidance "
-        "  doesn't mention coming back, just answer and let the conversation breathe — "
-        "  don't force a redirect after every side question\n"
-        "- IMPORTANT: When reconnecting, invite them back with a question — do NOT "
-        "  fill in the active competency gap for them "
-        "  ('Shall we pick back up where we left off?' not 'The Poisson PMF is...')\n"
-        "- 2-4 sentences typical, but take more space if the topic needs it"
+        "- Follow the evaluator's guidance on whether to reconnect\n"
+        "- IMPORTANT: When reconnecting, invite them back to EXACTLY where they left off — "
+        "  do NOT pose a new forward-looking question or hint at what comes next. "
+        "  'Shall we pick back up where we were?' is correct. "
+        "  'Now can you try writing the product using the PMF?' is NOT — "
+        "  that reveals the competency gap and does the student's work for them.\n"
+        "- 1-3 sentences total"
     ),
     "opening": (
         "This is the opening turn. Introduce the problem and invite the student's "
         "initial thinking.\n"
-        "- Present the anchor problem scenario naturally\n"
-        "- Invite them to share what they know or how they'd approach it\n"
+        "- If the EVALUATOR'S ASSESSMENT above contains a goal transition hint, open with "
+        "  one natural connecting sentence bridging from the previous topic to this one. "
+        "  Otherwise, dive straight into the scenario.\n"
+        "- Present the anchor problem scenario naturally — as if the student has never heard it. "
+        "  Never say 'that X setup' or 'the Y example from lecture' — introduce the scenario fresh.\n"
+        "- Do NOT define or explain the concept you're assessing — that's what the student "
+        "  needs to demonstrate. No 'MLE is basically...', no previewing the steps.\n"
+        "- Ask ONE open-ended question: 'Where would you start?' or 'What's your thinking here?' — "
+        "  not a multiple-choice or step-by-step prompt that telegraphs the answer\n"
         "- Casual, welcoming — don't quiz immediately\n"
         "- Use the opening_framing as inspiration but generate your own natural intro\n"
         "- 2-3 sentences typical"
@@ -245,8 +288,12 @@ class TutorState(TypedDict):
     # Worked examples / figures / definitions extracted from module material
     module_examples: List[Dict[str, Any]]
 
-    # Supplement from the most recent tutor_turn (equations, definitions, etc.)
-    latest_supplement: Optional[str]
+    # Cumulative artifact list — persisted across all goals in the session.
+    # Each entry: {id, label, content, source_mode, goal_id, exchange}
+    artifacts: List[Dict[str, Any]]
+
+    # Which artifact (by id) to highlight this turn — None if no highlight.
+    highlighted_artifact_id: Optional[str]
 
     # Generated image data URI from the most recent tutor_turn (if any)
     latest_image_url: Optional[str]
@@ -431,7 +478,8 @@ def initialize_session(state: TutorState, config: RunnableConfig) -> dict:
         "is_tangent": False,
         "student_model": {},
         "module_examples": module_examples,
-        "latest_supplement": None,
+        "artifacts": [],
+        "highlighted_artifact_id": None,
         "latest_image_url": None,
         "messages": [
             AIMessage(
@@ -481,6 +529,8 @@ def select_next_goal(state: TutorState, config: RunnableConfig) -> dict:
             "encounters": 0,
             "turns_since_progress": 0,
             "hint_count": 0,
+            "artifacts_given": [],
+            "deferred_notes": [],
         }
         for name in competency_names
     ]
@@ -650,6 +700,55 @@ def _generate_image(prompt: str) -> Optional[str]:
         return None
 
 
+def _extract_raw_chunk_text(chunk) -> str:
+    """Extract raw tool-call argument delta from an AIMessageChunk."""
+    if hasattr(chunk, "tool_call_chunks") and chunk.tool_call_chunks:
+        parts = []
+        for tc in chunk.tool_call_chunks:
+            if isinstance(tc, dict):
+                parts.append(tc.get("args", "") or "")
+            else:
+                parts.append(getattr(tc, "args", "") or "")
+        return "".join(parts)
+    content = getattr(chunk, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(p.get("text", "") if isinstance(p, dict) else "" for p in content)
+    return ""
+
+
+def _extract_field_from_partial_json(json_buffer: str, field_name: str, prev_sent: int) -> str:
+    """Extract new characters of a string field from partially-streamed JSON tool args."""
+    key = f'"{field_name}"'
+    key_pos = json_buffer.find(key)
+    if key_pos == -1:
+        return ""
+    i = key_pos + len(key)
+    while i < len(json_buffer) and json_buffer[i] in (' ', '\t', '\n', '\r', ':'):
+        i += 1
+    if i >= len(json_buffer) or json_buffer[i] != '"':
+        return ""
+    i += 1
+    value_chars: list[str] = []
+    while i < len(json_buffer):
+        c = json_buffer[i]
+        if c == '\\' and i + 1 < len(json_buffer):
+            nc = json_buffer[i + 1]
+            escapes = {'"': '"', 'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', '/': '/'}
+            value_chars.append(escapes.get(nc, nc))
+            i += 2
+        elif c == '"':
+            break
+        else:
+            value_chars.append(c)
+            i += 1
+    full_value = "".join(value_chars)
+    if len(full_value) > prev_sent:
+        return full_value[prev_sent:]
+    return ""
+
+
 def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     """Generate a tutor message and wait for student response.
 
@@ -660,7 +759,11 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
     """
     tutor_mode = state.get("tutor_mode", "opening")
     current_goal_id = state.get("current_goal_id")
-    logger.info(f"tutor_turn in mode={tutor_mode} for goal={current_goal_id}")
+    token_queue_present = bool(config.get("configurable", {}).get("token_queue"))
+    logger.info(
+        f"tutor_turn START | mode={tutor_mode} | goal={current_goal_id} "
+        f"| streaming={'yes' if token_queue_present else 'no'}"
+    )
 
     current_goal = _get_current_goal(state)
     competency_statuses = state.get("competency_statuses", [])
@@ -704,6 +807,8 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
                         break
             break  # only check the most recent human message
 
+    artifacts = list(state.get("artifacts", []))
+
     prompt_data = {
         "goal": current_goal or {},
         "anchor_problem": state.get("anchor_problem", ""),
@@ -717,6 +822,7 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         "module_examples": state.get("module_examples", [])[:8],
         "context_chunks": state.get("goal_contexts", {}).get(current_goal_id, [])[:3],
         "has_student_drawing": last_student_image is not None,
+        "artifacts": artifacts,
     }
 
     system_prompt = Prompter(prompt_template="tutor/tutor_turn").render(data=prompt_data)
@@ -744,32 +850,108 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         model_input = system_prompt
 
     message = ""
-    supplement = None
     image_prompt = None
+    token_queue = config.get("configurable", {}).get("token_queue", None)
     try:
-        result: TutorResponse = model.with_structured_output(TutorResponse).invoke(model_input)
+        result = None
+        if token_queue:
+            # Raw streaming path: bind_tools bypasses PydanticToolsParser so we get
+            # individual JSON argument characters instead of waiting for a full parseable object.
+            # Only stream the message field in real-time; artifact/image fields are assembled
+            # after the full response is parsed (they arrive in large chunks regardless of model).
+            accumulated_args = ""
+            prev_sent_message = 0
+            stream_ok = False
+            try:
+                bound = model.bind_tools([TutorResponse], tool_choice="TutorResponse")
+                for chunk in bound.stream(model_input):
+                    delta = _extract_raw_chunk_text(chunk)
+                    if delta:
+                        accumulated_args += delta
+                        new_msg = _extract_field_from_partial_json(accumulated_args, "message", prev_sent_message)
+                        if new_msg:
+                            token_queue.put(new_msg)
+                            prev_sent_message += len(new_msg)
+                if accumulated_args:
+                    data = json.loads(accumulated_args)
+                    result = TutorResponse.model_validate(data)
+                    stream_ok = True
+            except Exception as stream_err:
+                logger.warning(f"Raw streaming failed, falling back to invoke: {stream_err}")
+            if not stream_ok:
+                result = model.with_structured_output(TutorResponse).invoke(model_input)
+        else:
+            result = model.with_structured_output(TutorResponse).invoke(model_input)
+        if result is None:
+            raise ValueError("Model invocation returned no result")
         message = clean_thinking_content(result.message or "")
-        supplement = result.supplement or None
         image_prompt = result.image_prompt or None
         logger.info(
-            f"tutor_turn structured output ok | supplement={'yes (' + str(len(supplement)) + ' chars)' if supplement else 'null'}"
+            f"tutor_turn structured output ok | new_artifact={'yes' if result.new_artifact else 'null'}"
+            f" | reference_artifact_label={result.reference_artifact_label!r}"
             f" | image_prompt={'yes' if image_prompt else 'null'}"
         )
     except Exception as e:
         logger.error(f"tutor_turn structured output failed: {e}")
         raise
+    finally:
+        if token_queue:
+            token_queue.put(None)  # sentinel — always signals end, even on exception
 
     if not message:
         message = "What are your thoughts on this?"
 
     image_url = _generate_image(image_prompt) if image_prompt else None
 
+    # --- Artifact processing ---
+    new_artifact_dict: Optional[Dict[str, Any]] = None
+    highlighted_artifact_id: Optional[str] = None
+    competency_statuses = [dict(c) for c in competency_statuses]  # mutable copy for artifact tracking
+
+    if result is not None and result.new_artifact:
+        artifact_id = f"art-{uuid.uuid4().hex[:8]}"
+        new_artifact_dict = {
+            "id": artifact_id,
+            "label": result.new_artifact.label,
+            "content": result.new_artifact.content,
+            "source_mode": tutor_mode,
+            "goal_id": current_goal_id,
+            "exchange": state.get("exchanges_on_goal", 0),
+        }
+        artifacts = artifacts + [new_artifact_dict]
+        highlighted_artifact_id = artifact_id
+        logger.info(f"tutor_turn: created artifact '{result.new_artifact.label}' in {tutor_mode} mode")
+
+        # Track artifact as a hint on the active competency so the evaluator can
+        # apply the same scoring penalty as a macro_hint.
+        if tutor_mode in ("give_fact", "explain") and 0 <= active_idx < len(competency_statuses):
+            competency_statuses[active_idx]["hint_count"] = (
+                competency_statuses[active_idx].get("hint_count", 0) + 1
+            )
+            arts_given = list(competency_statuses[active_idx].get("artifacts_given", []))
+            arts_given.append(result.new_artifact.label)
+            competency_statuses[active_idx]["artifacts_given"] = arts_given
+            logger.info(
+                f"tutor_turn: artifact '{result.new_artifact.label}' counted as hint "
+                f"(hint_count now {competency_statuses[active_idx]['hint_count']})"
+            )
+
+    if result is not None and result.reference_artifact_label and not highlighted_artifact_id:
+        ref_label = result.reference_artifact_label
+        for art in artifacts:
+            if art.get("label") == ref_label:
+                highlighted_artifact_id = art.get("id")
+                logger.info(f"tutor_turn: referencing artifact '{ref_label}' → {highlighted_artifact_id}")
+                break
+
     # INTERRUPT: pause and wait for the student's response
     student_response = interrupt(
         {
             "type": "tutor_turn",
             "message": message,
-            "supplement": supplement,
+            "artifact_content": new_artifact_dict["content"] if new_artifact_dict else None,
+            "highlighted_artifact_id": highlighted_artifact_id,
+            "artifacts": artifacts,
             "image_url": image_url,
             "tutor_mode": tutor_mode,
             "goal_id": current_goal_id,
@@ -784,7 +966,10 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
         student_text = student_response
         whiteboard_png = None
 
-    logger.info(f"Received student response ({tutor_mode}): {str(student_text)[:80]}...")
+    logger.info(
+        f"tutor_turn RESUMED (this was the LangGraph replay) | mode={tutor_mode} "
+        f"| student: {str(student_text)[:80]}..."
+    )
 
     # Build HumanMessage — multimodal when a whiteboard PNG is attached
     if whiteboard_png:
@@ -798,8 +983,10 @@ def tutor_turn(state: TutorState, config: RunnableConfig) -> dict:
 
     return {
         "messages": [AIMessage(content=message), human_message],
-        "latest_supplement": supplement,
         "latest_image_url": image_url,
+        "artifacts": artifacts,
+        "highlighted_artifact_id": highlighted_artifact_id,
+        "competency_statuses": competency_statuses,
     }
 
 
@@ -1028,6 +1215,7 @@ def evaluate_and_update_model(
         action_rationale = result.action_rationale or ""
         tutor_guidance = result.tutor_guidance or ""
         tangent_topic_from_eval = result.tangent_topic
+        defer_target_competency = result.defer_target_competency
 
         evaluation = {
             "score": overall,
@@ -1065,6 +1253,7 @@ def evaluate_and_update_model(
         action_rationale = ""
         tutor_guidance = ""
         tangent_topic_from_eval = None
+        defer_target_competency = None
 
     # ---- Update competency statuses ----
     # Brain-dump mode (active_idx == -1): score any competencies the student touched
@@ -1266,6 +1455,41 @@ def evaluate_and_update_model(
             },
         )
 
+    # ---- Defer: student asked about a future pending competency ----
+    if suggested_action == "defer":
+        topic = tangent_topic_from_eval or "a future topic"
+        defer_guidance = (
+            f"Student asked about {topic}, which belongs to a future competency in this session. "
+            "Do NOT answer or give the formula/fact. "
+            "Acknowledge briefly and warmly ('good question, we'll get to that soon') then redirect "
+            "to the current competency with a question about what you're currently assessing. "
+            "1-2 sentences total."
+        )
+        # Store a note on the target future competency so the tutor knows about it when it activates
+        if defer_target_competency:
+            for comp in competency_statuses:
+                if comp["competency"] == defer_target_competency and comp["status"] == "pending":
+                    notes_list = list(comp.get("deferred_notes", []))
+                    notes_list.append(f"Student asked about '{topic}' and was told we'd cover it later")
+                    comp["deferred_notes"] = notes_list
+                    logger.info(
+                        f"Deferred note stored on '{defer_target_competency}': student asked about '{topic}'"
+                    )
+                    break
+        logger.info(f"Defer action: student asked about '{topic}' → future competency '{defer_target_competency}'")
+        return Command(
+            goto="tutor_turn",
+            update={
+                **state_updates,
+                "competency_statuses": competency_statuses,
+                "tutor_mode": "guide",
+                "evaluator_guidance": defer_guidance,
+                "probe_question": None,
+                "is_tangent": False,
+                "tangent_turns": 0,
+            },
+        )
+
     # ---- Safety net: absolute exchange limit ----
     if total_exchanges >= MAX_TOTAL_EXCHANGES_PER_GOAL:
         logger.info(f"Safety net: reached {total_exchanges} total exchanges — switching to explain")
@@ -1291,10 +1515,19 @@ def evaluate_and_update_model(
             competency_statuses[next_idx]["status"] = "active"
             logger.info(f"Competency mastered — advancing to [{next_idx}]: {competency_statuses[next_idx]['competency']}")
             prev_comp = active_comp
-            transition_guidance = (
-                f"Student mastered '{prev_comp['competency']}'. "
-                "Celebrate what they demonstrated specifically, then bridge naturally to the next topic."
-            )
+            _gap = prev_comp.get("gap", "")
+            if _gap:
+                transition_guidance = (
+                    f"Student mastered '{prev_comp['competency']}' but with a remaining gap: {_gap}. "
+                    "Celebrate what they demonstrated, then briefly address the gap conversationally "
+                    "('You've got the core idea. Just to round things out: [gap]...'). "
+                    "Don't quiz them on it — fill it in naturally, then bridge to the next topic."
+                )
+            else:
+                transition_guidance = (
+                    f"Student mastered '{prev_comp['competency']}'. "
+                    "Celebrate what they demonstrated specifically, then bridge naturally to the next topic."
+                )
             return Command(
                 goto="tutor_turn",
                 update={
@@ -1329,10 +1562,19 @@ def evaluate_and_update_model(
         if prev_comp:
             prev_status = prev_comp.get("status", "mastered")
             if prev_status == "mastered":
-                transition_guidance = (
-                    f"Student mastered '{prev_comp['competency']}'. "
-                    "Celebrate what they demonstrated specifically, then bridge naturally to the next topic."
-                )
+                _gap = prev_comp.get("gap", "")
+                if _gap:
+                    transition_guidance = (
+                        f"Student mastered '{prev_comp['competency']}' but with a remaining gap: {_gap}. "
+                        "Celebrate what they demonstrated, then briefly address the gap conversationally "
+                        "('You've got the core idea. Just to round things out: [gap]...'). "
+                        "Don't quiz them on it — fill it in naturally, then bridge to the next topic."
+                    )
+                else:
+                    transition_guidance = (
+                        f"Student mastered '{prev_comp['competency']}'. "
+                        "Celebrate what they demonstrated specifically, then bridge naturally to the next topic."
+                    )
             else:
                 gap = prev_comp.get("gap", "")
                 transition_guidance = (
@@ -1401,10 +1643,19 @@ def evaluate_and_update_model(
                 if next_idx == -1:
                     return Command(goto="mark_goal_complete", update={**state_updates, "competency_statuses": competency_statuses})
                 competency_statuses[next_idx]["status"] = "active"
-                stagnation_transition_guidance = (
-                    f"Student mastered '{active_comp['competency']}'. "
-                    "Celebrate what they demonstrated specifically, then bridge naturally to the next topic."
-                )
+                _gap = active_comp.get("gap", "")
+                if _gap:
+                    stagnation_transition_guidance = (
+                        f"Student mastered '{active_comp['competency']}' but with a remaining gap: {_gap}. "
+                        "Celebrate what they demonstrated, then briefly address the gap conversationally "
+                        "('You've got the core idea. Just to round things out: [gap]...'). "
+                        "Don't quiz them on it — fill it in naturally, then bridge to the next topic."
+                    )
+                else:
+                    stagnation_transition_guidance = (
+                        f"Student mastered '{active_comp['competency']}'. "
+                        "Celebrate what they demonstrated specifically, then bridge naturally to the next topic."
+                    )
                 return Command(
                     goto="tutor_turn",
                     update={
@@ -1499,6 +1750,15 @@ def mark_goal_complete(state: TutorState, config: RunnableConfig) -> dict:
             "Ready for the next topic?"
         )
 
+    # Pass the completed goal description into the next opening turn so the
+    # tutor can bridge naturally instead of jumping cold into a new problem.
+    goal_transition_guidance = (
+        f"Goal transition: the student just finished working through '{goal_description}'. "
+        "Open with one natural connecting sentence that bridges from that topic to this new one "
+        "(e.g. 'Building on that…' or 'Now that you've got X down, let's look at Y…'). "
+        "Then introduce the new anchor problem as fresh context. Keep it brief — 2-3 sentences total."
+    ) if goal_description else None
+
     return {
         "goal_progress": goal_progress,
         "completed_goal_ids": completed_goal_ids,
@@ -1511,7 +1771,7 @@ def mark_goal_complete(state: TutorState, config: RunnableConfig) -> dict:
         "active_competency_index": -1,
         "tutor_mode": "opening",
         "probe_question": None,
-        "evaluator_guidance": None,
+        "evaluator_guidance": goal_transition_guidance,
         "tangent_turns": 0,
         "tangent_topic": None,
         "is_tangent": False,

@@ -401,27 +401,14 @@ export function ChatPanel({
                   size="icon"
                   className="h-[40px] w-[40px] flex-shrink-0"
                   disabled={isStreaming}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    startRecording();
-                  }}
-                  onPointerUp={(e) => {
-                    e.preventDefault();
-                    stopRecording();
-                  }}
-                  onPointerCancel={(e) => {
-                    e.preventDefault();
+                  onClick={() => {
                     if (isRecording) {
                       stopRecording();
+                    } else {
+                      startRecording();
                     }
                   }}
-                  onPointerLeave={(e) => {
-                    e.preventDefault();
-                    if (isRecording) {
-                      stopRecording();
-                    }
-                  }}
-                  title={isRecording ? "Release to send" : "Hold to talk"}
+                  title={isRecording ? "Click to stop and send" : "Click to start recording"}
                 >
                   <Mic className="h-4 w-4" />
                 </Button>

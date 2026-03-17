@@ -10,8 +10,11 @@ import { useTutor } from '@/lib/hooks/use-tutor'
 import { useModule } from '@/lib/hooks/use-modules'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Bug, PanelRightClose, PanelRightOpen, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Bug, RotateCcw } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useSidebarStore } from '@/lib/stores/sidebar-store'
+import { useAuthStore } from '@/lib/stores/auth-store'
+import { useCourseTeachingTeam } from '@/lib/hooks/use-courses'
 
 export default function ReviewPage() {
   const { t } = useTranslation()
@@ -21,10 +24,25 @@ export default function ReviewPage() {
   const moduleId = params?.id ? decodeURIComponent(params.id as string) : ''
   const hasInitializedRef = useRef(false)
 
+  const { isCollapsed, setCollapsed } = useSidebarStore()
+  const currentUser = useAuthStore(state => state.currentUser)
+
+  useEffect(() => {
+    const prev = isCollapsed
+    setCollapsed(true)
+    return () => setCollapsed(prev)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const { data: module, isLoading: moduleLoading } = useModule(moduleId)
+  const { data: teachingTeam } = useCourseTeachingTeam(module?.course_id ?? undefined)
+  const isInstructor =
+    currentUser?.role === 'instructor' ||
+    currentUser?.role === 'admin' ||
+    (teachingTeam ?? []).some(m => m.id === currentUser?.id)
 
   const [showDebug, setShowDebug] = useState(false)
-  const [showCanvas, setShowCanvas] = useState(true)
+  const [showCanvas, setShowCanvas] = useState(false)
 
   // Resizable chat panel width
   const [chatWidth, setChatWidth] = useState(420)
@@ -55,6 +73,7 @@ export default function ReviewPage() {
   const {
     sessionId,
     messages,
+    artifacts,
     isSending,
     isInitializing,
     currentGoal,
@@ -64,6 +83,9 @@ export default function ReviewPage() {
     latestDebugInfo,
     setExportCanvas,
     getWhiteboardPng,
+    suggestions,
+    isSuggestionsLoading,
+    streamingMessage,
     initializeSession,
     sendMessage,
     resetSession,
@@ -119,43 +141,34 @@ export default function ReviewPage() {
                 size="sm"
                 onClick={() => router.back()}
               >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                {t.common.back}
+                <ArrowLeft className="h-4 w-4" />
               </Button>
               <h1 className="text-xl font-semibold">
                 {t.tutor.reviewSession}: {module.name}
               </h1>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleTryAgain}
-                disabled={isInitializing || isSending}
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                {t.tutor.tryAgain}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowCanvas(v => !v)}
-                title={showCanvas ? 'Hide whiteboard' : 'Show whiteboard'}
-              >
-                {showCanvas ? (
-                  <PanelRightClose className="h-4 w-4" />
-                ) : (
-                  <PanelRightOpen className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant={showDebug ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setShowDebug(v => !v)}
-                title="Toggle agent debug panel"
-              >
-                <Bug className="h-4 w-4" />
-              </Button>
+              {isInstructor && (
+                <Button
+                  variant="light"
+                  size="sm"
+                  onClick={handleTryAgain}
+                  disabled={isInitializing || isSending}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  {t.tutor.tryAgain}
+                </Button>
+              )}
+              {isInstructor && (
+                <Button
+                  variant="light"
+                  size="sm"
+                  onClick={() => setShowDebug(v => !v)}
+                  title="Toggle agent debug panel"
+                >
+                  <Bug className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -169,6 +182,7 @@ export default function ReviewPage() {
           >
             <TutorChat
               messages={messages}
+              artifacts={artifacts}
               isSending={isSending}
               isInitializing={isInitializing}
               onSendMessage={sendMessage}
@@ -182,6 +196,9 @@ export default function ReviewPage() {
               onAppendVoiceTurn={appendVoiceTurn}
               canAttachDrawing={showCanvas}
               getWhiteboardPng={showCanvas ? getWhiteboardPng : undefined}
+              suggestions={suggestions}
+              isSuggestionsLoading={isSuggestionsLoading}
+              streamingMessage={streamingMessage}
               className="flex-1 min-w-0"
             />
           </div>
@@ -214,7 +231,7 @@ export default function ReviewPage() {
 
           {/* Debug panel */}
           {showDebug && (
-            <div className="w-80 flex-shrink-0 min-h-0 border-l p-4 overflow-y-auto">
+            <div className="w-80 flex-shrink-0 min-h-0 p-4 overflow-y-auto">
               <TutorDebugPanel debugInfo={latestDebugInfo} currentGoal={currentGoal} />
             </div>
           )}

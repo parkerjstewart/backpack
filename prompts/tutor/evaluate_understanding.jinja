@@ -23,6 +23,10 @@ You are an educational assessment expert evaluating a student's response in a So
 **Current score**: {{ active_competency.score }}
 **Encounters on this competency**: {{ active_competency.encounters }}
 **Macro hints given**: {{ active_competency.hint_count if active_competency.hint_count is defined else 0 }}
+{% if active_competency.artifacts_given and active_competency.artifacts_given|length > 0 %}
+**Formulas/definitions given to student via artifacts**: {{ active_competency.artifacts_given | join(', ') }}
+*(These were placed on the student's reference board — using them does not demonstrate independent recall. Treat each as equivalent to a macro hint.)*
+{% endif %}
 {% if active_competency.evidence and active_competency.evidence|length > 0 %}
 **⚠ Prior evidence exists**: This competency already has positive evidence from earlier exchanges. Focus your evaluation on what's STILL MISSING. Give full credit for prior demonstrated evidence in your score. Your gap should target only the delta — what remains undemonstrated.
 {% endif %}
@@ -82,7 +86,18 @@ A student not mentioning a competency means "not yet tested" — NOT "the studen
 
 Before scoring, ask: **Is the student's response actually about the active competency?**
 
-If the student is asking a question or talking about something that has nothing to do with the active competency (e.g., asking about a completely different topic, a prerequisite mechanic, or a conceptual side-question), set `suggested_next_action: "tangent"` and skip Steps 0–2. You still need to fill in `tutor_guidance` (tell the tutor what the tangent is about and to help directly), `tangent_topic`, and `action_rationale`. Score fields can use defaults (carry forward the previous score, empty evidence).
+If the student is asking a genuine side question about something unrelated to demonstrating the active competency, set `suggested_next_action: "tangent"` and skip Steps 0–2. You still need to fill in `tutor_guidance` (tell the tutor what the tangent is about and to help directly), `tangent_topic`, and `action_rationale`. Score fields can use defaults (carry forward the previous score, empty evidence).
+
+If the student is asking about something that belongs to a FUTURE pending competency, set `suggested_next_action: "defer"` and skip Steps 0–2. Fill in `tutor_guidance` (tell the tutor NOT to answer and to redirect), `tangent_topic` (what they asked about), `defer_target_competency` (the name of the pending competency it maps to), and `action_rationale`. Score fields can use defaults.
+
+**Tangent pre-check: critical distinctions**
+- A vague, evasive, or minimal answer on the active competency is NOT a tangent. Route as `continue` or `probe`.
+- A student asking a question that IS the answer to the active competency ("how do I calculate joint likelihood?" when the competency is setting up likelihood) is NOT a tangent — it's `probe`. Give them a stepping stone question; do not route to tangent where the tutor would explain it for free.
+- A student asking to be reminded of something they need to demonstrate the competency ("can you remind me of the Poisson PMF?" when the competency IS the Poisson likelihood) is NOT a tangent — route as `macro_hint` so info-giving is tracked in scoring.
+- A student asking about a formula, concept, or method that maps to a FUTURE pending competency is `"defer"` — even if it seems related to the anchor problem. Check the pending competencies list: if the student's question is about something one of those future competencies will assess, do NOT give it to them now. Giving it means they won't need to demonstrate it later. Set `defer_target_competency` to the name of the matching pending competency. Examples: asking for the Poisson PMF while the active competency is "articulate MLE's role" and a future competency covers likelihood setup → `defer`. Asking how to take the log-likelihood derivative while still on likelihood setup → `defer`.
+- `"defer"` vs `"tangent"`: tangent is for questions genuinely outside the scope of ALL competencies (pure prerequisites, unrelated curiosity). Defer is for questions that ARE in scope for this session but belong to a future competency not yet reached.
+- `"defer"` vs `"macro_hint"`: macro_hint is for the student stuck on a fact needed for the ACTIVE competency after multiple attempts. Defer is for facts needed for FUTURE competencies. If the active competency doesn't require the thing the student is asking about, it's defer, not macro_hint.
+- Tangent is ONLY for genuine off-topic questions: pure prerequisite mechanics unrelated to any competency (e.g. "what's the chain rule?" when no competency involves calculus), entirely unrelated curiosity, or problem setup clarification.
 
 Only proceed to Step 0 if the student is engaging with the active competency (even partially or incorrectly).
 
@@ -104,13 +119,14 @@ Look at the last 4–6 exchanges specifically around the **active competency**. 
 | `"probe"` | Response is too vague/ambiguous to score the ACTIVE competency AND a specific new angle exists — OR student says "I don't know" for the first time on this competency. Be specific: name what you want them to demonstrate. Only use when the student is actually engaging with the active competency — if they're asking about something unrelated, that's `"tangent"`, not `"probe"`. |
 | `"macro_hint"` | Student has received scaffolding 2+ times on the same factual gap with no progress — the gap is a bare fact they genuinely cannot recall even with stepping stones |
 | `"explain_competency"` | Student can't reason about THIS specific competency at all even after multiple scaffolded exchanges, OR student is clearly disengaged/frustrated ("I have absolutely no idea", "I give up") |
-| `"advance"` | Active competency is clearly mastered (score >= 0.65) — explicitly move to next |
+| `"advance"` | Active competency is mastered and gaps have been addressed. **Score >= 0.85**: advance unconditionally. **Score 0.65-0.84**: advance ONLY if any identified gap has already been probed in the conversation (i.e., the tutor already asked about it, even if the student didn't fully address it). If you're about to write a gap like "hasn't connected X to Y" but the tutor never asked about the X-to-Y connection, use `continue` or `probe` first — the student deserves a chance before being assessed. |
 | `"continue"` | Normal flow — student is engaging and there's still productive Socratic ground to cover on the active competency |
-| `"tangent"` | Student's question or response is focused on something other than demonstrating the active competency. Use when: (a) student asks about a prerequisite math mechanic needed before they can show the competency (chain rule, product rule, integration by parts); (b) student asks a conceptual side question unrelated to the current step (why MLE vs Bayesian, what are diffusion models, how does X work); (c) student's response is about a completely different topic — not a vague answer on the competency, but a different subject entirely; (d) answering them directly would not produce useful scoring signal for the active competency. Examples: "Can you remind me what the chain rule is?" → tangent. "Why does MLE work better than Bayesian?" → tangent. "What are diffusion models?" (while studying MLE) → tangent. "I don't remember the Poisson PMF" (while the competency IS setting up the Poisson likelihood) → NOT tangent (give_fact or continue). Student gives a vague/incomplete answer on the active competency → NOT tangent (probe or continue). |
+| `"defer"` | Student asks about a formula, concept, or method that belongs to a FUTURE pending competency (not the active one). Do NOT answer — they will be assessed on it later. Set `defer_target_competency` to the matching pending competency name. |
+| `"tangent"` | Student's question is genuinely off-topic — about something that is not part of ANY competency in this session. Use ONLY when: (a) student asks about a pure prerequisite mechanic unrelated to any competency (e.g. "what's the chain rule?" when no competency involves calculus); (b) student asks a conceptual side question entirely outside the session scope (why MLE vs Bayesian, what are diffusion models); (c) student asks about problem setup/context clarification. Do NOT use when: student is asking for the answer to the active competency → use `probe` or `macro_hint`; student asks to be reminded of a formula needed for the active competency → use `macro_hint`; student asks about something belonging to a future competency → use `defer`. Examples: "Can you remind me what the chain rule is?" → tangent (if chain rule is not part of any competency). "I don't remember the Poisson PMF" (while the competency IS setting up the Poisson likelihood) → NOT tangent → `macro_hint`. "How do I calculate joint likelihood?" (while the competency IS setting up likelihood) → NOT tangent → `probe`. "Can you give me the Poisson PMF?" (while the active competency is articulating MLE's role, and a future competency covers likelihood setup) → NOT tangent → `defer`. |
 
 When in doubt about a student response that engages with the competency but is ambiguous → prefer `"continue"`. When in doubt about whether a student question is off-topic → prefer `"tangent"` (better for the student to get a direct answer than to be assessed on something they're not focused on). Use `"probe"` only when you genuinely can't score the active competency from what they said.
 
-**Tangent vs. in-scope help**: Prerequisite mechanics needed to execute the active competency step → use `"tangent"` (the student can't show the competency until you help them with this). In-scope clarifications that still let you directly assess the active competency → use `"continue"` or `"probe"`. If the student asks about a concept not involved in any competency — it's a tangent regardless of how specific their question is.
+**Tangent vs. in-scope help**: A prerequisite mechanic that is genuinely separate from the competency → `"tangent"`. A student asking for the formula/answer they're supposed to demonstrate → `"macro_hint"` or `"probe"` (NOT tangent — routing to tangent would give them the answer for free via an untracked explanation). In-scope clarifications that still let you directly assess the active competency → `"continue"` or `"probe"`. If the student asks about a concept not involved in any competency — it's a tangent regardless of specificity.
 
 **Student explicitly asks for help** ("give me the formula", "I don't remember X", "if you tell me Y I can do Z", "can you remind me"):
 This is a **scaffolding opportunity** — use `"continue"` or `"probe"` with a helpful `probe_question` that restates context or gives a stepping stone. The tutor will respond to their request before asking the follow-up question. Do NOT jump to `"macro_hint"` just because the student asked — they're being collaborative, not stuck.
@@ -156,11 +172,12 @@ Provide a detailed `active_competency_score` for the currently active competency
 - **gap**: What's specifically missing — concrete enough that a tutor could tell the student what area to address. Use the diff from Step 0. BAD: "missing key nuances". GOOD: "hasn't connected parameter θ to the argmax of the likelihood function." Empty string if no gap.
 - **hypotheses**: 1–3 competing hypotheses about WHY the gap exists, each with confidence (high/medium/low). Use prior evidence to update confidence.
 
-**Macro hint scoring**: If the student received macro_hint(s) on this competency (see "Macro hints given" above), score what they demonstrated *independently*. Consider:
-- **Recall hint** (forgot a formula/definition but used it expertly once reminded): conceptual understanding is intact, just needed the detail → mild score adjustment
+**Macro hint and artifact scoring**: If the student received macro_hint(s) OR was given formulas/definitions via artifacts (see "Macro hints given" and "Formulas given via artifacts" above), score what they demonstrated *independently*. Artifacts placed on the reference board are hints — a student using a formula that was handed to them has demonstrated *application*, not *recall* or *understanding*. Consider:
+- **Recall hint** (forgot a formula/definition but used it expertly once reminded/provided): conceptual understanding is intact, just needed the detail → mild score adjustment
 - **Conceptual hint** (didn't understand the relationship, needed the insight explained): lacked the core idea → larger score adjustment
-- Multiple hints compound — the student required significant scaffolding
-Your score should reflect what the student could likely do without the hints.
+- **Artifact-provided formula** (formula was placed on board by tutor): treat the same as a recall hint for scoring — the student didn't need to recall it
+- Multiple hints/artifacts compound — the student required significant scaffolding
+Your score should reflect what the student could likely do without the hints or artifacts.
 
 ## Step 3: Cross-competency evidence scan (MANDATORY)
 
@@ -200,6 +217,7 @@ Before finalizing your output, verify internal consistency:
 - Do NOT praise the student's answer in notes while recommending explain — that is contradictory and will cause the system to incorrectly mark the student as stuck.
 - If your `action_rationale` says the student is engaged, making progress, or being collaborative — do NOT recommend `"explain_competency"`. That mode is for genuine inability to reason, not for students who are engaging but need scaffolding.
 - If you are about to recommend `"probe"` and you cannot articulate a NEW angle (different from the last 2 questions the tutor already asked) — use `"continue"` instead. Repeating the same question is worse than continuing the conversation.
+- If you are about to recommend `"advance"` with score 0.65-0.84 AND your gap describes something the tutor never explicitly asked about — use `"probe"` or `"continue"` instead. The student should have at least one chance to address an identified gap before you advance past it.
 
 # OUTPUT FORMAT
 
@@ -209,6 +227,7 @@ Before finalizing your output, verify internal consistency:
   "action_rationale": "Student demonstrated solid conceptual understanding — still need to probe the likelihood setup specifically",
   "tutor_guidance": "Student correctly explained MLE concept. They're engaged and on track. Ask them to now write out the Poisson PMF for a single observation to test the likelihood setup competency.",
   "tangent_topic": null,
+  "defer_target_competency": null,
   "needs_more_info": false,
   "probe_question": null,
   "overall_score": 0.65,
@@ -260,13 +279,44 @@ Example of `probe` with a specific question (NOT vague):
 }
 ```
 
-Example of `tangent` — student asks about something unrelated to the active competency:
+Example of `defer` — student asks about something that belongs to a future competency:
+```json
+{
+  "suggested_next_action": "defer",
+  "action_rationale": "Student asked for the Poisson PMF, which maps to a future pending competency (setting up the likelihood). Giving it now means they won't need to demonstrate it later.",
+  "tutor_guidance": "Student asked for the Poisson PMF, which belongs to a future competency. Do NOT give them the formula. Acknowledge briefly ('good question, we'll get to that soon') and redirect to the current competency — ask them a question about MLE's role.",
+  "tangent_topic": "Poisson PMF formula",
+  "defer_target_competency": "Can set up a Poisson likelihood for observed data",
+  "needs_more_info": false,
+  "probe_question": null,
+  "overall_score": 0.35,
+  "active_competency_score": {
+    "competency": "Articulate the role of MLE in parameter estimation",
+    "score": 0.35,
+    "evidence": "No new evidence — student asked an off-topic question about a future competency",
+    "gap": "",
+    "hypotheses": []
+  },
+  "incidental_observations": [],
+  "competency_scores": [],
+  "weakest_competency": null,
+  "notes": "Student asked for a future-competency formula; deferred",
+  "misconceptions": [],
+  "breakthroughs": [],
+  "is_resolved": false,
+  "hypothesized_gaps": [],
+  "confirmed_knowledge": []
+}
+```
+
+Example of `tangent` — student asks about something unrelated to any competency:
 ```json
 {
   "suggested_next_action": "tangent",
-  "action_rationale": "Student is asking about diffusion models, which is unrelated to the active competency (setting up Poisson likelihood). This won't produce useful scoring signal — help them directly and reconnect.",
+  "action_rationale": "Student is asking about diffusion models, which is unrelated to any competency in this session. This won't produce useful scoring signal — help them directly and reconnect.",
   "tutor_guidance": "Student is asking about diffusion models — this is completely off-topic for the current problem. Answer their question directly and briefly, then when the timing feels right, reconnect to where you left off on the anchor problem.",
   "tangent_topic": "Diffusion models",
+  "defer_target_competency": null,
   "needs_more_info": false,
   "probe_question": null,
   "overall_score": 0.35,
