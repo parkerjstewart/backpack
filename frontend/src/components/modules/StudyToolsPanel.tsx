@@ -468,8 +468,8 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
   return (
     <>
       <div className="flex flex-col gap-4">
-        {/* Tool buttons — 2-column grid */}
-        <div className="grid grid-cols-2 gap-2">
+        {/* Tool buttons — single row */}
+        <div className="grid grid-cols-4 gap-2">
           {TOOLS.map(({ id, label, Icon }) => {
             const isGenerating = results.some(
               (r) => r.tool_type === id && r.status === "generating"

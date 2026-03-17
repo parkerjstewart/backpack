@@ -266,29 +266,27 @@ function TeacherView({
         </section>
       )}
 
-      {/* Two-column: Sources (1/4) + Learning Goals (3/4) */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_3fr] gap-8 items-start">
-        {/* Sources column */}
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Sources</h2>
-            <Badge variant="secondary" className="text-xs">
-              {sources.length}
-            </Badge>
+      {/* Sources — horizontal carousel */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Sources</h2>
+          <Badge variant="secondary" className="text-xs">
+            {sources.length}
+          </Badge>
+        </div>
+        {sourcesLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <LoadingSpinner size="sm" />
           </div>
-          {sourcesLoading ? (
-            <div className="flex items-center justify-center py-6">
-              <LoadingSpinner size="sm" />
-            </div>
-          ) : sources.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">
-              No sources attached to this module.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {sources.map((source) => (
+        ) : sources.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic">
+            No sources attached to this module.
+          </p>
+        ) : (
+          <div className="flex overflow-x-auto gap-3 pb-2">
+            {sources.map((source) => (
+              <div key={source.id} className="w-56 flex-shrink-0">
                 <SourceCard
-                  key={source.id}
                   source={source}
                   onClick={() => openModal("source", source.id)}
                   className="bg-transparent"
@@ -310,36 +308,36 @@ function TeacherView({
                   }
                   onRefresh={onRefetchSources}
                 />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Learning Goals column */}
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Learning Goals</h2>
-            <Badge variant="secondary" className="text-xs">
-              {learningGoals.length}
-            </Badge>
+              </div>
+            ))}
           </div>
-          {goalsLoading ? (
-            <div className="flex items-center justify-center py-6">
-              <LoadingSpinner size="sm" />
-            </div>
-          ) : learningGoals.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">
-              No learning goals defined for this module.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {learningGoals.map((goal) => (
-                <ReadOnlyGoal key={goal.id} goal={goal} />
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
+        )}
+      </section>
+
+      {/* Learning Goals — full width */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Learning Goals</h2>
+          <Badge variant="secondary" className="text-xs">
+            {learningGoals.length}
+          </Badge>
+        </div>
+        {goalsLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <LoadingSpinner size="sm" />
+          </div>
+        ) : learningGoals.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic">
+            No learning goals defined for this module.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {learningGoals.map((goal) => (
+              <ReadOnlyGoal key={goal.id} goal={goal} />
+            ))}
+          </div>
+        )}
+      </section>
 
       <ConfirmDialog
         open={deleteDialogOpen}
@@ -443,44 +441,42 @@ function StudentView({
         </section>
       )}
 
-      {/* Two-column: Sources (1/3) + Study Tools (2/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_3fr] gap-8 items-start">
-        {/* Sources column */}
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Sources</h2>
-            <Badge variant="secondary" className="text-xs">
-              {sources.length}
-            </Badge>
+      {/* Sources — horizontal carousel */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Sources</h2>
+          <Badge variant="secondary" className="text-xs">
+            {sources.length}
+          </Badge>
+        </div>
+        {sourcesLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <LoadingSpinner size="sm" />
           </div>
-          {sourcesLoading ? (
-            <div className="flex items-center justify-center py-6">
-              <LoadingSpinner size="sm" />
-            </div>
-          ) : sources.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">
-              No sources in this module yet.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {sources.map((source) => (
+        ) : sources.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic">
+            No sources in this module yet.
+          </p>
+        ) : (
+          <div className="flex overflow-x-auto gap-3 pb-2">
+            {sources.map((source) => (
+              <div key={source.id} className="w-56 flex-shrink-0">
                 <SourceCard
-                  key={source.id}
                   source={source}
                   onClick={() => openModal("source", source.id)}
                   className="bg-transparent"
                 />
-              ))}
-            </div>
-          )}
-        </section>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-        {/* Study Tools column */}
-        <section className="flex flex-col gap-3">
-          <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Study Tools</h2>
-          <StudyToolsPanel moduleId={moduleId} moduleName={moduleName} />
-        </section>
-      </div>
+      {/* Study Tools — full width */}
+      <section className="flex flex-col gap-3">
+        <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">Study Tools</h2>
+        <StudyToolsPanel moduleId={moduleId} moduleName={moduleName} />
+      </section>
     </div>
   );
 }
