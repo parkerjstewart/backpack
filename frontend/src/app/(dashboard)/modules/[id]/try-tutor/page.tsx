@@ -244,7 +244,7 @@ export default function TryTutorPage() {
         </div>
 
         {/* Chat + Canvas + Debug Area */}
-        <div ref={containerRef} className="flex-1 min-h-0 flex overflow-hidden">
+        <div ref={containerRef} className="flex-1 min-h-0 flex overflow-hidden relative">
           {/* Chat panel */}
           <div
             className="flex flex-col min-h-0 p-6 flex-shrink-0"
@@ -299,9 +299,9 @@ export default function TryTutorPage() {
             </div>
           )}
 
-          {/* Debug panel */}
+          {/* Debug panel — absolute overlay so it doesn't push content off-screen */}
           {showDebug && (
-            <div className="w-80 flex-shrink-0 min-h-0 p-4 overflow-y-auto">
+            <div className="absolute right-0 top-0 bottom-0 w-80 max-w-[85vw] p-4 overflow-y-auto bg-background border-l border-border z-10 shadow-lg">
               <TutorDebugPanel debugInfo={latestDebugInfo} currentGoal={currentGoal} />
             </div>
           )}

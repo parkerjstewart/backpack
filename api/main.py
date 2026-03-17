@@ -117,6 +117,7 @@ app.add_middleware(
     ],
     excluded_prefixes=[
         "/api/users/avatars/",
+        "/api/podcasts/episodes/",  # Audio file serving — episode IDs are unguessable UUIDs
     ],
 )
 

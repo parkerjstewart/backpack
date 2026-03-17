@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { SourceListResponse } from "@/lib/types/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,8 @@ import {
   Image,
   FileAudio,
   FileVideo,
+  Pencil,
+  Settings,
 } from "lucide-react";
 import Link from "next/link";
 import { useSourceStatus } from "@/lib/hooks/use-sources";
@@ -40,6 +42,7 @@ interface SourceCardProps {
   onDelete?: (sourceId: string) => void;
   onRetry?: (sourceId: string) => void;
   onRemoveFromModule?: (sourceId: string) => void;
+  onRename?: (sourceId: string, newTitle: string) => Promise<void>;
   onClick?: (sourceId: string) => void;
   onRefresh?: () => void;
   className?: string;
@@ -123,6 +126,7 @@ export function SourceCard({
   onDelete,
   onRetry,
   onRemoveFromModule,
+  onRename,
   onRefresh,
   className,
   showRemoveFromModule = false,
@@ -140,6 +144,18 @@ export function SourceCard({
 
   // Track processing state to continue polling until we detect completion
   const [wasProcessing, setWasProcessing] = useState(false);
+
+  // Rename state
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isRenaming && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [isRenaming]);
 
   // Always fetch status if:
   // 1. Source has a command_id (might be processing)
@@ -271,6 +287,28 @@ export function SourceCard({
     }
   };
 
+  const handleRenameStart = () => {
+    setRenameValue(title);
+    setIsRenaming(true);
+  };
+
+  const handleRenameSave = async () => {
+    const newTitle = renameValue.trim();
+    if (newTitle && newTitle !== source.title && onRename) {
+      await onRename(source.id, newTitle);
+    }
+    setIsRenaming(false);
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void handleRenameSave();
+    } else if (e.key === "Escape") {
+      setIsRenaming(false);
+    }
+  };
+
   const isProcessing: boolean =
     currentStatus === "new" ||
     currentStatus === "running" ||
@@ -278,15 +316,24 @@ export function SourceCard({
   const isFailed: boolean = currentStatus === "failed";
   const isCompleted: boolean = currentStatus === "completed";
 
+  const hasActions = !!(
+    onDelete ||
+    onRetry ||
+    onRemoveFromModule ||
+    showRemoveFromModule ||
+    onRename ||
+    editModuleHref
+  );
+
   return (
     <Card
       className={cn(
-        "transition-all duration-200 hover:bg-secondary group relative cursor-pointer border border-border/60",
+        "py-3 transition-all duration-200 hover:bg-secondary group relative cursor-pointer border border-border/60",
         className,
       )}
       onClick={handleCardClick}
     >
-      <CardContent className="px-3 py-2">
+      <CardContent className="px-3 py-1.5">
         {/* Status badge — only for non-completed states */}
         {!isCompleted && (
           <div className="flex items-center gap-2 mb-2">
@@ -313,39 +360,41 @@ export function SourceCard({
             <SourceTypeIcon className="h-3.5 w-3.5 text-muted-foreground" />
           </div>
 
-          <h4
-            className="flex-1 min-w-0 text-sm font-medium leading-tight line-clamp-2"
-            title={title}
-          >
-            {title}
-          </h4>
+          {isRenaming ? (
+            <input
+              ref={renameInputRef}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={handleRenameKeyDown}
+              onBlur={() => void handleRenameSave()}
+              className="flex-1 min-w-0 text-sm font-medium bg-background border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <h4
+              className="flex-1 min-w-0 text-sm font-medium leading-tight truncate"
+              title={title}
+            >
+              {title}
+            </h4>
+          )}
 
-          <div className="flex items-center gap-0.5 flex-shrink-0">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreVertical className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {showRemoveFromModule && (
-                  <>
-                    {editModuleHref ? (
-                      <DropdownMenuItem asChild>
-                        <Link
-                          href={editModuleHref}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Unlink className="h-4 w-4 mr-2" />
-                          {t.sources.removeFromModule}
-                        </Link>
-                      </DropdownMenuItem>
-                    ) : (
+          {hasActions && (
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  {showRemoveFromModule && !editModuleHref && (
+                    <>
                       <DropdownMenuItem
                         onClick={(e) => {
                           e.stopPropagation();
@@ -356,41 +405,69 @@ export function SourceCard({
                         <Unlink className="h-4 w-4 mr-2" />
                         {t.sources.removeFromModule}
                       </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                  </>
-                )}
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
 
-                {isFailed && (
-                  <>
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRetry();
-                      }}
-                      disabled={!onRetry}
-                    >
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      {t.sources.retryProcessing}
+                  {isFailed && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRetry();
+                        }}
+                        disabled={!onRetry}
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        {t.sources.retryProcessing}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+
+                  {onRename && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRenameStart();
+                        }}
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+
+                  {editModuleHref ? (
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href={editModuleHref}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Settings className="h-4 w-4 mr-2" />
+                        Edit Module
+                      </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete();
-                  }}
-                  disabled={!onDelete}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  {t.sources.deleteSource}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                  ) : (
+                    onDelete && (
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete();
+                        }}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        {t.sources.deleteSource}
+                      </DropdownMenuItem>
+                    )
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

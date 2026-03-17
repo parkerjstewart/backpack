@@ -120,7 +120,7 @@ export default function CoursesPage() {
 
           {pendingInvitations && pendingInvitations.length > 0 && (
             <div className="flex flex-col gap-4 mt-4">
-              <h2 className="text-title text-teal-800">Pending Invitations</h2>
+              <h2 className="text-title text-primary">Pending Invitations</h2>
               <div className="flex flex-col gap-3">
                 {pendingInvitations.map((invitation) => (
                   <PendingInvitationCard
@@ -138,7 +138,7 @@ export default function CoursesPage() {
 
           {pendingEnrollmentRequests && pendingEnrollmentRequests.length > 0 && (
             <div className="flex flex-col gap-4 mt-4">
-              <h2 className="text-title text-teal-800">Enrollment Requests</h2>
+              <h2 className="text-title text-primary">Enrollment Requests</h2>
               <div className="flex flex-col gap-3">
                 {pendingEnrollmentRequests.map((req) => (
                   <div
@@ -167,7 +167,7 @@ export default function CoursesPage() {
               (section) =>
                 section.courses.length > 0 && (
                   <div key={section.label} className="flex flex-col gap-4 mt-4">
-                    <h2 className="text-title text-teal-800">{section.label}</h2>
+                    <h2 className="text-title text-primary">{section.label}</h2>
                     <div className="flex flex-wrap gap-6">
                       {section.courses.map((course) => (
                         <CourseCard key={course.id} course={course} />
@@ -178,7 +178,7 @@ export default function CoursesPage() {
             )
           ) : (
             <div className="flex flex-col gap-4 mt-4">
-              <h2 className="text-title text-teal-800">Courses</h2>
+              <h2 className="text-title text-primary">Courses</h2>
               {activeCourses.length > 0 ? (
                 <div className="flex flex-wrap gap-6">
                   {activeCourses.map((course) => (

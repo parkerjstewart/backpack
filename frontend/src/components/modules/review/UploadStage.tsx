@@ -60,7 +60,7 @@ export function UploadStage({
             )}
             title="Add more files"
           >
-            <Plus className="h-7 w-7 text-teal-800/50" />
+            <Plus className="h-7 w-7 text-primary/50" />
           </button>
         </motion.div>
       </div>

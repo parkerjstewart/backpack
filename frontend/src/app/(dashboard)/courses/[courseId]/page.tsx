@@ -292,6 +292,7 @@ export default function CoursePage() {
                       variant="expanded"
                       goalScores={{}}
                       canReorder={false}
+                      isTeacher={permissions.canCreateModules}
                     />
                   )}
 
@@ -307,6 +308,7 @@ export default function CoursePage() {
                             stats={moduleStats[module.id] ?? { completed: 0, total: 0, struggling: 0 }}
                             variant="collapsed"
                             canReorder={false}
+                            isTeacher={permissions.canCreateModules}
                           />
                         ))}
                       </div>

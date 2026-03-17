@@ -140,6 +140,8 @@ async def list_podcast_episodes():
 async def get_podcast_episode(episode_id: str):
     """Get a specific podcast episode"""
     try:
+        if ":" not in episode_id:
+            episode_id = f"episode:{episode_id}"
         episode = await PodcastService.get_episode(episode_id)
 
         # Get job status if available
@@ -182,6 +184,8 @@ async def get_podcast_episode(episode_id: str):
 async def stream_podcast_episode_audio(episode_id: str):
     """Stream the audio file associated with a podcast episode"""
     try:
+        if ":" not in episode_id:
+            episode_id = f"episode:{episode_id}"
         episode = await PodcastService.get_episode(episode_id)
     except HTTPException:
         raise
@@ -207,7 +211,8 @@ async def stream_podcast_episode_audio(episode_id: str):
 async def delete_podcast_episode(episode_id: str):
     """Delete a podcast episode and its associated audio file"""
     try:
-        # Get the episode first to check if it exists and get the audio file path
+        if ":" not in episode_id:
+            episode_id = f"episode:{episode_id}"
         episode = await PodcastService.get_episode(episode_id)
 
         # Delete the physical audio file if it exists

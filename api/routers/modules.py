@@ -338,9 +338,9 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
             user_id = require_authenticated_user_id(authorization)
             await require_teaching_role(str(module.course), user_id)
 
-        if module.status != "draft":
+        if module.status not in ("draft", "paused"):
             raise HTTPException(
-                status_code=400, detail="Only draft modules can be published"
+                status_code=400, detail="Only draft or paused modules can be published"
             )
 
         module.status = "published"
@@ -393,6 +393,75 @@ async def publish_module(module_id: str, authorization: Optional[str] = Header(N
         logger.error(f"Error publishing module {module_id}: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error publishing module: {str(e)}"
+        )
+
+
+@router.patch("/modules/{module_id}/unpublish", response_model=ModuleResponse)
+async def unpublish_module(module_id: str, authorization: Optional[str] = Header(None)):
+    """Pause a published module, blocking students from starting tutor sessions."""
+    try:
+        module = await Module.get(module_id)
+        if not module:
+            raise HTTPException(status_code=404, detail="Module not found")
+
+        if module.course:
+            user_id = require_authenticated_user_id(authorization)
+            await require_teaching_role(str(module.course), user_id)
+
+        if module.status != "published":
+            raise HTTPException(
+                status_code=400, detail="Only published modules can be unpublished"
+            )
+
+        module.status = "paused"
+        await module.save()
+
+        query = """
+            SELECT *,
+            count(<-reference) as source_count,
+            count(<-artifact) as note_count,
+            count((SELECT id FROM learning_goal WHERE module = $parent.id)) as learning_goal_count
+            FROM $module_id
+        """
+        result = await repo_query(query, {"module_id": ensure_record_id(module_id)})
+
+        if result:
+            nb = result[0]
+            return ModuleResponse(
+                id=str(nb.get("id", "")),
+                name=nb.get("name", ""),
+                description=nb.get("description", ""),
+                archived=nb.get("archived", False),
+                status=nb.get("status") or "paused",
+                overview=nb.get("overview"),
+                created=str(nb.get("created", "")),
+                updated=str(nb.get("updated", "")),
+                source_count=nb.get("source_count", 0),
+                note_count=nb.get("note_count", 0),
+                learning_goal_count=nb.get("learning_goal_count", 0),
+                course_id=str(nb.get("course")) if nb.get("course") else None,
+            )
+
+        return ModuleResponse(
+            id=module.id or "",
+            name=module.name,
+            description=module.description,
+            archived=module.archived or False,
+            status=module.status or "paused",
+            overview=module.overview,
+            created=str(module.created),
+            updated=str(module.updated),
+            source_count=0,
+            note_count=0,
+            learning_goal_count=0,
+            course_id=str(module.course) if module.course else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error unpublishing module {module_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error unpublishing module: {str(e)}"
         )
 
 

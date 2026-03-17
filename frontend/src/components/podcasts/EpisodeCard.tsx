@@ -5,7 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { InfoIcon, Trash2 } from 'lucide-react'
 
-import { resolvePodcastAssetUrl } from '@/lib/api/podcasts'
+import { fetchProtectedAudioBlobUrl } from '@/lib/api/podcasts'
 import { EpisodeStatus, PodcastEpisode } from '@/lib/types/podcasts'
 import { cn } from '@/lib/utils'
 import {
@@ -146,58 +146,26 @@ export function EpisodeCard({ episode, onDelete, deleting }: EpisodeCardProps) {
   const transcriptEntries = useMemo(() => extractTranscriptEntries(episode.transcript), [episode.transcript])
 
   useEffect(() => {
-    let revokeUrl: string | undefined
+    let blobUrl: string | undefined
     setAudioError(null)
 
-    // If backend exposed a protected endpoint, fetch it with auth headers
-    const loadProtectedAudio = async () => {
-      // First resolve the audio URL
-      const directAudioUrl = await resolvePodcastAssetUrl(episode.audio_url ?? episode.audio_file)
-
-      if (!directAudioUrl || !episode.audio_url) {
-        setAudioSrc(directAudioUrl)
-        return
-      }
-
-      try {
-        let token: string | undefined
-        if (typeof window !== 'undefined') {
-          const raw = window.localStorage.getItem('auth-storage')
-          if (raw) {
-            try {
-              const parsed = JSON.parse(raw)
-              token = parsed?.state?.token
-            } catch (error) {
-              console.error('Failed to parse auth storage', error)
-            }
-          }
-        }
-
-        const headers: HeadersInit = {}
-        if (token) {
-          headers.Authorization = `Bearer ${token}`
-        }
-
-        const response = await fetch(directAudioUrl, { headers })
-        if (!response.ok) {
-          throw new Error(`Audio request failed with status ${response.status}`)
-        }
-
-        const blob = await response.blob()
-        revokeUrl = URL.createObjectURL(blob)
-        setAudioSrc(revokeUrl)
-      } catch (error) {
-        console.error('Unable to load podcast audio', error)
+    const load = async () => {
+      // Prefer audio_url (the protected API endpoint) over raw audio_file path
+      const inputPath = episode.audio_url ?? episode.audio_file
+      blobUrl = await fetchProtectedAudioBlobUrl(inputPath)
+      if (blobUrl) {
+        setAudioSrc(blobUrl)
+      } else if (inputPath) {
         setAudioError(t.podcasts.audioUnavailable)
         setAudioSrc(undefined)
       }
     }
 
-    void loadProtectedAudio()
+    void load()
 
     return () => {
-      if (revokeUrl) {
-        URL.revokeObjectURL(revokeUrl)
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl)
       }
     }
   }, [episode.audio_url, episode.audio_file, t])

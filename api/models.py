@@ -8,7 +8,7 @@ class ModuleCreate(BaseModel):
     name: str = Field(..., description="Name of the module")
     description: str = Field(default="", description="Description of the module")
     course_id: Optional[str] = Field(None, description="ID of the course this module belongs to")
-    status: Literal["draft", "published"] = Field(
+    status: Literal["draft", "published", "paused"] = Field(
         default="published",
         description="Module status",
     )
@@ -30,7 +30,7 @@ class ModuleResponse(BaseModel):
     name: str
     description: str
     archived: bool
-    status: Literal["draft", "published"] = "published"
+    status: Literal["draft", "published", "paused"] = "published"
     overview: Optional[str] = None
     created: str
     updated: str
@@ -680,9 +680,15 @@ class InvitationResponse(BaseModel):
 # Study Tools API models
 # ============================================
 
-class StudyToolResponse(BaseModel):
-    content: str
+class StudyToolResultResponse(BaseModel):
+    id: str
     module_id: str
+    tool_type: str
+    title: str
+    data: dict
+    status: str = "completed"  # "generating" | "completed" | "failed"
+    created: str
+    updated: str
 
 
 class EnrollmentRequestResponse(BaseModel):

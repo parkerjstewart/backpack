@@ -31,7 +31,7 @@ function FormLabel({
       data-slot="form-label"
       className={cn(
         // Typography: EB Garamond 24px from design system
-        "text-title text-teal-800",
+        "text-title text-primary",
         // Layout
         "flex items-center gap-1",
         // States
@@ -43,7 +43,7 @@ function FormLabel({
       {...props}
     >
       {children}
-      {required && <span className="text-teal-800">*</span>}
+      {required && <span className="text-primary">*</span>}
     </LabelPrimitive.Root>
   );
 }

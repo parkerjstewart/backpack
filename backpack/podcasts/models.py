@@ -125,7 +125,11 @@ class PodcastEpisode(ObjectModel):
             from surreal_commands import get_command_status
 
             status = await get_command_status(str(self.command))
-            return status.status if status else "unknown"
+            if not status:
+                return "unknown"
+            # CommandStatus is an enum; use .value to get the plain string "completed" etc.
+            raw = status.status
+            return str(getattr(raw, "value", raw))
         except Exception:
             return "unknown"
 

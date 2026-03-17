@@ -6,12 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Target, CheckCircle2 } from 'lucide-react'
 import { TutorLoadingAnimation } from './TutorLoadingAnimation'
 import { ChatInput } from '@/components/common/ChatInput'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
-import { normalizeLatexDelimiters } from '@/lib/utils'
+import { MathMarkdown } from '@/components/ui/math-markdown'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useVoiceSession } from '@/lib/hooks/useVoiceSession'
 import { toast } from 'sonner'
@@ -204,9 +199,7 @@ export function TutorChat({
                       </div>
                     ) : (
                       <div className="prose prose-sm prose-neutral max-w-[85%] break-words">
-                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                          {normalizeLatexDelimiters(message.content)}
-                        </ReactMarkdown>
+                        <MathMarkdown>{message.content}</MathMarkdown>
                       </div>
                     )}
                   </div>
@@ -219,9 +212,7 @@ export function TutorChat({
           {isSending && streamingMessage && (
             <div className="flex justify-start">
               <div className="prose prose-sm prose-neutral max-w-[85%] break-words">
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {streamingMessage}
-                </ReactMarkdown>
+                <MathMarkdown>{streamingMessage}</MathMarkdown>
               </div>
             </div>
           )}
@@ -238,9 +229,7 @@ export function TutorChat({
           {assistantStreamingText && (
             <div className="flex justify-start">
               <div className="prose prose-sm prose-neutral max-w-[85%] break-words">
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {assistantStreamingText}
-                </ReactMarkdown>
+                <MathMarkdown>{assistantStreamingText}</MathMarkdown>
               </div>
             </div>
           )}
@@ -268,7 +257,7 @@ export function TutorChat({
           <>
             {/* Suggestion pills — outside and above the card */}
             {(isSuggestionsLoading || suggestions.length > 0) && !isSending && (
-              <div className="flex flex-wrap gap-2 mb-3 px-1">
+              <div className="flex flex-wrap gap-2 mt-3 mb-3 px-1">
                 {isSuggestionsLoading && suggestions.length === 0
                   ? [1, 2, 3].map(i => (
                       <div
@@ -309,9 +298,7 @@ export function TutorChat({
                               }`}
                             >
                               <div className="prose prose-sm prose-neutral max-w-none overflow-y-auto" style={{ maxHeight: '40vh' }}>
-                                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                  {normalizeLatexDelimiters(art.content)}
-                                </ReactMarkdown>
+                                <MathMarkdown>{art.content}</MathMarkdown>
                               </div>
                             </div>
                           </div>

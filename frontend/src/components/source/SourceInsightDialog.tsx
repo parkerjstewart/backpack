@@ -5,8 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FileText } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { MathMarkdown } from '@/components/ui/math-markdown'
 import { useInsight } from '@/lib/hooks/use-insights'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -126,8 +125,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
               </div>
             ) : displayInsight ? (
               <div className="prose prose-sm prose-neutral max-w-none">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                <MathMarkdown
                   components={{
                     table: ({ children }) => (
                       <div className="my-4 overflow-x-auto">
@@ -142,7 +140,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
                   }}
                 >
                   {displayInsight.content}
-                </ReactMarkdown>
+                </MathMarkdown>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">{t.sources.noInsightSelected}</p>

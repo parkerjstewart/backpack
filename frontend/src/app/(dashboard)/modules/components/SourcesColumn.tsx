@@ -1,39 +1,47 @@
-'use client'
+"use client";
 
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
-import { SourceListResponse } from '@/lib/types/api'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { SourceListResponse } from "@/lib/types/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Plus, FileText, Link2, ChevronDown, Loader2 } from 'lucide-react'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { EmptyState } from '@/components/common/EmptyState'
-import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
-import { AddExistingSourceDialog } from '@/components/sources/AddExistingSourceDialog'
-import { SourceCard } from '@/components/sources/SourceCard'
-import { useDeleteSource, useRetrySource, useRemoveSourceFromModule } from '@/lib/hooks/use-sources'
-import { ConfirmDialog } from '@/components/common/ConfirmDialog'
-import { useModalManager } from '@/lib/hooks/use-modal-manager'
-import { CollapsibleColumn, createCollapseButton } from '@/components/modules/CollapsibleColumn'
-import { useModuleColumnsStore } from '@/lib/stores/module-columns-store'
-import { useTranslation } from '@/lib/hooks/use-translation'
+} from "@/components/ui/dropdown-menu";
+import { Plus, FileText, Link2, ChevronDown, Loader2 } from "lucide-react";
+import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { EmptyState } from "@/components/common/EmptyState";
+import { AddSourceDialog } from "@/components/sources/AddSourceDialog";
+import { AddExistingSourceDialog } from "@/components/sources/AddExistingSourceDialog";
+import { SourceCard } from "@/components/sources/SourceCard";
+import {
+  useDeleteSource,
+  useRetrySource,
+  useRemoveSourceFromModule,
+} from "@/lib/hooks/use-sources";
+import { sourcesApi } from "@/lib/api/sources";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { useModalManager } from "@/lib/hooks/use-modal-manager";
+import {
+  CollapsibleColumn,
+  createCollapseButton,
+} from "@/components/modules/CollapsibleColumn";
+import { useModuleColumnsStore } from "@/lib/stores/module-columns-store";
+import { useTranslation } from "@/lib/hooks/use-translation";
 
 interface SourcesColumnProps {
-  sources?: SourceListResponse[]
-  isLoading: boolean
-  moduleId: string
-  moduleName?: string
-  canEdit?: boolean
-  onRefresh?: () => void
+  sources?: SourceListResponse[];
+  isLoading: boolean;
+  moduleId: string;
+  moduleName?: string;
+  canEdit?: boolean;
+  onRefresh?: () => void;
   // Pagination props
-  hasNextPage?: boolean
-  isFetchingNextPage?: boolean
-  fetchNextPage?: () => void
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
+  fetchNextPage?: () => void;
 }
 
 export function SourcesColumn({
@@ -46,101 +54,111 @@ export function SourcesColumn({
   isFetchingNextPage,
   fetchNextPage,
 }: SourcesColumnProps) {
-  const { t } = useTranslation()
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [addDialogOpen, setAddDialogOpen] = useState(false)
-  const [addExistingDialogOpen, setAddExistingDialogOpen] = useState(false)
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [sourceToDelete, setSourceToDelete] = useState<string | null>(null)
-  const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
-  const [sourceToRemove, setSourceToRemove] = useState<string | null>(null)
+  const { t } = useTranslation();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addExistingDialogOpen, setAddExistingDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [sourceToDelete, setSourceToDelete] = useState<string | null>(null);
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+  const [sourceToRemove, setSourceToRemove] = useState<string | null>(null);
 
-  const { openModal } = useModalManager()
-  const deleteSource = useDeleteSource()
-  const retrySource = useRetrySource()
-  const removeFromModule = useRemoveSourceFromModule()
+  const { openModal } = useModalManager();
+  const deleteSource = useDeleteSource();
+  const retrySource = useRetrySource();
+  const removeFromModule = useRemoveSourceFromModule();
 
   // Collapsible column state
-  const { sourcesCollapsed, toggleSources } = useModuleColumnsStore()
+  const { sourcesCollapsed, toggleSources } = useModuleColumnsStore();
   const collapseButton = useMemo(
     () => createCollapseButton(toggleSources, t.navigation.sources),
-    [toggleSources, t.navigation.sources]
-  )
+    [toggleSources, t.navigation.sources],
+  );
 
   // Scroll container ref for infinite scroll
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Handle scroll for infinite loading
   const handleScroll = useCallback(() => {
-    const container = scrollContainerRef.current
-    if (!container || !hasNextPage || isFetchingNextPage || !fetchNextPage) return
+    const container = scrollContainerRef.current;
+    if (!container || !hasNextPage || isFetchingNextPage || !fetchNextPage)
+      return;
 
-    const { scrollTop, scrollHeight, clientHeight } = container
+    const { scrollTop, scrollHeight, clientHeight } = container;
     // Load more when user scrolls within 200px of the bottom
     if (scrollHeight - scrollTop - clientHeight < 200) {
-      fetchNextPage()
+      fetchNextPage();
     }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Attach scroll listener
   useEffect(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
-    container.addEventListener('scroll', handleScroll)
-    return () => container.removeEventListener('scroll', handleScroll)
-  }, [handleScroll])
-  
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [handleScroll]);
+
   const handleDeleteClick = (sourceId: string) => {
-    setSourceToDelete(sourceId)
-    setDeleteDialogOpen(true)
-  }
+    setSourceToDelete(sourceId);
+    setDeleteDialogOpen(true);
+  };
 
   const handleDeleteConfirm = async () => {
-    if (!sourceToDelete) return
+    if (!sourceToDelete) return;
 
     try {
-      await deleteSource.mutateAsync(sourceToDelete)
-      setDeleteDialogOpen(false)
-      setSourceToDelete(null)
-      onRefresh?.()
+      await deleteSource.mutateAsync(sourceToDelete);
+      setDeleteDialogOpen(false);
+      setSourceToDelete(null);
+      onRefresh?.();
     } catch (error) {
-      console.error('Failed to delete source:', error)
+      console.error("Failed to delete source:", error);
     }
-  }
+  };
 
   const handleRemoveFromModule = (sourceId: string) => {
-    setSourceToRemove(sourceId)
-    setRemoveDialogOpen(true)
-  }
+    setSourceToRemove(sourceId);
+    setRemoveDialogOpen(true);
+  };
 
   const handleRemoveConfirm = async () => {
-    if (!sourceToRemove) return
+    if (!sourceToRemove) return;
 
     try {
       await removeFromModule.mutateAsync({
         moduleId,
-        sourceId: sourceToRemove
-      })
-      setRemoveDialogOpen(false)
-      setSourceToRemove(null)
+        sourceId: sourceToRemove,
+      });
+      setRemoveDialogOpen(false);
+      setSourceToRemove(null);
     } catch (error) {
-      console.error('Failed to remove source from module:', error)
+      console.error("Failed to remove source from module:", error);
       // Error toast is handled by the hook
     }
-  }
+  };
 
   const handleRetry = async (sourceId: string) => {
     try {
-      await retrySource.mutateAsync(sourceId)
+      await retrySource.mutateAsync(sourceId);
     } catch (error) {
-      console.error('Failed to retry source:', error)
+      console.error("Failed to retry source:", error);
     }
-  }
+  };
+
+  const handleRename = async (sourceId: string, newTitle: string) => {
+    try {
+      await sourcesApi.update(sourceId, { title: newTitle });
+      onRefresh?.();
+    } catch (error) {
+      console.error("Failed to rename source:", error);
+    }
+  };
 
   const handleSourceClick = (sourceId: string) => {
-    openModal('source', sourceId)
-  }
+    openModal("source", sourceId);
+  };
 
   return (
     <>
@@ -156,7 +174,10 @@ export function SourcesColumn({
               <CardTitle className="text-lg">{t.navigation.sources}</CardTitle>
               <div className="flex items-center gap-2">
                 {canEdit && (
-                  <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+                  <DropdownMenu
+                    open={dropdownOpen}
+                    onOpenChange={setDropdownOpen}
+                  >
                     <DropdownMenuTrigger asChild>
                       <Button size="sm">
                         <Plus className="h-4 w-4 mr-2" />
@@ -165,11 +186,21 @@ export function SourcesColumn({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          setAddDialogOpen(true);
+                        }}
+                      >
                         <Plus className="h-4 w-4 mr-2" />
                         {t.sources.addSource}
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          setAddExistingDialogOpen(true);
+                        }}
+                      >
                         <Link2 className="h-4 w-4 mr-2" />
                         {t.sources.addExistingTitle}
                       </DropdownMenuItem>
@@ -181,7 +212,10 @@ export function SourcesColumn({
             </div>
           </CardHeader>
 
-          <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
+          <CardContent
+            ref={scrollContainerRef}
+            className="flex-1 overflow-y-auto min-h-0"
+          >
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <LoadingSpinner />
@@ -201,7 +235,10 @@ export function SourcesColumn({
                     onClick={handleSourceClick}
                     onDelete={canEdit ? handleDeleteClick : undefined}
                     onRetry={handleRetry}
-                    onRemoveFromModule={canEdit ? handleRemoveFromModule : undefined}
+                    onRemoveFromModule={
+                      canEdit ? handleRemoveFromModule : undefined
+                    }
+                    onRename={canEdit ? handleRename : undefined}
                     onRefresh={onRefresh}
                     showRemoveFromModule={canEdit}
                   />
@@ -261,5 +298,5 @@ export function SourcesColumn({
         />
       )}
     </>
-  )
+  );
 }
