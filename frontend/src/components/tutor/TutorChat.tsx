@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Target, CheckCircle2, BookOpen, ChevronDown, ChevronRight } from 'lucide-react'
+import { Loader2, Target, CheckCircle2 } from 'lucide-react'
 import { ChatInput } from '@/components/common/ChatInput'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -15,6 +15,7 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { useVoiceSession } from '@/lib/hooks/useVoiceSession'
 import { toast } from 'sonner'
 import { Artifact } from '@/lib/types/api'
+
 
 interface Message {
   id: string
@@ -68,32 +69,9 @@ export function TutorChat({
   streamingMessage = '',
   className,
 }: TutorChatProps) {
-  const [expandedArtifactIds, setExpandedArtifactIds] = useState<Set<string>>(new Set())
-  const autoExpandedIdRef = useRef<string | null>(null)
-  const [artifactsPanelOpen, setArtifactsPanelOpen] = useState(true)
-
   // Determine which artifact is highlighted by the most recent tutor message
   const lastTutorMessage = [...messages].reverse().find(m => m.type === 'tutor')
   const activeHighlightId = lastTutorMessage?.highlighted_artifact_id ?? null
-
-  // When the active highlight changes: collapse the previously auto-expanded item,
-  // auto-expand the new one.
-  useEffect(() => {
-    const prevAutoId = autoExpandedIdRef.current
-    if (prevAutoId && prevAutoId !== activeHighlightId) {
-      setExpandedArtifactIds(prev => {
-        const next = new Set(prev)
-        next.delete(prevAutoId)
-        return next
-      })
-    }
-    if (activeHighlightId) {
-      setExpandedArtifactIds(prev => new Set([...prev, activeHighlightId]))
-      autoExpandedIdRef.current = activeHighlightId
-    } else {
-      autoExpandedIdRef.current = null
-    }
-  }, [activeHighlightId])
 
   const { t } = useTranslation()
   const [voiceTranscript, setVoiceTranscript] = useState('')
@@ -158,7 +136,7 @@ export function TutorChat({
   return (
     <div className={`flex flex-col h-full flex-1 overflow-hidden ${className ?? ''}`}>
       {/* Goal / progress header — no card chrome */}
-      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 flex-shrink-0">
         {currentGoal && !isSessionComplete && (
           <p className="text-sm text-muted-foreground truncate">
             <span className="font-medium">{t.tutor.currentGoal}:</span>{' '}{currentGoal}
@@ -179,7 +157,7 @@ export function TutorChat({
 
       {/* Messages */}
       <ScrollArea className="flex-1 min-h-0 px-4" ref={scrollAreaRef}>
-        <div className="space-y-4 pt-3 pb-24">
+        <div className="space-y-4 pt-1 pb-24">
           {messages.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
               <p className="text-sm">{t.tutor.startingSession}</p>
@@ -278,7 +256,7 @@ export function TutorChat({
       </ScrollArea>
 
       {/* Input area — suggestions above, then unified card with references + input */}
-      <div className="flex-shrink-0 px-4 pb-4 pt-2">
+      <div className="flex-shrink-0 px-4 pb-4">
         {isSessionComplete ? (
           <div className="text-center text-muted-foreground py-2">
             <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-green-600" />
@@ -288,7 +266,7 @@ export function TutorChat({
           <>
             {/* Suggestion pills — outside and above the card */}
             {(isSuggestionsLoading || suggestions.length > 0) && !isSending && (
-              <div className="flex flex-wrap gap-2 mb-1.5 px-1">
+              <div className="flex flex-wrap gap-2 mb-3 px-1">
                 {isSuggestionsLoading && suggestions.length === 0
                   ? [1, 2, 3].map(i => (
                       <div
@@ -312,74 +290,33 @@ export function TutorChat({
             )}
 
           <div className="bg-white border border-border rounded-2xl overflow-hidden">
-            {/* References panel — fused to the top of the input card */}
+            {/* Artifact cards — always shown when artifacts exist */}
             {artifacts.length > 0 && (
-              <>
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-2 px-4 py-3 hover:bg-secondary/50 transition-colors text-left"
-                  onClick={() => setArtifactsPanelOpen(v => !v)}
-                >
-                  <BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex-1">
-                    References ({artifacts.length})
-                  </span>
-                  {artifactsPanelOpen
-                    ? <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    : <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                  }
-                </button>
-                {artifactsPanelOpen && (
-                  <div>
-                    <ScrollArea orientation="horizontal">
-                      <div className="flex gap-3 p-3">
-                        {artifacts.map((art) => {
-                          const isHighlighted = art.id === activeHighlightId
-                          const isExpanded = expandedArtifactIds.has(art.id)
-                          return (
+              <ScrollArea orientation="horizontal">
+                <div className="flex gap-3 px-4 pt-3 pb-3">
+                      {artifacts.map((art) => {
+                        const isHighlighted = art.id === activeHighlightId
+                        return (
+                          <div key={art.id} className="flex-shrink-0 flex flex-col gap-1">
+                            <p className="text-sm font-medium text-foreground px-0.5 whitespace-nowrap">
+                              {art.label}
+                            </p>
                             <div
-                              key={art.id}
-                              className={`flex-shrink-0 rounded-md border text-sm transition-colors ${
-                                isHighlighted
-                                  ? 'border-green-500/40 bg-green-50 ring-1 ring-green-500/20'
-                                  : 'border-border bg-muted/30'
-                              } ${isExpanded ? 'w-96' : 'w-auto'}`}
+                              className={`rounded-md text-sm px-4 py-3 transition-colors ${
+                                isHighlighted ? 'bg-accent/40' : 'bg-secondary'
+                              }`}
                             >
-                              <button
-                                type="button"
-                                className="flex items-center gap-2 px-3 py-2.5 text-left hover:bg-secondary/50 rounded-md transition-colors w-full"
-                                onClick={() => setExpandedArtifactIds(prev => {
-                                  const next = new Set(prev)
-                                  if (next.has(art.id)) next.delete(art.id)
-                                  else next.add(art.id)
-                                  return next
-                                })}
-                              >
-                                {isExpanded
-                                  ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                                  : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                                }
-                                <span className={`font-medium whitespace-nowrap ${isHighlighted ? 'text-green-700' : ''}`}>
-                                  {art.label}
-                                </span>
-                              </button>
-                              {isExpanded && (
-                                <div className="px-3 pb-3 overflow-y-auto" style={{ maxHeight: '40vh' }}>
-                                  <div className="prose prose-sm prose-neutral max-w-none">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                      {normalizeLatexDelimiters(art.content)}
-                                    </ReactMarkdown>
-                                  </div>
-                                </div>
-                              )}
+                              <div className="prose prose-sm prose-neutral max-w-none overflow-y-auto" style={{ maxHeight: '40vh' }}>
+                                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                                  {normalizeLatexDelimiters(art.content)}
+                                </ReactMarkdown>
+                              </div>
                             </div>
-                          )
-                        })}
-                      </div>
-                    </ScrollArea>
-                  </div>
-                )}
-              </>
+                          </div>
+                        )
+                      })}
+                </div>
+              </ScrollArea>
             )}
             <ChatInput
               noCard

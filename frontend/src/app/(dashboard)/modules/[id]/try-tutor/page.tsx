@@ -12,7 +12,7 @@ import { modulesApi } from '@/lib/api/modules'
 import { useModuleDraftStore } from '@/lib/stores/module-draft-store'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, CheckCircle2, Trash2, RotateCcw, Bug, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Trash2, RotateCcw, Bug } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import { toast } from 'sonner'
@@ -194,8 +194,7 @@ export default function TryTutorPage() {
                 size="sm"
                 onClick={() => router.back()}
               >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                {t.common.back}
+                <ArrowLeft className="h-4 w-4" />
               </Button>
               <h1 className="text-xl font-semibold">
                 {t.tutor.tryTutor}: {module.name}
@@ -203,7 +202,7 @@ export default function TryTutorPage() {
             </div>
             <div className="flex items-center gap-2">
               <Button
-                variant="outline"
+                variant="light"
                 size="sm"
                 onClick={handleTryAgain}
                 disabled={!isDraftModule || isInitializing || isSending}
@@ -212,19 +211,7 @@ export default function TryTutorPage() {
                 {t.tutor.tryAgain}
               </Button>
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowCanvas(v => !v)}
-                title={showCanvas ? 'Hide whiteboard' : 'Show whiteboard'}
-              >
-                {showCanvas ? (
-                  <PanelRightClose className="h-4 w-4" />
-                ) : (
-                  <PanelRightOpen className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant={showDebug ? 'default' : 'outline'}
+                variant="light"
                 size="sm"
                 onClick={() => setShowDebug(v => !v)}
                 title="Toggle agent debug panel"
@@ -232,7 +219,7 @@ export default function TryTutorPage() {
                 <Bug className="h-4 w-4" />
               </Button>
               <Button
-                variant="outline"
+                variant="light"
                 size="sm"
                 onClick={() => setShowDiscardDialog(true)}
                 disabled={!isDraftModule || isDiscarding}
@@ -314,7 +301,7 @@ export default function TryTutorPage() {
 
           {/* Debug panel */}
           {showDebug && (
-            <div className="w-80 flex-shrink-0 min-h-0 border-l p-4 overflow-y-auto">
+            <div className="w-80 flex-shrink-0 min-h-0 p-4 overflow-y-auto">
               <TutorDebugPanel debugInfo={latestDebugInfo} currentGoal={currentGoal} />
             </div>
           )}

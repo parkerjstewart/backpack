@@ -110,7 +110,7 @@ class EvaluationResult(BaseModel):
             "Never include to record a gap or absence — omission is not evidence."
         ),
     )
-    suggested_next_action: Literal["probe", "macro_hint", "explain_competency", "advance", "continue", "tangent"] = Field(
+    suggested_next_action: Literal["probe", "macro_hint", "explain_competency", "advance", "continue", "tangent", "defer"] = Field(
         default="continue",
         description=(
             "Evaluator's recommendation for what the tutor should do next. "
@@ -119,7 +119,8 @@ class EvaluationResult(BaseModel):
             "'explain_competency': student can't reason about this specific competency — explain it and advance. "
             "'advance': active competency is clearly mastered (>= 0.7) — move to next. "
             "'continue': normal Socratic flow on the active competency. "
-            "'tangent': student is asking about something outside the active competency assessment scope."
+            "'tangent': student is asking about something outside the scope of ALL competencies in this session. "
+            "'defer': student is asking about something that belongs to a FUTURE pending competency — do not answer, redirect."
         ),
     )
     action_rationale: Optional[str] = Field(
@@ -137,7 +138,15 @@ class EvaluationResult(BaseModel):
     )
     tangent_topic: Optional[str] = Field(
         default=None,
-        description="What the tangent is about — set when suggested_next_action is 'tangent'",
+        description="What the tangent/defer is about — set when suggested_next_action is 'tangent' or 'defer'",
+    )
+    defer_target_competency: Optional[str] = Field(
+        default=None,
+        description=(
+            "Name of the pending competency the student's question maps to — "
+            "set when suggested_next_action is 'defer'. Used to store a note on that competency "
+            "so the tutor knows the student already asked about it when it becomes active."
+        ),
     )
 
     @property

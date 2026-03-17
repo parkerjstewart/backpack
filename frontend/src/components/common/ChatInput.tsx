@@ -37,6 +37,10 @@ interface ChatInputProps {
  *               [Mic?]                   [Send]
  *
  * Grows up to MAX_LINES then scrolls. Textarea height animates smoothly.
+ *
+ * A single <textarea> element is always rendered in the same DOM position so
+ * focus, cursor, and selection survive the single→multi-line layout switch
+ * triggered by Shift+Enter.
  */
 export function ChatInput({
   onSend,
@@ -136,20 +140,7 @@ export function ChatInput({
     </Button>
   );
 
-  const sharedTextareaProps = {
-    ref: textareaRef,
-    id: inputId,
-    name: "chat-message" as const,
-    autoComplete: "off" as const,
-    wrap: "soft" as const,
-    value: input,
-    onChange: handleChange,
-    onKeyDown: handleKeyDown,
-    placeholder,
-    disabled,
-    rows: 1,
-    className: `bg-transparent resize-none outline-none text-sm placeholder:text-muted-foreground leading-6 py-0 transition-[height] duration-200 ease-in-out break-words [overflow-wrap:anywhere] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border ${isScrollable ? "[&::-webkit-scrollbar-thumb]:opacity-100" : "[&::-webkit-scrollbar-thumb]:opacity-0"}`,
-  };
+  const textareaClassName = `bg-transparent resize-none outline-none text-base placeholder:text-muted-foreground leading-7 py-0 transition-[height] duration-200 ease-in-out break-words [overflow-wrap:anywhere] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border ${isScrollable ? "[&::-webkit-scrollbar-thumb]:opacity-100" : "[&::-webkit-scrollbar-thumb]:opacity-0"}`;
 
   return (
     <div className={className}>
@@ -182,38 +173,61 @@ export function ChatInput({
         <p className="text-xs text-muted-foreground px-1 mb-1">{voiceStatus}</p>
       )}
 
-      {/* Input box */}
+      {/*
+        Input box.
+        The <textarea> lives in a stable position in the JSX tree regardless of
+        isMultiLine so React never unmounts/remounts it. Focus, cursor position,
+        and any in-progress composition (IME) survive the layout switch that
+        Shift+Enter triggers.
+
+        Layout strategy:
+        - Single-line: [Mic] [textarea flex-1] [Send] — all on one row
+        - Multi-line:  textarea takes full width (w-full + basis-full forces wrap),
+                       then a second row shows [Mic] [spacer] [Send]
+      */}
       <div
         className={
           noCard
-            ? "p-4"
-            : "bg-white border border-border rounded-2xl p-4 transition-all duration-200"
+            ? "p-5"
+            : "bg-white border border-border rounded-2xl p-5 transition-all duration-200"
         }
       >
-        {isMultiLine ? (
-          /* Multi-line: textarea full-width, buttons on bottom row */
-          <>
-            {/* pl-2 aligns first character with mic glyph (not the button edge). */}
-            <textarea
-              {...sharedTextareaProps}
-              className={`${sharedTextareaProps.className} w-full pl-2`}
-            />
-            <div className="flex items-center justify-between mt-3">
-              {MicButton ?? <span />}
-              {SendButton}
-            </div>
-          </>
-        ) : (
-          /* Single-line: mic | textarea | send all inline */
-          <div className="flex items-center gap-2">
-            {MicButton}
-            <textarea
-              {...sharedTextareaProps}
-              className={`${sharedTextareaProps.className} flex-1 w-0`}
-            />
-            {SendButton}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!isMultiLine && MicButton}
+
+          <textarea
+            ref={textareaRef}
+            id={inputId}
+            name="chat-message"
+            autoComplete="off"
+            wrap="soft"
+            value={input}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            disabled={disabled}
+            rows={1}
+            className={
+              isMultiLine
+                ? `${textareaClassName} w-full basis-full pl-2`
+                : `${textareaClassName} flex-1 w-0`
+            }
+          />
+
+          {!isMultiLine && SendButton}
+        </div>
+
+        {/* Bottom button row — always in DOM so it can animate in/out */}
+        <div
+          className={`flex items-center justify-between overflow-hidden transition-all duration-200 ease-in-out ${
+            isMultiLine
+              ? "max-h-10 opacity-100 mt-3"
+              : "max-h-0 opacity-0 mt-0 pointer-events-none"
+          }`}
+        >
+          {MicButton ?? <span />}
+          {SendButton}
+        </div>
       </div>
     </div>
   );
