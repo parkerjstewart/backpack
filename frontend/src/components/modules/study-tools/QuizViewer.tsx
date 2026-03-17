@@ -116,11 +116,6 @@ export function QuizViewer({ data }: QuizViewerProps) {
 
   return (
     <div className="flex flex-col items-center gap-4">
-      {/* Progress */}
-      <p className="text-xs text-muted-foreground">
-        Question {currentIndex + 1} of {total}
-      </p>
-
       {/* Question */}
       <div className="w-full flex flex-col gap-4">
         <p className="text-base font-medium leading-snug text-center px-2">
@@ -196,7 +191,10 @@ export function QuizViewer({ data }: QuizViewerProps) {
         </Button>
       )}
 
-      {/* Dot indicators */}
+      {/* Progress + Dot indicators */}
+      <p className="text-xs text-muted-foreground">
+        Question {currentIndex + 1} of {total}
+      </p>
       <div className="flex gap-1" role="tablist" aria-label="Quiz progress">
         {questions.map((_, i) => (
           <div

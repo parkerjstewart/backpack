@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { SimplePodcastDialog } from "@/components/modules/SimplePodcastDialog";
 import { FlashcardViewer } from "@/components/modules/study-tools/FlashcardViewer";
 import { QuizViewer } from "@/components/modules/study-tools/QuizViewer";
@@ -50,6 +51,7 @@ import {
 } from "@/lib/hooks/use-study-tools";
 import { useEpisodeProfiles, useSpeakerProfiles } from "@/lib/hooks/use-podcasts";
 
+import { IconButton } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type {
   StudyToolResultResponse,
@@ -736,12 +738,28 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
           if (!open) setViewingResult(null);
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{viewingResult?.title}</DialogTitle>
-          </DialogHeader>
-          {viewingResult && renderViewer(viewingResult)}
-        </DialogContent>
+        {viewingResult?.tool_type === "quiz" ? (
+          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto" showCloseButton={false}>
+            <DialogPrimitive.Close asChild>
+              <IconButton
+                size="sm"
+                className="absolute left-4 top-4"
+                aria-label="Close"
+              >
+                <X />
+              </IconButton>
+            </DialogPrimitive.Close>
+            <DialogPrimitive.Title className="sr-only">{viewingResult?.title}</DialogPrimitive.Title>
+            {viewingResult && renderViewer(viewingResult)}
+          </DialogContent>
+        ) : (
+          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{viewingResult?.title}</DialogTitle>
+            </DialogHeader>
+            {viewingResult && renderViewer(viewingResult)}
+          </DialogContent>
+        )}
       </Dialog>
 
       {/* Podcast configuration dialog */}

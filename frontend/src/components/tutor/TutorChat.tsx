@@ -257,7 +257,7 @@ export function TutorChat({
           <>
             {/* Suggestion pills — outside and above the card */}
             {(isSuggestionsLoading || suggestions.length > 0) && !isSending && (
-              <div className="flex flex-wrap gap-2 mb-3 px-1">
+              <div className="flex flex-wrap gap-2 mt-3 mb-3 px-1">
                 {isSuggestionsLoading && suggestions.length === 0
                   ? [1, 2, 3].map(i => (
                       <div
