@@ -1,6 +1,7 @@
 .PHONY: run frontend check ruff database lint api start-all stop-all status clean-cache worker worker-start worker-stop worker-restart
 .PHONY: docker-buildx-prepare docker-buildx-clean docker-buildx-reset
 .PHONY: docker-push docker-push-latest docker-release docker-build-local tag export-docs
+.PHONY: test test-unit test-integration test-db test-api test-e2e test-commands test-coverage
 
 # Get version from pyproject.toml
 VERSION := $(shell grep -m1 version pyproject.toml | cut -d'"' -f2)
@@ -27,6 +28,52 @@ lint:
 
 ruff:
 	ruff check . --fix
+
+# === Testing ===
+
+test:
+	@echo "Running all tests..."
+	uv run pytest tests/ -v
+
+test-unit:
+	@echo "Running unit tests..."
+	uv run pytest tests/test_domain.py tests/test_graphs.py tests/test_embedding.py tests/test_utils.py tests/test_chunking.py tests/test_voice*.py tests/test_chat_stream.py -v
+
+test-integration:
+	@echo "Running integration tests..."
+	uv run pytest tests/test_database.py tests/test_api_endpoints.py tests/test_e2e_workflows.py tests/test_background_commands.py -v
+
+test-db:
+	@echo "Running database integration tests..."
+	uv run pytest tests/test_database.py -v
+
+test-api:
+	@echo "Running API endpoint tests..."
+	uv run pytest tests/test_api_endpoints.py -v
+
+test-e2e:
+	@echo "Running end-to-end workflow tests..."
+	uv run pytest tests/test_e2e_workflows.py -v
+
+test-commands:
+	@echo "Running background command tests..."
+	uv run pytest tests/test_background_commands.py -v
+
+test-coverage:
+	@echo "Running tests with coverage..."
+	uv run pytest tests/ --cov=backpack --cov=api --cov-report=html --cov-report=term-missing
+
+test-watch:
+	@echo "Running tests in watch mode..."
+	uv run pytest tests/ -v --tb=short -x 2>&1 | tail -20
+
+test-failed:
+	@echo "Running only failed tests from last run..."
+	uv run pytest tests/ --lf -v
+
+test-fast:
+	@echo "Running tests (excluding slow integration tests)..."
+	uv run pytest tests/ -v -m "not slow"
 
 # === Docker Build Setup ===
 docker-buildx-prepare:
