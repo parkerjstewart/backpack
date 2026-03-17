@@ -138,7 +138,7 @@ export default function CourseStudentsPage() {
             enrollmentRequests &&
             enrollmentRequests.length > 0 && (
             <section className="flex flex-col gap-4">
-              <h2 className="text-title text-teal-800">
+              <h2 className="text-title text-primary">
                 Pending Requests ({enrollmentRequests.length})
               </h2>
               <div className="flex flex-col divide-y divide-border rounded-xl border border-border overflow-hidden">
