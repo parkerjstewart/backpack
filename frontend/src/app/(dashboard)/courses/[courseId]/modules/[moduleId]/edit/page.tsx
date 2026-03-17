@@ -358,6 +358,7 @@ export default function EditModulePage() {
           <RefinementChat
             currentOverview={overview || ""}
             currentGoals={draftGoals.map((g) => ({
+              title: g.title || "",
               description: g.description,
               takeaways: g.takeaways || "",
               competencies: g.competencies || "",

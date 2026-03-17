@@ -45,12 +45,9 @@ from api.routers import (
 )
 from api.routers import commands as commands_router
 from backpack.database.async_migrate import AsyncMigrationManager
+from backpack.database.repository import repo_query
 
-# Import commands to register them in the API process
-try:
-    logger.info("Commands imported in API process")
-except Exception as e:
-    logger.error(f"Failed to import commands in API process: {e}")
+logger.info("API process startup")
 
 
 @asynccontextmanager
@@ -78,11 +75,24 @@ async def lifespan(app: FastAPI):
             logger.info(
                 "Database is already at the latest version. No migrations needed."
             )
+
+        # surreal-commands requires this table for worker LIVE queries.
+        try:
+            await repo_query("DEFINE TABLE command SCHEMALESS;")
+            logger.info("Created surreal-commands `command` table")
+        except Exception as command_table_err:
+            # If the table already exists, continue startup.
+            if "already exists" in str(command_table_err).lower():
+                logger.info("surreal-commands `command` table already exists")
+            else:
+                raise
     except Exception as e:
         logger.error(f"CRITICAL: Database migration failed: {str(e)}")
         logger.exception(e)
-        # Fail fast - don't start the API with an outdated database schema
-        raise RuntimeError(f"Failed to run database migrations: {str(e)}") from e
+        # Do not fail API startup hard in production deploys.
+        # This keeps health/config endpoints reachable for diagnostics and allows
+        # follow-up migrations/fixes without a full outage.
+        logger.warning("Continuing API startup despite migration/setup failure")
 
     logger.success("API initialization completed successfully")
 

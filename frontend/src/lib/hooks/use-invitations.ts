@@ -74,7 +74,7 @@ export function useCreateInvitation(courseId: string) {
       queryClient.invalidateQueries({
         queryKey: COURSE_QUERY_KEYS.detail(courseId),
       })
-      toast.success(`Invited ${variables.name} to the course`)
+      toast.success(`Invited ${variables.email} to the course`)
     },
     onError: (error) => {
       toast.error(`Failed to send invitation: ${error.message}`)

@@ -133,6 +133,7 @@ fi
 
 setenv_args=(
   "API_URL=${APP_URL}"
+  "INTERNAL_API_URL=http://127.0.0.1:5055"
   "SURREAL_URL=${SURREAL_URL}"
   "SURREAL_USER=${SURREAL_USER}"
   "SURREAL_PASSWORD=${SURREAL_PASSWORD}"
@@ -149,7 +150,7 @@ done
 
 if ! eb status "${ENV_NAME}" >/dev/null 2>&1; then
   eb create "${ENV_NAME}" --platform docker --single --instance_type "${INSTANCE_TYPE}" --cname "${CNAME_PREFIX}" --timeout 45
-  eb setenv "${setenv_args[@]}"
+  eb setenv -e "${ENV_NAME}" "${setenv_args[@]}"
 else
   wait_for_ready
 
@@ -163,9 +164,9 @@ else
   wait_for_ready
 
   # Deploy app bits first to avoid config updates running on a stale compose-mode version.
-  eb deploy "${ENV_NAME}" --timeout 45
+  eb deploy "${ENV_NAME}" --timeout 45 --staged
   wait_for_ready
-  eb setenv "${setenv_args[@]}"
+  eb setenv -e "${ENV_NAME}" "${setenv_args[@]}"
 fi
 
 echo "Deployed: ${APP_URL}"

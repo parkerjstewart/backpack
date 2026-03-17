@@ -546,6 +546,7 @@ export function ModuleDetails({ module, canEdit = true }: ModuleDetailsProps) {
         <RefinementChat
           currentOverview={overview}
           currentGoals={learningGoals.map((g) => ({
+            title: g.title || '',
             description: g.description,
             takeaways: g.takeaways || '',
             competencies: g.competencies || '',

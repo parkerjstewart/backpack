@@ -382,7 +382,7 @@ export default function ModuleReviewPage() {
   const refinePulseTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleRefinementApply = (newOverview: string, newGoals: LearningGoalPreview[]) => {
-    const normalize = (s: string) => (s || '').trim().replace(/\s+/g, ' ')
+    const normalize = (s: string | null | undefined) => (s || '').trim().replace(/\s+/g, ' ')
     const overviewChanged = normalize(newOverview) !== normalize(overview);
     const changedGoalIndices = new Set<number>();
     newGoals.forEach((g, i) => {
@@ -525,6 +525,7 @@ export default function ModuleReviewPage() {
                     <RefinementChat
                       currentOverview={overview || ""}
                       currentGoals={learningGoals.map((g) => ({
+                        title: g.title || "",
                         description: g.description,
                         takeaways: g.takeaways || "",
                         competencies: g.competencies || "",

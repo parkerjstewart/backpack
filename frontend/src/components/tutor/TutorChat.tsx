@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Target, CheckCircle2 } from 'lucide-react'
 import { TutorLoadingAnimation } from './TutorLoadingAnimation'
@@ -283,7 +283,7 @@ export function TutorChat({
           <div className="bg-white border border-border rounded-2xl overflow-hidden">
             {/* Artifact cards — always shown when artifacts exist */}
             {artifacts.length > 0 && (
-              <ScrollArea orientation="horizontal">
+              <ScrollArea>
                 <div className="flex gap-3 px-4 pt-3 pb-3">
                       {artifacts.map((art) => {
                         const isHighlighted = art.id === activeHighlightId
@@ -305,6 +305,7 @@ export function TutorChat({
                         )
                       })}
                 </div>
+                <ScrollBar orientation="horizontal" />
               </ScrollArea>
             )}
             <ChatInput
