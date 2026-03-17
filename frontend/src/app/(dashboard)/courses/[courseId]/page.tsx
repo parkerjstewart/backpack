@@ -13,6 +13,7 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  DragStartEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -31,7 +32,6 @@ import { useCoursesStore } from "@/lib/stores/courses-store";
 import { useCourse, useCourseStudents } from "@/lib/hooks/use-courses";
 import { CreateModuleWizard } from "@/components/modules/CreateModuleWizard";
 import { getCoursePermissions } from "@/lib/permissions/course";
-import { useAuthStore } from "@/lib/stores/auth-store";
 import type { ModuleResponse } from "@/lib/types/api";
 
 // Sortable wrapper for drag-to-reorder (instructor/TA only)
@@ -42,6 +42,8 @@ function SortableModuleCard({
   variant,
   goalScores,
   canReorder,
+  isTeacher,
+  showCompleted,
 }: {
   module: ModuleResponse;
   courseId: string;
@@ -49,6 +51,8 @@ function SortableModuleCard({
   variant: "expanded" | "collapsed";
   goalScores?: Record<string, number>;
   canReorder: boolean;
+  isTeacher?: boolean;
+  showCompleted?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: module.id });
@@ -76,8 +80,10 @@ function SortableModuleCard({
           module={module}
           courseId={courseId}
           stats={stats}
-          variant={variant}
+          variant={isDragging ? "collapsed" : variant}
           goalScores={goalScores ?? {}}
+          isTeacher={isTeacher}
+          showCompleted={showCompleted}
         />
       </div>
     </div>
@@ -91,7 +97,6 @@ export default function CoursePage() {
     : "";
 
   const { moduleCourseMap } = useCoursesStore();
-  const { currentUser } = useAuthStore();
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: modules, isLoading: modulesLoading } = useModules(false);
@@ -99,6 +104,7 @@ export default function CoursePage() {
   const updateModule = useUpdateModule();
   const reorderModules = useReorderModules();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
 
   // Filter modules that belong to this course
   const courseModules = useMemo(
@@ -136,26 +142,6 @@ export default function CoursePage() {
 
   const permissions = course ? getCoursePermissions(course.membership_role) : null;
 
-  // Current module logic (students only):
-  // - Lowest-order module the student hasn't mastered yet
-  // - Instructors/TAs have no "current module" — they see all modules draggable
-  const currentModule = useMemo(() => {
-    if (!localModules.length) return undefined;
-    if (!permissions || permissions.canCreateModules) return undefined;
-
-    // Student: find first module not yet mastered by this user
-    const myMastery = currentUser
-      ? students?.find((s) => s.user_id === currentUser.id)
-      : undefined;
-
-    const unmastered = localModules.find((m) => {
-      if (!myMastery) return true;
-      const entry = myMastery.module_mastery.find((mm) => mm.module_id === m.id);
-      return !entry || entry.status !== "mastered";
-    });
-    return unmastered ?? localModules[0];
-  }, [localModules, permissions, currentUser, students]);
-
   // Per-module completion stats
   const moduleStats = useMemo(() => {
     const stats: Record<string, { completed: number; total: number; struggling: number }> = {};
@@ -184,7 +170,12 @@ export default function CoursePage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  function handleDragStart(_event: DragStartEvent) {
+    setIsDragActive(true);
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setIsDragActive(false);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -228,7 +219,6 @@ export default function CoursePage() {
   }
 
   const canReorder = permissions?.canCreateModules ?? false;
-  const otherModules = localModules.filter((m) => m.id !== currentModule?.id);
 
   return (
     <AppShell>
@@ -252,69 +242,101 @@ export default function CoursePage() {
                 No modules yet
               </p>
             ) : canReorder ? (
-              /* Instructor / TA: flat draggable list, no "current module" */
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={localModules.map((m) => m.id)}
-                  strategy={verticalListSortingStrategy}
+              /* Instructor / TA: first module expanded, rest collapsed, all draggable */
+              <div className="flex flex-col gap-4 w-full">
+                <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary/80">
+                  Current Module
+                </h2>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
                 >
-                  <div className="flex flex-col gap-6 w-full">
-                    {localModules.map((module) => (
-                      <SortableModuleCard
-                        key={module.id}
-                        module={module}
-                        courseId={courseId}
-                        stats={moduleStats[module.id] ?? { completed: 0, total: 0, struggling: 0 }}
-                        variant="collapsed"
-                        canReorder={true}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
+                  <SortableContext
+                    items={localModules.map((m) => m.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="flex flex-col gap-6 w-full">
+                      {localModules[0] && (
+                        <SortableModuleCard
+                          module={localModules[0]}
+                          courseId={courseId}
+                          stats={moduleStats[localModules[0].id] ?? { completed: 0, total: 0, struggling: 0 }}
+                          variant={isDragActive ? "collapsed" : "expanded"}
+                          canReorder={true}
+                          isTeacher={true}
+                        />
+                      )}
+                      {localModules.length > 1 && (
+                        <>
+                          {!isDragActive && <hr className="border-t border-dashed border-border" />}
+                          {localModules.slice(1).map((module) => (
+                            <SortableModuleCard
+                              key={module.id}
+                              module={module}
+                              courseId={courseId}
+                              stats={moduleStats[module.id] ?? { completed: 0, total: 0, struggling: 0 }}
+                              variant="collapsed"
+                              canReorder={true}
+                              isTeacher={true}
+                            />
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              </div>
             ) : (
-              /* Student: current module expanded, rest collapsed, no drag */
+              /* Student: "Current Module" heading, first module expanded (no goals), rest collapsed */
               <div className="flex flex-col gap-4 w-full">
                 <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary/80">
                   Current Module
                 </h2>
 
-                <div className="flex flex-col gap-8 w-full">
-                  {currentModule && (
-                    <SortableModuleCard
-                      module={currentModule}
-                      courseId={courseId}
-                      stats={moduleStats[currentModule.id] ?? { completed: 0, total: 0, struggling: 0 }}
-                      variant="expanded"
-                      goalScores={{}}
-                      canReorder={false}
-                      isTeacher={permissions.canCreateModules}
-                    />
-                  )}
-
-                  {otherModules.length > 0 && (
-                    <>
-                      <hr className="border-t border-dashed border-border" />
-                      <div className="flex flex-col gap-6">
-                        {otherModules.map((module) => (
-                          <SortableModuleCard
-                            key={module.id}
-                            module={module}
-                            courseId={courseId}
-                            stats={moduleStats[module.id] ?? { completed: 0, total: 0, struggling: 0 }}
-                            variant="collapsed"
-                            canReorder={false}
-                            isTeacher={permissions.canCreateModules}
-                          />
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={localModules.map((m) => m.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="flex flex-col gap-6 w-full">
+                      {localModules[0] && (
+                        <SortableModuleCard
+                          module={localModules[0]}
+                          courseId={courseId}
+                          stats={moduleStats[localModules[0].id] ?? { completed: 0, total: 0, struggling: 0 }}
+                          variant="expanded"
+                          canReorder={false}
+                          isTeacher={false}
+                          showCompleted={false}
+                        />
+                      )}
+                      {localModules.length > 1 && (
+                        <>
+                          <hr className="border-t border-dashed border-border" />
+                          {localModules.slice(1).map((module) => (
+                            <SortableModuleCard
+                              key={module.id}
+                              module={module}
+                              courseId={courseId}
+                              stats={moduleStats[module.id] ?? { completed: 0, total: 0, struggling: 0 }}
+                              variant="collapsed"
+                              canReorder={false}
+                              isTeacher={false}
+                              showCompleted={false}
+                            />
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </SortableContext>
+                </DndContext>
               </div>
             )}
           </div>

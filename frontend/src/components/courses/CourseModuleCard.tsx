@@ -27,6 +27,7 @@ interface CourseModuleCardProps {
   canDelete?: boolean;
   onDeleted?: () => void;
   isTeacher?: boolean;
+  showCompleted?: boolean;
 }
 
 // Smooth HSL gradient: 100% = green, 75% = yellow-green, 50% = orange, 25%+ = red
@@ -66,10 +67,12 @@ function ProgressBar({
   completed,
   total,
   leftLabel,
+  showCompleted = true,
 }: {
   completed: number;
   total: number;
   leftLabel?: string;
+  showCompleted?: boolean;
 }) {
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   return (
@@ -85,9 +88,11 @@ function ProgressBar({
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="shrink-0 text-body-sm text-primary whitespace-nowrap">
-        {completed}/{total} Completed
-      </span>
+      {showCompleted && (
+        <span className="shrink-0 text-body-sm text-primary whitespace-nowrap">
+          {completed}/{total} Completed
+        </span>
+      )}
     </div>
   );
 }
@@ -108,6 +113,7 @@ function ExpandedCard({
   canDelete,
   onDeleted,
   isTeacher,
+  showCompleted = true,
 }: Omit<CourseModuleCardProps, "variant">) {
   const { data: goals } = useLearningGoals(module.id);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -144,8 +150,8 @@ function ExpandedCard({
           </div>
         </div>
 
-        {/* Learning goal badges */}
-        {visibleGoals.length > 0 && (
+        {/* Learning goal badges — instructors only; students see goals after tutor + insights */}
+        {isTeacher && visibleGoals.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-3">
             {visibleGoals.map((goal) => {
               const score = goalScores?.[goal.id];
@@ -183,6 +189,7 @@ function ExpandedCard({
           completed={stats.completed}
           total={stats.total}
           leftLabel={formatDate(module.created)}
+          showCompleted={showCompleted}
         />
       </Link>
 
@@ -216,6 +223,7 @@ function CollapsedCard({
   canDelete,
   onDeleted,
   isTeacher,
+  showCompleted = true,
 }: Omit<CourseModuleCardProps, "variant" | "goalScores">) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const deleteModule = useDeleteModule();
@@ -261,6 +269,7 @@ function CollapsedCard({
           completed={stats.completed}
           total={stats.total}
           leftLabel={formatDate(module.created)}
+          showCompleted={showCompleted}
         />
       </Link>
 
@@ -296,11 +305,12 @@ export function CourseModuleCard({
   canDelete,
   onDeleted,
   isTeacher,
+  showCompleted = true,
 }: CourseModuleCardProps) {
   if (variant === "expanded") {
     return (
-      <ExpandedCard module={module} courseId={courseId} stats={stats} goalScores={goalScores} canDelete={canDelete} onDeleted={onDeleted} isTeacher={isTeacher} />
+      <ExpandedCard module={module} courseId={courseId} stats={stats} goalScores={goalScores} canDelete={canDelete} onDeleted={onDeleted} isTeacher={isTeacher} showCompleted={showCompleted} />
     );
   }
-  return <CollapsedCard module={module} courseId={courseId} stats={stats} canDelete={canDelete} onDeleted={onDeleted} isTeacher={isTeacher} />;
+  return <CollapsedCard module={module} courseId={courseId} stats={stats} canDelete={canDelete} onDeleted={onDeleted} isTeacher={isTeacher} showCompleted={showCompleted} />;
 }
