@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Target, CheckCircle2 } from 'lucide-react'
+import { Target, CheckCircle2 } from 'lucide-react'
+import { TutorLoadingAnimation } from './TutorLoadingAnimation'
 import { ChatInput } from '@/components/common/ChatInput'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -126,7 +127,7 @@ export function TutorChat({
     return (
       <div className={`flex flex-col h-full flex-1 overflow-hidden items-center justify-center ${className ?? ''}`}>
         <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+          <div className="mx-auto w-fit"><TutorLoadingAnimation size="lg" isLoading /></div>
           <p className="text-muted-foreground">{t.tutor.initializing}</p>
         </div>
       </div>
@@ -214,18 +215,14 @@ export function TutorChat({
             })
           })()}
 
-          {/* Streaming / thinking states */}
-          {isSending && (
+          {/* Streaming text (typed response) */}
+          {isSending && streamingMessage && (
             <div className="flex justify-start">
-              {streamingMessage ? (
-                <div className="prose prose-sm prose-neutral max-w-[85%] break-words">
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                    {streamingMessage}
-                  </ReactMarkdown>
-                </div>
-              ) : (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mt-1" />
-              )}
+              <div className="prose prose-sm prose-neutral max-w-[85%] break-words">
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                  {streamingMessage}
+                </ReactMarkdown>
+              </div>
             </div>
           )}
 
@@ -237,12 +234,7 @@ export function TutorChat({
             </div>
           )}
 
-          {isAssistantThinking && !assistantStreamingText && (
-            <div className="flex justify-start">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mt-1" />
-            </div>
-          )}
-
+          {/* Streaming text (voice response) */}
           {assistantStreamingText && (
             <div className="flex justify-start">
               <div className="prose prose-sm prose-neutral max-w-[85%] break-words">
@@ -250,6 +242,16 @@ export function TutorChat({
                   {assistantStreamingText}
                 </ReactMarkdown>
               </div>
+            </div>
+          )}
+
+          {/* Tutor presence dot — always visible, uncurls when thinking */}
+          {!isSessionComplete && !streamingMessage && !assistantStreamingText && (
+            <div className="flex justify-start">
+              <TutorLoadingAnimation
+                size="sm"
+                isLoading={(isSending && !streamingMessage) || (isAssistantThinking && !assistantStreamingText)}
+              />
             </div>
           )}
         </div>
@@ -336,3 +338,4 @@ export function TutorChat({
     </div>
   )
 }
+

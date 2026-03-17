@@ -93,6 +93,8 @@ export function useTutor({ moduleId }: UseTutorParams) {
     setIsInitializing(true)
     try {
       await createSessionMutation.mutateAsync()
+    } catch {
+      // Error already surfaced by mutation's onError handler (toast)
     } finally {
       setIsInitializing(false)
     }
