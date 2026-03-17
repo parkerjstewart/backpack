@@ -328,12 +328,12 @@ export function SourceCard({
   return (
     <Card
       className={cn(
-        "transition-all duration-200 hover:bg-secondary group relative cursor-pointer border border-border/60",
+        "py-3 transition-all duration-200 hover:bg-secondary group relative cursor-pointer border border-border/60",
         className,
       )}
       onClick={handleCardClick}
     >
-      <CardContent className="px-3 py-2">
+      <CardContent className="px-3 py-1.5">
         {/* Status badge — only for non-completed states */}
         {!isCompleted && (
           <div className="flex items-center gap-2 mb-2">
@@ -372,7 +372,7 @@ export function SourceCard({
             />
           ) : (
             <h4
-              className="flex-1 min-w-0 text-sm font-medium leading-tight line-clamp-2"
+              className="flex-1 min-w-0 text-sm font-medium leading-tight truncate"
               title={title}
             >
               {title}
