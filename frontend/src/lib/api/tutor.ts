@@ -5,6 +5,7 @@ import {
   TutorResponsePayload,
   TutorSessionStateResponse,
   TutorDebugInfo,
+  StudentProgressResponse,
 } from '@/lib/types/api'
 
 export type TutorStreamEvent =
@@ -128,6 +129,30 @@ export const tutorApi = {
       { signal }
     )
     return response.data.suggestions
+  },
+
+  // Get the authenticated student's progress for a module (most recent first)
+  getProgress: async (moduleId: string) => {
+    const response = await apiClient.get<StudentProgressResponse[]>(
+      `/tutor/modules/${moduleId}/progress`
+    )
+    return response.data
+  },
+
+  // Instructor: get a specific student's progress for a module
+  getStudentProgress: async (moduleId: string, studentId: string) => {
+    const response = await apiClient.get<StudentProgressResponse[]>(
+      `/tutor/modules/${moduleId}/students/${studentId}/progress`
+    )
+    return response.data
+  },
+
+  // Seed mock progress data for a module (dev only, requires BACKPACK_DEV_MODE=true)
+  seedMockProgress: async (moduleId: string) => {
+    const response = await apiClient.post(
+      `/tutor/modules/${moduleId}/progress/mock`
+    )
+    return response.data
   },
 }
 

@@ -23,7 +23,10 @@ from langgraph.types import Command
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from api.routers.authz import get_current_user_id_from_auth, require_authenticated_user_id
+import os
+import random
+
+from api.routers.authz import get_current_user_id_from_auth, require_authenticated_user_id, require_teaching_role
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backpack.ai.provision import provision_langchain_model
@@ -1036,6 +1039,138 @@ async def get_student_module_progress(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get(
+    "/tutor/modules/{module_id}/students/{student_id}/progress",
+    response_model=List[StudentProgressResponse],
+)
+async def get_student_progress_for_instructor(
+    module_id: str,
+    student_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Instructor view: get a specific student's progress for a module."""
+    user_id = require_authenticated_user_id(authorization)
+
+    # Resolve the module's course for authorization check
+    try:
+        module = await Module.get(module_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    if not module or not module.course:
+        raise HTTPException(status_code=404, detail="Module not found or has no course")
+
+    course_id = str(module.course).split(":")[1] if ":" in str(module.course) else str(module.course)
+    await require_teaching_role(course_id, user_id)
+
+    try:
+        records = await StudentProgress.get_for_student(student_id, module_id)
+        return [
+            StudentProgressResponse(
+                session_id=r.session_id,
+                module_id=str(r.module),
+                overall_summary=r.overall_summary,
+                strongest_goal_id=r.strongest_goal_id,
+                weakest_goal_id=r.weakest_goal_id,
+                goal_insights=[
+                    GoalInsightResponse(**gi) for gi in (r.goal_insights or [])
+                ],
+                created=str(r.created) if r.created else None,
+            )
+            for r in records
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching progress for student {student_id} in module {module_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tutor/modules/{module_id}/progress/mock", status_code=201)
+async def seed_mock_progress(
+    module_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Seed mock student progress data for a module. Dev only (requires BACKPACK_DEV_MODE=true)."""
+    if not os.getenv("BACKPACK_DEV_MODE", "").lower() in ("true", "1", "yes"):
+        raise HTTPException(status_code=403, detail="Dev mode not enabled. Set BACKPACK_DEV_MODE=true.")
+
+    user_id = require_authenticated_user_id(authorization)
+
+    try:
+        module = await Module.get(module_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    if not module:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    goals = await module.get_learning_goals() if hasattr(module, "get_learning_goals") else []
+
+    # Build realistic mock goal insight dicts
+    def _mock_goal_insight(goal) -> dict:
+        score = round(random.uniform(0.3, 1.0), 2)
+        n_competencies = random.randint(2, 4)
+        statuses = ["mastered", "mastered", "explained", "pending"]
+        random.shuffle(statuses)
+        competency_results = [
+            {
+                "name": f"Competency {i+1}",
+                "status": statuses[i % len(statuses)],
+                "score": round(random.uniform(0.4, 1.0), 2),
+            }
+            for i in range(n_competencies)
+        ]
+        progression_len = random.randint(3, 6)
+        score_progression = sorted(
+            [round(random.uniform(0.2, score), 2) for _ in range(progression_len - 1)] + [score]
+        )
+        goal_id = str(getattr(goal, "id", f"learning_goal:mock_{random.randint(1000,9999)}"))
+        return {
+            "goal_id": goal_id,
+            "goal_description": getattr(goal, "description", "Understanding key concepts"),
+            "final_score": score,
+            "score_progression": score_progression,
+            "knowledge_gap": "Student shows partial understanding but struggles with edge cases.",
+            "stumbling_concepts": ["boundary conditions", "formal definitions"],
+            "tutor_nudges": [
+                "Asked student to consider what happens at the boundary.",
+                "Redirected toward first-principles reasoning.",
+            ],
+            "reinforcement_topics": ["prerequisite topic A", "related concept B"],
+            "competency_results": competency_results,
+        }
+
+    if goals:
+        goal_insights = [_mock_goal_insight(g) for g in goals]
+    else:
+        goal_insights = [
+            _mock_goal_insight(type("G", (), {"id": f"learning_goal:mock_{i}", "description": f"Goal {i+1}"})())
+            for i in range(random.randint(2, 4))
+        ]
+
+    scores = [gi["final_score"] for gi in goal_insights]
+    strongest = goal_insights[scores.index(max(scores))]["goal_id"] if scores else None
+    weakest = goal_insights[scores.index(min(scores))]["goal_id"] if len(set(scores)) > 1 else None
+
+    progress = StudentProgress(
+        user=user_id,
+        module=module_id,
+        session_id=f"mock-session-{uuid.uuid4().hex[:8]}",
+        overall_summary=(
+            "The student demonstrated a solid grasp of foundational concepts but "
+            "encountered difficulty with more advanced applications. "
+            "Continued practice with edge cases is recommended."
+        ),
+        strongest_goal_id=strongest,
+        weakest_goal_id=weakest,
+        goal_insights=goal_insights,
+    )
+    await progress.save()
+
+    return {"status": "created", "session_id": progress.session_id}
+
+
 @router.post("/tutor/sessions/{session_id}/suggestions", response_model=SuggestionsResponse)
 async def get_suggestions(session_id: str, request: SuggestionsRequest):
     """Generate 2-4 quick reply suggestions based on recent conversation.
@@ -1078,10 +1213,3 @@ async def get_suggestions(session_id: str, request: SuggestionsRequest):
         logger.warning(f"Failed to generate suggestions for {session_id}: {e}")
         # Non-fatal — return empty list so UI degrades gracefully
         return SuggestionsResponse(suggestions=[])
-se(suggestions=[])
->>>>>>> origin/main
-
-se(suggestions=[])
->>>>>>> origin/main
-se(suggestions=[])
->>>>>>> origin/main

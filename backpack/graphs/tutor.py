@@ -56,6 +56,7 @@ MAX_NO_PROGRESS_TURNS = 3           # turns with no score improvement → force 
 MAX_TOTAL_EXCHANGES_PER_GOAL = 12   # safety net per goal
 MAX_TANGENT_TURNS = 3               # turns per tangent episode before force-reconnect
 MAX_TANGENT_EPISODES_PER_COMPETENCY = 2  # separate tangent episodes allowed per competency
+MAX_EXPLAINS_PER_COMPETENCY = 2     # after this many explain turns, auto-advance regardless
 NUDGE_THRESHOLD = 0.55  # active competency score >= this → nudge instead of guide
 MASTERY_THRESHOLD = 0.65
 
@@ -347,6 +348,19 @@ def _get_student_response(state: TutorState) -> str:
     return ""
 
 
+_SKIP_PHRASES = (
+    "move on", "next", "skip", "i don't know", "i dont know", "idk",
+    "go to next", "go next", "can we go", "can we move", "let's move",
+    "lets move", "next learning goal", "next goal",
+)
+
+
+def _student_wants_to_skip(message: str) -> bool:
+    """Return True when the student is clearly asking to skip / move on."""
+    lower = message.lower()
+    return any(phrase in lower for phrase in _SKIP_PHRASES)
+
+
 # ============================================================================
 # Node: initialize_session
 # ============================================================================
@@ -533,6 +547,7 @@ def select_next_goal(state: TutorState, config: RunnableConfig) -> dict:
             "encounters": 0,
             "turns_since_progress": 0,
             "hint_count": 0,
+            "explain_count": 0,
             "artifacts_given": [],
             "deferred_notes": [],
         }
@@ -1259,6 +1274,25 @@ def evaluate_and_update_model(
         tangent_topic_from_eval = None
         defer_target_competency = None
 
+    # ---- Override: student explicitly asking to skip ----
+    if _student_wants_to_skip(student_message) and not is_tangent:
+        if tutor_mode == "explain":
+            # Tutor just explained — student saying "ok move on" means they accept it, advance
+            if suggested_action not in ("tangent", "defer"):
+                logger.info("Skip override (post-explain): student accepted explanation — advancing")
+                suggested_action = "advance"
+        else:
+            _active_enc = (
+                competency_statuses[active_idx].get("encounters", 0)
+                if 0 <= active_idx < len(competency_statuses)
+                else 0
+            )
+            if _active_enc >= 1 and suggested_action not in ("advance", "tangent", "defer"):
+                logger.info("Skip override: student asked to move on — forcing explain_competency")
+                suggested_action = "explain_competency"
+                if not tutor_guidance:
+                    tutor_guidance = "Student asked to move on. Explain the concept clearly and advance."
+
     # ---- Update competency statuses ----
     # Brain-dump mode (active_idx == -1): score any competencies the student touched
     if active_idx == -1:
@@ -1410,6 +1444,54 @@ def evaluate_and_update_model(
         "tangent_turns": 0,
         "tangent_topic": None,
     }
+
+    # ---- Post-explain: increment explain_count; auto-advance once threshold is hit ----
+    # tutor_mode reflects the PREVIOUS tutor message.
+    # First explain: let normal evaluator routing handle it (student may confirm understanding,
+    # or skip detection above will fire if they say "move on").
+    # After MAX_EXPLAINS_PER_COMPETENCY explains: force-advance regardless.
+    if tutor_mode == "explain" and 0 <= active_idx < len(competency_statuses):
+        _active_comp = competency_statuses[active_idx]
+        _new_explain_count = _active_comp.get("explain_count", 0) + 1
+        _active_comp["explain_count"] = _new_explain_count
+        state_updates["competency_statuses"] = competency_statuses
+        logger.info(f"Post-explain: explain_count={_new_explain_count} for '{_active_comp['competency']}'")
+
+        if _new_explain_count >= MAX_EXPLAINS_PER_COMPETENCY:
+            if _active_comp["status"] not in ("mastered", "explained"):
+                _active_comp["status"] = "explained"
+                logger.info(f"Post-explain auto-advance ({_new_explain_count}x): marked '{_active_comp['competency']}' as explained")
+            _all_addressed = all(c["status"] in ("mastered", "explained") for c in competency_statuses)
+            if _all_addressed:
+                return Command(goto="mark_goal_complete", update=state_updates)
+            _next_idx = _find_next_active_index(competency_statuses, start=active_idx + 1)
+            if _next_idx == -1:
+                return Command(goto="mark_goal_complete", update={**state_updates, "competency_statuses": competency_statuses})
+            competency_statuses[_next_idx]["status"] = "active"
+            _transition_guidance = (
+                f"Student received {_new_explain_count} explanations of '{_active_comp['competency']}'. "
+                "Briefly summarize the key takeaway in 1 sentence, then move to the next topic without re-quizzing them."
+            )
+            return Command(
+                goto="tutor_turn",
+                update={
+                    **state_updates,
+                    "competency_statuses": competency_statuses,
+                    "active_competency_index": _next_idx,
+                    "tutor_mode": "transition",
+                    "probe_question": None,
+                    "evaluator_guidance": _transition_guidance,
+                    "transitioning_from_competency": {
+                        "competency": _active_comp["competency"],
+                        "score": _active_comp.get("score", 0.0),
+                        "status": "explained",
+                        "gap": _active_comp.get("gap", ""),
+                        "evidence": _active_comp.get("evidence", []),
+                        "hypotheses": _active_comp.get("hypotheses", []),
+                    },
+                },
+            )
+        # else: first explain — fall through to normal evaluator routing
 
     # ---- Check if all competencies are resolved ----
     all_addressed = all(c["status"] in ("mastered", "explained") for c in competency_statuses)

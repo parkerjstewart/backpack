@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { MoreVertical, X, RefreshCw, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,8 @@ interface StudentListRowProps {
   email: string;
   avatarUrl?: string | null;
   moduleMastery?: ModuleMasteryResponse[];
+  courseId?: string;
+  studentId?: string;
   onRemove?: () => void;
   onViewDetails?: () => void;
   onCancel?: () => void;
@@ -41,6 +44,8 @@ export function StudentListRow({
   email,
   avatarUrl,
   moduleMastery = [],
+  courseId,
+  studentId,
   onRemove,
   onViewDetails,
   onCancel,
@@ -114,13 +119,27 @@ export function StudentListRow({
 
       {/* Right: Mastery indicators + Actions menu */}
       <div className="flex items-center gap-3">
-        {moduleMastery.map((mastery, index) => (
-          <MasteryIndicator
-            key={mastery.module_id}
-            moduleNumber={index + 1}
-            status={mastery.status}
-          />
-        ))}
+        {moduleMastery.map((mastery, index) => {
+          const indicator = (
+            <MasteryIndicator
+              key={mastery.module_id}
+              moduleNumber={index + 1}
+              status={mastery.status}
+            />
+          )
+          if (courseId && studentId && mastery.status !== 'incomplete') {
+            return (
+              <Link
+                key={mastery.module_id}
+                href={`/courses/${encodeURIComponent(courseId)}/students/${encodeURIComponent(studentId)}/modules/${encodeURIComponent(mastery.module_id)}/insights`}
+                title={`View ${mastery.module_name ?? `module ${index + 1}`} insights`}
+              >
+                {indicator}
+              </Link>
+            )
+          }
+          return indicator
+        })}
       </div>
 
       {/* Actions menu */}
