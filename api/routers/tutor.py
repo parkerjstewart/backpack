@@ -560,7 +560,11 @@ async def submit_response(
 
 
 @router.post("/tutor/sessions/{session_id}/respond/stream")
-async def stream_tutor_response(session_id: str, request: StudentResponseRequest):
+async def stream_tutor_response(
+    session_id: str,
+    request: StudentResponseRequest,
+    authorization: Optional[str] = Header(None),
+):
     """Submit a student response and stream the tutor's reply token-by-token via SSE.
 
     Events emitted:
@@ -655,6 +659,13 @@ async def stream_tutor_response(session_id: str, request: StudentResponseRequest
                         artifact_content = art.get("content")
                         break
             phase = "session_complete" if remaining == 0 else ("goal_complete" if not current_goal_id else "in_progress")
+
+        if phase == "session_complete":
+            await _save_session_insights(
+                session_id=session_id,
+                state_values=state_values,
+                authorization=authorization,
+            )
 
         logger.info(
             f"stream [{session_id}]: complete | interrupt={'yes' if interrupt_data else 'no'} "

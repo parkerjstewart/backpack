@@ -1,0 +1,50 @@
+# TASK
+
+You are helping a tutoring system determine whether a student's demonstrated skills from a prior learning goal can be credited toward a new learning goal, avoiding redundant re-testing.
+
+# NEW LEARNING GOAL
+
+**Goal**: {{ new_goal_description }}
+
+**Competencies to check** (these are the competencies the student would normally be asked to demonstrate):
+{% for comp in new_competencies %}
+- {{ comp }}
+{% endfor %}
+
+# PRIOR MASTERED COMPETENCIES
+
+These are competencies the student already **fully demonstrated** (mastered, not just explained) in earlier goals this session:
+{% for m in prior_mastered %}
+- "{{ m.competency }}" (score: {{ m.score }}, from goal: "{{ m.goal_description }}")
+{% endfor %}
+
+# YOUR TASK
+
+For each competency in the new goal, determine whether it represents the **same transferable skill** as one of the prior mastered competencies.
+
+**Match only when**: The new competency tests the exact same underlying skill — the student could demonstrate it directly because they already proved it in the prior context. Transferable mechanical skills count (e.g., "apply chain rule", "take log of a product", "set derivative to zero and solve", "maximize by differentiating").
+
+**Do NOT match when**:
+- The topic is related but the specific competency is different (e.g., "derive MLE for Poisson" ≠ "derive MLE for Exponential" — different distributions)
+- The new competency goes deeper or adds a new conceptual layer beyond what was demonstrated
+- The prior mastery was in a different domain or algorithm context that doesn't transfer
+
+**When in doubt, do NOT match** — it's better to let the student demonstrate the skill again than to skip something they might not be able to transfer.
+
+# OUTPUT FORMAT
+
+```json
+{
+  "matches": [
+    {
+      "new_competency": "exact text of the new competency being credited",
+      "prior_competency": "exact text of the prior competency it matches",
+      "prior_goal": "description of the prior goal"
+    }
+  ]
+}
+```
+
+Return an empty matches list if no competencies transfer. Do not include partial matches or uncertain cases.
+
+Evaluate now:

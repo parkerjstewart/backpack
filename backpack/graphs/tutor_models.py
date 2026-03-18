@@ -462,6 +462,23 @@ class GeneratedGoalInsight(BaseModel):
     )
 
 
+class PreCreditMatch(BaseModel):
+    """A competency in a new goal that matches a prior mastered competency."""
+
+    new_competency: str = Field(..., description="Exact text of the new goal's competency to skip")
+    prior_competency: str = Field(..., description="Matching competency text from the prior goal")
+    prior_goal: str = Field(..., description="Description of the prior goal where it was mastered")
+
+
+class PreCreditResult(BaseModel):
+    """Result of cross-goal competency matching."""
+
+    matches: List[PreCreditMatch] = Field(
+        default_factory=list,
+        description="Competencies in the new goal that were already mastered in a prior goal",
+    )
+
+
 class GeneratedInsights(BaseModel):
     """LLM structured output for session insight generation.
 

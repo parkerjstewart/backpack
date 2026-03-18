@@ -44,6 +44,7 @@ from backpack.graphs.tutor_models import (
     EvaluationResult,
     GeneratedAnchorProblem,
     ModuleExamples,
+    PreCreditResult,
     TangentEvaluationResult,
     TutorResponse,
 )
@@ -229,6 +230,45 @@ def _run_model(coro_factory):
             return ex.submit(_in_new_loop).result()
     except RuntimeError:
         return _in_new_loop()
+
+
+def _pre_credit_competencies(
+    new_competencies: List[str],
+    prior_mastered: List[dict],
+    model_id: Optional[str],
+) -> "PreCreditResult":
+    """Check new goal's competencies against prior mastered ones; return any that transfer.
+
+    Uses an LLM call to match semantically — catches cases like 'apply chain rule to
+    log-likelihood derivative' matching across different distributions/contexts.
+    Falls back to empty result on any failure so the session continues normally.
+    """
+    if not prior_mastered or not new_competencies:
+        return PreCreditResult(matches=[])
+
+    prompt_data = {
+        "new_goal_description": "",  # caller may override; fine to leave blank
+        "new_competencies": new_competencies,
+        "prior_mastered": prior_mastered,
+    }
+    system_prompt = Prompter(prompt_template="tutor/match_competencies").render(data=prompt_data)
+
+    async def _provision():
+        return await provision_langchain_model(
+            system_prompt,
+            model_id,
+            "tools",
+            max_tokens=600,
+            reasoning_effort="low",
+        )
+
+    try:
+        model = _run_model(_provision)
+        result: PreCreditResult = model.with_structured_output(PreCreditResult).invoke(system_prompt)
+        return result
+    except Exception as e:
+        logger.warning(f"Pre-credit matching failed (graceful degradation): {e}")
+        return PreCreditResult(matches=[])
 
 
 # ============================================================================
@@ -554,6 +594,66 @@ def select_next_goal(state: TutorState, config: RunnableConfig) -> dict:
         for name in competency_names
     ]
 
+    # ---- Cross-goal pre-crediting ----
+    # Collect competencies mastered (not just explained) with high confidence from prior goals
+    prior_mastered = []
+    for gid, gp in state.get("goal_progress", {}).items():
+        for c in gp.get("competency_statuses", []):
+            if c.get("status") == "mastered" and c.get("score", 0.0) >= 0.80:
+                prior_mastered.append({
+                    "competency": c["competency"],
+                    "score": c["score"],
+                    "goal_description": gp.get("goal_description", ""),
+                })
+
+    pre_credited_names: List[str] = []
+    if prior_mastered and competency_names:
+        model_id = config.get("configurable", {}).get("model_id") if config else None
+        pre_credit_result = _pre_credit_competencies(competency_names, prior_mastered, model_id)
+        for match in pre_credit_result.matches:
+            for comp in competency_statuses:
+                if comp["competency"] == match.new_competency:
+                    comp["status"] = "pre_credited"
+                    comp["score"] = next(
+                        (m["score"] for m in prior_mastered if m["competency"] == match.prior_competency),
+                        0.85,
+                    )
+                    comp["evidence"] = [
+                        f"Pre-credited: demonstrated '{match.prior_competency}' in prior goal '{match.prior_goal}'"
+                    ]
+                    pre_credited_names.append(match.new_competency)
+                    logger.info(f"Pre-credited competency: '{match.new_competency}' (matched '{match.prior_competency}')")
+                    break
+
+    # Build evaluator_guidance hint for the tutor so it knows what's already proven
+    evaluator_guidance = None
+    remaining = [c["competency"] for c in competency_statuses if c["status"] == "pending"]
+    if pre_credited_names:
+        evaluator_guidance = (
+            f"The student already demonstrated these skills in a prior goal — do NOT re-probe them: "
+            f"{', '.join(pre_credited_names)}. "
+            + (f"Focus on: {', '.join(remaining)}." if remaining else "All competencies are pre-credited.")
+        )
+
+    # Edge case: all competencies pre-credited → skip this goal
+    all_pre_credited = all(c["status"] == "pre_credited" for c in competency_statuses) if competency_statuses else False
+    if all_pre_credited:
+        logger.info(f"All competencies pre-credited for goal {next_goal['id']} — skipping")
+        if next_goal["id"] not in [g for g in state.get("completed_goal_ids", [])]:
+            goal_progress[next_goal["id"]] = dict(goal_progress.get(next_goal["id"], {}))
+            goal_progress[next_goal["id"]]["completed"] = True
+            goal_progress[next_goal["id"]]["competency_statuses"] = [dict(c) for c in competency_statuses]
+        completed_ids = list(state.get("completed_goal_ids", []))
+        if next_goal["id"] not in completed_ids:
+            completed_ids.append(next_goal["id"])
+        return {
+            "current_goal_id": None,
+            "goal_progress": goal_progress,
+            "completed_goal_ids": completed_ids,
+            "competency_statuses": [],
+            "active_competency_index": -1,
+        }
+
     return {
         "current_goal_id": next_goal["id"],
         "goal_progress": goal_progress,
@@ -566,7 +666,7 @@ def select_next_goal(state: TutorState, config: RunnableConfig) -> dict:
         "active_competency_index": -1,  # -1 = open/brain-dump mode
         "tutor_mode": "opening",
         "probe_question": None,
-        "evaluator_guidance": None,
+        "evaluator_guidance": evaluator_guidance,
         "tangent_turns": 0,
         "tangent_topic": None,
         "is_tangent": False,
@@ -590,12 +690,17 @@ def generate_anchor_problem(state: TutorState, config: RunnableConfig) -> dict:
 
     context_chunks = state.get("goal_contexts", {}).get(current_goal_id, [])[:5]
     module_examples = state.get("module_examples", [])[:10]
+    pre_credited = [
+        c["competency"] for c in state.get("competency_statuses", [])
+        if c.get("status") == "pre_credited"
+    ]
 
     prompt_data = {
         "goal": current_goal,
         "context_chunks": context_chunks,
         "module_name": state.get("module_name", ""),
         "module_examples": module_examples,
+        "pre_credited_competencies": pre_credited,
     }
 
     system_prompt = Prompter(prompt_template="tutor/generate_anchor_problem").render(
@@ -661,15 +766,17 @@ def _build_demonstrated_knowledge(state: TutorState) -> str:
     lines = []
     current_goal_id = state.get("current_goal_id")
 
-    # Add mastered competency names
+    # Add mastered and pre-credited competency names
     for comp in state.get("competency_statuses", []):
         if comp.get("status") == "mastered":
             lines.append(f"- Mastered: {comp['competency']}")
+        elif comp.get("status") == "pre_credited":
+            lines.append(f"- Already knows (prior goal): {comp['competency']}")
 
     # Add evidence from any competency that has been scored
     for comp in state.get("competency_statuses", []):
         evidence = comp.get("evidence", [])
-        if evidence and comp.get("status") != "mastered":
+        if evidence and comp.get("status") not in ("mastered", "pre_credited"):
             for ev in evidence[-2:]:  # last 2 evidence entries per competency
                 if ev:
                     lines.append(f"- {ev}")
@@ -1458,10 +1565,10 @@ def evaluate_and_update_model(
         logger.info(f"Post-explain: explain_count={_new_explain_count} for '{_active_comp['competency']}'")
 
         if _new_explain_count >= MAX_EXPLAINS_PER_COMPETENCY:
-            if _active_comp["status"] not in ("mastered", "explained"):
+            if _active_comp["status"] not in ("mastered", "explained", "pre_credited"):
                 _active_comp["status"] = "explained"
                 logger.info(f"Post-explain auto-advance ({_new_explain_count}x): marked '{_active_comp['competency']}' as explained")
-            _all_addressed = all(c["status"] in ("mastered", "explained") for c in competency_statuses)
+            _all_addressed = all(c["status"] in ("mastered", "explained", "pre_credited") for c in competency_statuses)
             if _all_addressed:
                 return Command(goto="mark_goal_complete", update=state_updates)
             _next_idx = _find_next_active_index(competency_statuses, start=active_idx + 1)
@@ -1494,7 +1601,7 @@ def evaluate_and_update_model(
         # else: first explain — fall through to normal evaluator routing
 
     # ---- Check if all competencies are resolved ----
-    all_addressed = all(c["status"] in ("mastered", "explained") for c in competency_statuses)
+    all_addressed = all(c["status"] in ("mastered", "explained", "pre_credited") for c in competency_statuses)
     if all_addressed:
         logger.info("All competencies addressed — marking goal complete")
         return Command(goto="mark_goal_complete", update=state_updates)
