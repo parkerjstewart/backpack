@@ -21,7 +21,7 @@ DEFINE FIELD IF NOT EXISTS session_id ON TABLE student_progress TYPE string;
 DEFINE FIELD IF NOT EXISTS overall_summary ON TABLE student_progress TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS strongest_goal_id ON TABLE student_progress TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS weakest_goal_id ON TABLE student_progress TYPE option<string>;
-DEFINE FIELD IF NOT EXISTS goal_insights ON TABLE student_progress TYPE option<array>;
+DEFINE FIELD IF NOT EXISTS goal_insights ON TABLE student_progress FLEXIBLE TYPE option<array>;
 DEFINE FIELD IF NOT EXISTS updated ON TABLE student_progress TYPE datetime DEFAULT time::now();
 
 -- Add indexes for common query patterns

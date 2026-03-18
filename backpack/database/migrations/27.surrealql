@@ -1,0 +1,9 @@
+-- ============================================
+-- Migration 27: Fix goal_insights field type on student_progress
+-- Changes from strict TYPE option<array> (which strips nested objects
+-- on SCHEMAFULL tables) to FLEXIBLE TYPE option<array> so that
+-- nested JSON objects are preserved.
+-- ============================================
+
+REMOVE FIELD IF EXISTS goal_insights ON TABLE student_progress;
+DEFINE FIELD goal_insights ON TABLE student_progress FLEXIBLE TYPE option<array>;

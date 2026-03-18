@@ -60,7 +60,7 @@ class StudentProgress(ObjectModel):
             data["user"] = ensure_record_id(data["user"])
         if data.get("module") is not None:
             data["module"] = ensure_record_id(data["module"])
-        data["last_activity"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        data["last_activity"] = datetime.now()
         return data
 
     @classmethod
