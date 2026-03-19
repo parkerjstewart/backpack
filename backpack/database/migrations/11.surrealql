@@ -37,7 +37,7 @@ LET $refs = (SELECT * FROM reference);
 DELETE reference;
 FOR $ref IN $refs {
     LET $in_record = $ref.in;
-    LET $new_out = type::thing("module", record::id($ref.out));
+    LET $new_out = type::record("module", record::id($ref.out));
     RELATE $in_record->reference->$new_out;
 };
 
@@ -46,7 +46,7 @@ LET $arts = (SELECT * FROM artifact);
 DELETE artifact;
 FOR $art IN $arts {
     LET $in_record = $art.in;
-    LET $new_out = type::thing("module", record::id($art.out));
+    LET $new_out = type::record("module", record::id($art.out));
     RELATE $in_record->artifact->$new_out;
 };
 
@@ -55,7 +55,7 @@ LET $refers = (SELECT * FROM refers_to WHERE record::table(out) == "notebook");
 FOR $ref IN $refers {
     DELETE $ref.id;
     LET $in_record = $ref.in;
-    LET $new_out = type::thing("module", record::id($ref.out));
+    LET $new_out = type::record("module", record::id($ref.out));
     RELATE $in_record->refers_to->$new_out;
 };
 

@@ -17,9 +17,9 @@ DEFINE FIELD IF NOT EXISTS created ON TABLE invitation TYPE datetime DEFAULT tim
 DEFINE FIELD IF NOT EXISTS updated ON TABLE invitation TYPE datetime DEFAULT time::now();
 
 -- Indexes
-DEFINE INDEX IF NOT EXISTS idx_invitation_token ON TABLE invitation COLUMNS token UNIQUE;
-DEFINE INDEX IF NOT EXISTS idx_invitation_email_course ON TABLE invitation COLUMNS email, course_id;
-DEFINE INDEX IF NOT EXISTS idx_invitation_course_status ON TABLE invitation COLUMNS course_id, status;
+DEFINE INDEX IF NOT EXISTS idx_invitation_token ON TABLE invitation FIELDS token UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_invitation_email_course ON TABLE invitation FIELDS email, course_id;
+DEFINE INDEX IF NOT EXISTS idx_invitation_course_status ON TABLE invitation FIELDS course_id, status;
 
 -- Cascade delete: remove invitations when course is deleted
 DEFINE EVENT IF NOT EXISTS invitation_course_delete ON TABLE course WHEN ($after == NONE) THEN {

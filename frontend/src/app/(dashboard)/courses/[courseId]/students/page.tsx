@@ -30,7 +30,10 @@ import {
   useDenyEnrollmentRequest,
 } from "@/lib/hooks/use-invitations";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
-import { getCoursePermissions } from "@/lib/permissions/course";
+import {
+  getCoursePermissions,
+  normalizeCourseMembershipRole,
+} from "@/lib/permissions/course";
 
 export default function CourseStudentsPage() {
   const params = useParams();
@@ -43,7 +46,9 @@ export default function CourseStudentsPage() {
     useCourseStudents(courseId);
   const { data: teachingTeam, isLoading: teamLoading } =
     useCourseTeachingTeam(courseId);
-  const permissions = getCoursePermissions(course?.membership_role);
+  const permissions = getCoursePermissions(
+    normalizeCourseMembershipRole(course?.membership_role),
+  );
   const { data: needsAttention, isLoading: attentionLoading } =
     useCourseNeedsAttention(courseId, { enabled: permissions.canManageMembers });
 
@@ -119,7 +124,9 @@ export default function CourseStudentsPage() {
           <CourseHeader
             courseId={courseId}
             courseName={course.title}
-            membershipRole={course.membership_role}
+            membershipRole={normalizeCourseMembershipRole(
+              course.membership_role,
+            )}
           />
 
           <div className="relative max-w-md">

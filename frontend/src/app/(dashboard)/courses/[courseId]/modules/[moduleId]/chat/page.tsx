@@ -14,7 +14,10 @@ import { useNotes } from "@/lib/hooks/use-notes";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useModuleChat } from "@/lib/hooks/useModuleChat";
 import { ChatPanel } from "@/components/source/ChatPanel";
-import { getCoursePermissions } from "@/lib/permissions/course";
+import {
+  getCoursePermissions,
+  normalizeCourseMembershipRole,
+} from "@/lib/permissions/course";
 import { cn } from "@/lib/utils";
 import {
   ExternalLink,
@@ -129,7 +132,9 @@ export default function StudentChatPage() {
   const { t } = useTranslation();
 
   // Redirect non-students — only students should access this route
-  const permissions = getCoursePermissions(course?.membership_role);
+  const permissions = getCoursePermissions(
+    normalizeCourseMembershipRole(course?.membership_role),
+  );
 
   const [contextSelections, setContextSelections] = useState<ContextSelections>(
     { sources: {}, notes: {} }
@@ -197,7 +202,9 @@ export default function StudentChatPage() {
             <CourseHeader
               courseId={courseId}
               courseName={course.title}
-              membershipRole={course.membership_role}
+              membershipRole={normalizeCourseMembershipRole(
+                course.membership_role,
+              )}
               moduleName={module.name}
             />
           )}

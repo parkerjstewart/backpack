@@ -6,6 +6,7 @@ data/
 sqlite-db/
 surreal-data/
 docker.env
+deploy/aws-eb/eb.env
 notebook_data/
 module_data/
 open-notebook/docker-compose.yml
@@ -140,3 +141,7 @@ specs/
 
 *.local.yml
 **/*.local.md
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml

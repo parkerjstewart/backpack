@@ -14,8 +14,11 @@ import { useModuleSources } from "@/lib/hooks/use-sources";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { SourceCard } from "@/components/sources/SourceCard";
 import { useDeleteSource, useRetrySource } from "@/lib/hooks/use-sources";
+import {
+  getCoursePermissions,
+  normalizeCourseMembershipRole,
+} from "@/lib/permissions/course";
 import { sourcesApi } from "@/lib/api/sources";
-import { getCoursePermissions } from "@/lib/permissions/course";
 import { cn } from "@/lib/utils";
 import {
   GraduationCap,
@@ -533,7 +536,9 @@ export default function CourseModuleOverviewPage() {
   const publishModule = usePublishModule();
   const unpublishModule = useUnpublishModule();
 
-  const permissions = getCoursePermissions(course?.membership_role);
+  const permissions = getCoursePermissions(
+    normalizeCourseMembershipRole(course?.membership_role),
+  );
   const isStudent = course?.membership_role === "student";
 
   if (moduleLoading || courseLoading) {
@@ -572,7 +577,9 @@ export default function CourseModuleOverviewPage() {
             <CourseHeader
               courseId={courseId}
               courseName={course.title}
-              membershipRole={course.membership_role}
+              membershipRole={normalizeCourseMembershipRole(
+                course.membership_role,
+              )}
               moduleName={module.name}
             />
           )}

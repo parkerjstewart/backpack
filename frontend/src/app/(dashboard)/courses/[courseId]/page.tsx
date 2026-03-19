@@ -31,7 +31,10 @@ import { useModules, useUpdateModule, useReorderModules } from "@/lib/hooks/use-
 import { useCoursesStore } from "@/lib/stores/courses-store";
 import { useCourse, useCourseStudents } from "@/lib/hooks/use-courses";
 import { CreateModuleWizard } from "@/components/modules/CreateModuleWizard";
-import { getCoursePermissions } from "@/lib/permissions/course";
+import {
+  getCoursePermissions,
+  normalizeCourseMembershipRole,
+} from "@/lib/permissions/course";
 import type { ModuleResponse } from "@/lib/types/api";
 
 // Sortable wrapper for drag-to-reorder (instructor/TA only)
@@ -140,7 +143,9 @@ export default function CoursePage() {
     });
   }, [modules, courseId, moduleCourseMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const permissions = course ? getCoursePermissions(course.membership_role) : null;
+  const permissions = course
+    ? getCoursePermissions(normalizeCourseMembershipRole(course.membership_role))
+    : null;
 
   // Per-module completion stats
   const moduleStats = useMemo(() => {
@@ -227,7 +232,9 @@ export default function CoursePage() {
           <CourseHeader
             courseId={courseId}
             courseName={course.title}
-            membershipRole={course.membership_role}
+            membershipRole={normalizeCourseMembershipRole(
+              course.membership_role,
+            )}
           />
 
           <div className="flex flex-col gap-8 items-center justify-center">

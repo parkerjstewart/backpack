@@ -25,7 +25,10 @@ import {
   useDeleteCourse,
 } from "@/lib/hooks/use-courses";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
-import { getCoursePermissions } from "@/lib/permissions/course";
+import {
+  getCoursePermissions,
+  normalizeCourseMembershipRole,
+} from "@/lib/permissions/course";
 
 export default function CourseSettingsPage() {
   const params = useParams();
@@ -101,9 +104,9 @@ export default function CourseSettingsPage() {
     );
   }
 
-  const permissions = getCoursePermissions(course.membership_role);
-
-  // Students and TAs see a limited view with only the Leave Course option
+  const permissions = getCoursePermissions(
+    normalizeCourseMembershipRole(course.membership_role),
+  );
   if (!permissions.canManageCourseSettings) {
     return (
       <AppShell>
@@ -112,7 +115,9 @@ export default function CourseSettingsPage() {
             <CourseHeader
               courseId={courseId}
               courseName={course.title}
-              membershipRole={course.membership_role}
+              membershipRole={normalizeCourseMembershipRole(
+                course.membership_role,
+              )}
             />
             {permissions.canLeaveCourse ? (
               <Card className="max-w-2xl border-destructive/20">
@@ -175,7 +180,9 @@ export default function CourseSettingsPage() {
           <CourseHeader
             courseId={courseId}
             courseName={course.title}
-            membershipRole={course.membership_role}
+            membershipRole={normalizeCourseMembershipRole(
+              course.membership_role,
+            )}
           />
 
           <div className="flex flex-col gap-8 max-w-2xl">

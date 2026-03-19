@@ -10,7 +10,10 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useCoursesStore, type Course } from "@/lib/stores/courses-store";
 import { useCourses, useUpdateCourse } from "@/lib/hooks/use-courses";
 import { ArchiveRestore } from "lucide-react";
-import { getCoursePermissions } from "@/lib/permissions/course";
+import {
+  getCoursePermissions,
+  normalizeCourseMembershipRole,
+} from "@/lib/permissions/course";
 
 /**
  * Wrapper around CourseCard that adds a "Restore" overlay button.
@@ -64,7 +67,7 @@ export default function ArchivedPage() {
     createdAt: c.created,
     updatedAt: c.updated,
     color: getCourseColor(c.id),
-    membershipRole: c.membership_role,
+    membershipRole: normalizeCourseMembershipRole(c.membership_role),
   }));
 
   if (isLoading) {
