@@ -13,7 +13,7 @@ Graph flow (per goal):
         → explain_competency → tutor_turn → evaluate → advance to next → tutor_turn (loop)
         → all competencies addressed → mark_goal_complete
     → mark_goal_complete → [more goals?] → select_goal | summary
-    → summary → END
+    → summary → generate_session_insights → END
 """
 
 import asyncio
@@ -44,9 +44,11 @@ from backpack.graphs.tutor_models import (
     EvaluationResult,
     GeneratedAnchorProblem,
     ModuleExamples,
+    PreCreditResult,
     TangentEvaluationResult,
     TutorResponse,
 )
+from backpack.graphs.tutor_insights import generate_insights
 from backpack.utils import clean_thinking_content
 from backpack.utils.context_builder import ContextBuilder
 
@@ -55,6 +57,7 @@ MAX_NO_PROGRESS_TURNS = 3           # turns with no score improvement → force 
 MAX_TOTAL_EXCHANGES_PER_GOAL = 12   # safety net per goal
 MAX_TANGENT_TURNS = 3               # turns per tangent episode before force-reconnect
 MAX_TANGENT_EPISODES_PER_COMPETENCY = 2  # separate tangent episodes allowed per competency
+MAX_EXPLAINS_PER_COMPETENCY = 2     # after this many explain turns, auto-advance regardless
 NUDGE_THRESHOLD = 0.55  # active competency score >= this → nudge instead of guide
 MASTERY_THRESHOLD = 0.65
 
@@ -229,6 +232,45 @@ def _run_model(coro_factory):
         return _in_new_loop()
 
 
+def _pre_credit_competencies(
+    new_competencies: List[str],
+    prior_mastered: List[dict],
+    model_id: Optional[str],
+) -> "PreCreditResult":
+    """Check new goal's competencies against prior mastered ones; return any that transfer.
+
+    Uses an LLM call to match semantically — catches cases like 'apply chain rule to
+    log-likelihood derivative' matching across different distributions/contexts.
+    Falls back to empty result on any failure so the session continues normally.
+    """
+    if not prior_mastered or not new_competencies:
+        return PreCreditResult(matches=[])
+
+    prompt_data = {
+        "new_goal_description": "",  # caller may override; fine to leave blank
+        "new_competencies": new_competencies,
+        "prior_mastered": prior_mastered,
+    }
+    system_prompt = Prompter(prompt_template="tutor/match_competencies").render(data=prompt_data)
+
+    async def _provision():
+        return await provision_langchain_model(
+            system_prompt,
+            model_id,
+            "tools",
+            max_tokens=600,
+            reasoning_effort="low",
+        )
+
+    try:
+        model = _run_model(_provision)
+        result: PreCreditResult = model.with_structured_output(PreCreditResult).invoke(system_prompt)
+        return result
+    except Exception as e:
+        logger.warning(f"Pre-credit matching failed (graceful degradation): {e}")
+        return PreCreditResult(matches=[])
+
+
 # ============================================================================
 # State
 # ============================================================================
@@ -298,6 +340,9 @@ class TutorState(TypedDict):
     # Generated image data URI from the most recent tutor_turn (if any)
     latest_image_url: Optional[str]
 
+    # Session insights generated at session end (populated by generate_session_insights node)
+    session_insights: Optional[Dict[str, Any]]
+
 
 # ============================================================================
 # Helper: get current goal dict from state
@@ -341,6 +386,19 @@ def _get_student_response(state: TutorState) -> str:
         if isinstance(msg, HumanMessage) or (hasattr(msg, "type") and msg.type == "human"):
             return _extract_text_content(msg.content if hasattr(msg, "content") else "")
     return ""
+
+
+_SKIP_PHRASES = (
+    "move on", "next", "skip", "i don't know", "i dont know", "idk",
+    "go to next", "go next", "can we go", "can we move", "let's move",
+    "lets move", "next learning goal", "next goal",
+)
+
+
+def _student_wants_to_skip(message: str) -> bool:
+    """Return True when the student is clearly asking to skip / move on."""
+    lower = message.lower()
+    return any(phrase in lower for phrase in _SKIP_PHRASES)
 
 
 # ============================================================================
@@ -529,11 +587,72 @@ def select_next_goal(state: TutorState, config: RunnableConfig) -> dict:
             "encounters": 0,
             "turns_since_progress": 0,
             "hint_count": 0,
+            "explain_count": 0,
             "artifacts_given": [],
             "deferred_notes": [],
         }
         for name in competency_names
     ]
+
+    # ---- Cross-goal pre-crediting ----
+    # Collect competencies mastered (not just explained) with high confidence from prior goals
+    prior_mastered = []
+    for gid, gp in state.get("goal_progress", {}).items():
+        for c in gp.get("competency_statuses", []):
+            if c.get("status") == "mastered" and c.get("score", 0.0) >= 0.80:
+                prior_mastered.append({
+                    "competency": c["competency"],
+                    "score": c["score"],
+                    "goal_description": gp.get("goal_description", ""),
+                })
+
+    pre_credited_names: List[str] = []
+    if prior_mastered and competency_names:
+        model_id = config.get("configurable", {}).get("model_id") if config else None
+        pre_credit_result = _pre_credit_competencies(competency_names, prior_mastered, model_id)
+        for match in pre_credit_result.matches:
+            for comp in competency_statuses:
+                if comp["competency"] == match.new_competency:
+                    comp["status"] = "pre_credited"
+                    comp["score"] = next(
+                        (m["score"] for m in prior_mastered if m["competency"] == match.prior_competency),
+                        0.85,
+                    )
+                    comp["evidence"] = [
+                        f"Pre-credited: demonstrated '{match.prior_competency}' in prior goal '{match.prior_goal}'"
+                    ]
+                    pre_credited_names.append(match.new_competency)
+                    logger.info(f"Pre-credited competency: '{match.new_competency}' (matched '{match.prior_competency}')")
+                    break
+
+    # Build evaluator_guidance hint for the tutor so it knows what's already proven
+    evaluator_guidance = None
+    remaining = [c["competency"] for c in competency_statuses if c["status"] == "pending"]
+    if pre_credited_names:
+        evaluator_guidance = (
+            f"The student already demonstrated these skills in a prior goal — do NOT re-probe them: "
+            f"{', '.join(pre_credited_names)}. "
+            + (f"Focus on: {', '.join(remaining)}." if remaining else "All competencies are pre-credited.")
+        )
+
+    # Edge case: all competencies pre-credited → skip this goal
+    all_pre_credited = all(c["status"] == "pre_credited" for c in competency_statuses) if competency_statuses else False
+    if all_pre_credited:
+        logger.info(f"All competencies pre-credited for goal {next_goal['id']} — skipping")
+        if next_goal["id"] not in [g for g in state.get("completed_goal_ids", [])]:
+            goal_progress[next_goal["id"]] = dict(goal_progress.get(next_goal["id"], {}))
+            goal_progress[next_goal["id"]]["completed"] = True
+            goal_progress[next_goal["id"]]["competency_statuses"] = [dict(c) for c in competency_statuses]
+        completed_ids = list(state.get("completed_goal_ids", []))
+        if next_goal["id"] not in completed_ids:
+            completed_ids.append(next_goal["id"])
+        return {
+            "current_goal_id": None,
+            "goal_progress": goal_progress,
+            "completed_goal_ids": completed_ids,
+            "competency_statuses": [],
+            "active_competency_index": -1,
+        }
 
     return {
         "current_goal_id": next_goal["id"],
@@ -547,7 +666,7 @@ def select_next_goal(state: TutorState, config: RunnableConfig) -> dict:
         "active_competency_index": -1,  # -1 = open/brain-dump mode
         "tutor_mode": "opening",
         "probe_question": None,
-        "evaluator_guidance": None,
+        "evaluator_guidance": evaluator_guidance,
         "tangent_turns": 0,
         "tangent_topic": None,
         "is_tangent": False,
@@ -571,12 +690,17 @@ def generate_anchor_problem(state: TutorState, config: RunnableConfig) -> dict:
 
     context_chunks = state.get("goal_contexts", {}).get(current_goal_id, [])[:5]
     module_examples = state.get("module_examples", [])[:10]
+    pre_credited = [
+        c["competency"] for c in state.get("competency_statuses", [])
+        if c.get("status") == "pre_credited"
+    ]
 
     prompt_data = {
         "goal": current_goal,
         "context_chunks": context_chunks,
         "module_name": state.get("module_name", ""),
         "module_examples": module_examples,
+        "pre_credited_competencies": pre_credited,
     }
 
     system_prompt = Prompter(prompt_template="tutor/generate_anchor_problem").render(
@@ -642,15 +766,17 @@ def _build_demonstrated_knowledge(state: TutorState) -> str:
     lines = []
     current_goal_id = state.get("current_goal_id")
 
-    # Add mastered competency names
+    # Add mastered and pre-credited competency names
     for comp in state.get("competency_statuses", []):
         if comp.get("status") == "mastered":
             lines.append(f"- Mastered: {comp['competency']}")
+        elif comp.get("status") == "pre_credited":
+            lines.append(f"- Already knows (prior goal): {comp['competency']}")
 
     # Add evidence from any competency that has been scored
     for comp in state.get("competency_statuses", []):
         evidence = comp.get("evidence", [])
-        if evidence and comp.get("status") != "mastered":
+        if evidence and comp.get("status") not in ("mastered", "pre_credited"):
             for ev in evidence[-2:]:  # last 2 evidence entries per competency
                 if ev:
                     lines.append(f"- {ev}")
@@ -1255,6 +1381,25 @@ def evaluate_and_update_model(
         tangent_topic_from_eval = None
         defer_target_competency = None
 
+    # ---- Override: student explicitly asking to skip ----
+    if _student_wants_to_skip(student_message) and not is_tangent:
+        if tutor_mode == "explain":
+            # Tutor just explained — student saying "ok move on" means they accept it, advance
+            if suggested_action not in ("tangent", "defer"):
+                logger.info("Skip override (post-explain): student accepted explanation — advancing")
+                suggested_action = "advance"
+        else:
+            _active_enc = (
+                competency_statuses[active_idx].get("encounters", 0)
+                if 0 <= active_idx < len(competency_statuses)
+                else 0
+            )
+            if _active_enc >= 1 and suggested_action not in ("advance", "tangent", "defer"):
+                logger.info("Skip override: student asked to move on — forcing explain_competency")
+                suggested_action = "explain_competency"
+                if not tutor_guidance:
+                    tutor_guidance = "Student asked to move on. Explain the concept clearly and advance."
+
     # ---- Update competency statuses ----
     # Brain-dump mode (active_idx == -1): score any competencies the student touched
     if active_idx == -1:
@@ -1407,8 +1552,56 @@ def evaluate_and_update_model(
         "tangent_topic": None,
     }
 
+    # ---- Post-explain: increment explain_count; auto-advance once threshold is hit ----
+    # tutor_mode reflects the PREVIOUS tutor message.
+    # First explain: let normal evaluator routing handle it (student may confirm understanding,
+    # or skip detection above will fire if they say "move on").
+    # After MAX_EXPLAINS_PER_COMPETENCY explains: force-advance regardless.
+    if tutor_mode == "explain" and 0 <= active_idx < len(competency_statuses):
+        _active_comp = competency_statuses[active_idx]
+        _new_explain_count = _active_comp.get("explain_count", 0) + 1
+        _active_comp["explain_count"] = _new_explain_count
+        state_updates["competency_statuses"] = competency_statuses
+        logger.info(f"Post-explain: explain_count={_new_explain_count} for '{_active_comp['competency']}'")
+
+        if _new_explain_count >= MAX_EXPLAINS_PER_COMPETENCY:
+            if _active_comp["status"] not in ("mastered", "explained", "pre_credited"):
+                _active_comp["status"] = "explained"
+                logger.info(f"Post-explain auto-advance ({_new_explain_count}x): marked '{_active_comp['competency']}' as explained")
+            _all_addressed = all(c["status"] in ("mastered", "explained", "pre_credited") for c in competency_statuses)
+            if _all_addressed:
+                return Command(goto="mark_goal_complete", update=state_updates)
+            _next_idx = _find_next_active_index(competency_statuses, start=active_idx + 1)
+            if _next_idx == -1:
+                return Command(goto="mark_goal_complete", update={**state_updates, "competency_statuses": competency_statuses})
+            competency_statuses[_next_idx]["status"] = "active"
+            _transition_guidance = (
+                f"Student received {_new_explain_count} explanations of '{_active_comp['competency']}'. "
+                "Briefly summarize the key takeaway in 1 sentence, then move to the next topic without re-quizzing them."
+            )
+            return Command(
+                goto="tutor_turn",
+                update={
+                    **state_updates,
+                    "competency_statuses": competency_statuses,
+                    "active_competency_index": _next_idx,
+                    "tutor_mode": "transition",
+                    "probe_question": None,
+                    "evaluator_guidance": _transition_guidance,
+                    "transitioning_from_competency": {
+                        "competency": _active_comp["competency"],
+                        "score": _active_comp.get("score", 0.0),
+                        "status": "explained",
+                        "gap": _active_comp.get("gap", ""),
+                        "evidence": _active_comp.get("evidence", []),
+                        "hypotheses": _active_comp.get("hypotheses", []),
+                    },
+                },
+            )
+        # else: first explain — fall through to normal evaluator routing
+
     # ---- Check if all competencies are resolved ----
-    all_addressed = all(c["status"] in ("mastered", "explained") for c in competency_statuses)
+    all_addressed = all(c["status"] in ("mastered", "explained", "pre_credited") for c in competency_statuses)
     if all_addressed:
         logger.info("All competencies addressed — marking goal complete")
         return Command(goto="mark_goal_complete", update=state_updates)
@@ -1914,6 +2107,59 @@ def generate_summary(state: TutorState, config: RunnableConfig) -> dict:
 
 
 # ============================================================================
+# Node: generate_session_insights
+# ============================================================================
+
+
+def generate_session_insights(state: TutorState, config: RunnableConfig) -> dict:
+    """Thin wrapper that extracts goal data from state and delegates to generate_insights()."""
+    logger.info("Generating session insights")
+
+    learning_goals = state.get("learning_goals", [])
+    goal_progress = state.get("goal_progress", {})
+
+    goal_data = []
+    for goal in learning_goals:
+        progress = goal_progress.get(goal["id"], {})
+        goal_data.append({
+            "goal_id": goal["id"],
+            "description": goal.get("description", ""),
+            "takeaways": goal.get("takeaways", ""),
+            "competencies": goal.get("competencies", ""),
+            "competency_statuses": progress.get("competency_statuses", []),
+            "trajectory": progress.get("trajectory", []),
+            "initial_understanding": progress.get("initial_understanding"),
+            "final_understanding": progress.get("final_understanding"),
+        })
+
+    # Extract conversation transcript for qualitative analysis
+    raw_messages = state.get("messages", [])
+    messages = []
+    for msg in raw_messages:
+        role = "tutor" if (isinstance(msg, AIMessage) or (hasattr(msg, "type") and msg.type == "ai")) else "student"
+        content = msg.content if hasattr(msg, "content") else str(msg)
+        if isinstance(content, list):
+            content = " ".join(
+                part.get("text", "") if isinstance(part, dict) else str(part)
+                for part in content
+            )
+        messages.append({"role": role, "content": content})
+
+    model_id = (
+        config.get("configurable", {}).get("model_id")
+        or state.get("model_override")
+    )
+    insights = generate_insights(
+        goal_data=goal_data,
+        module_name=state.get("module_name", ""),
+        model_id=model_id,
+        messages=messages,
+    )
+
+    return {"session_insights": insights.model_dump()}
+
+
+# ============================================================================
 # Graph construction
 # ============================================================================
 
@@ -1929,6 +2175,7 @@ tutor_state.add_node("tutor_turn", tutor_turn)
 tutor_state.add_node("evaluate", evaluate_and_update_model)
 tutor_state.add_node("mark_goal_complete", mark_goal_complete)
 tutor_state.add_node("summary", generate_summary)
+tutor_state.add_node("insights", generate_session_insights)
 
 tutor_state.add_edge(START, "initialize")
 tutor_state.add_edge("initialize", "select_goal")
@@ -1940,6 +2187,7 @@ tutor_state.add_conditional_edges(
     check_more_goals,
     {"more_goals": "select_goal", "all_complete": "summary"},
 )
-tutor_state.add_edge("summary", END)
+tutor_state.add_edge("summary", "insights")
+tutor_state.add_edge("insights", END)
 
 tutor_graph = tutor_state.compile(checkpointer=memory)

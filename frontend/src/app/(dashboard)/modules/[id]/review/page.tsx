@@ -103,6 +103,16 @@ export default function ReviewPage() {
     }
   }, [moduleId, initializeSession])
 
+  useEffect(() => {
+    if (!isSessionComplete || !module?.course_id) return
+    const timer = setTimeout(() => {
+      router.push(
+        `/courses/${encodeURIComponent(module.course_id)}/modules/${encodeURIComponent(moduleId)}/insights`
+      )
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [isSessionComplete, module, moduleId, router])
+
   const handleTryAgain = useCallback(() => {
     resetSession()
   }, [resetSession])
@@ -135,15 +145,16 @@ export default function ReviewPage() {
         {/* Header */}
         <div className="flex-shrink-0 px-6 py-4 border-b">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 min-w-0">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => router.back()}
+                className="flex-shrink-0"
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
-              <h1 className="text-xl font-semibold">
+              <h1 className="text-xl font-semibold truncate">
                 {t.tutor.reviewSession}: {module.name}
               </h1>
             </div>
@@ -177,7 +188,7 @@ export default function ReviewPage() {
         <div ref={containerRef} className="flex-1 min-h-0 flex overflow-hidden relative">
           {/* Chat panel */}
           <div
-            className="flex flex-col min-h-0 p-6 flex-shrink-0"
+            className="flex flex-col min-h-0 min-w-0 p-6 flex-shrink-0"
             style={{ width: showCanvas ? chatWidth : undefined, flex: showCanvas ? undefined : '1' }}
           >
             <TutorChat

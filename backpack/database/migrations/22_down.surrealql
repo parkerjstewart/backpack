@@ -1,1 +1,29 @@
+-- ============================================
+-- Migration 22 Down: Revert to per-learning-goal student_progress
+-- ============================================
+
+-- Remove new fields and indexes
+REMOVE FIELD IF EXISTS module ON TABLE student_progress;
+REMOVE FIELD IF EXISTS session_id ON TABLE student_progress;
+REMOVE FIELD IF EXISTS overall_summary ON TABLE student_progress;
+REMOVE FIELD IF EXISTS strongest_goal_id ON TABLE student_progress;
+REMOVE FIELD IF EXISTS weakest_goal_id ON TABLE student_progress;
+REMOVE FIELD IF EXISTS goal_insights ON TABLE student_progress;
+REMOVE FIELD IF EXISTS updated ON TABLE student_progress;
+REMOVE INDEX IF EXISTS idx_progress_module ON TABLE student_progress;
+REMOVE INDEX IF EXISTS idx_progress_session ON TABLE student_progress;
+
+-- Restore old per-learning-goal fields
+DEFINE FIELD IF NOT EXISTS learning_goal ON TABLE student_progress TYPE record<learning_goal>;
+DEFINE FIELD IF NOT EXISTS status ON TABLE student_progress TYPE string DEFAULT 'not_started';
+DEFINE FIELD IF NOT EXISTS confidence_score ON TABLE student_progress TYPE option<float>;
+DEFINE FIELD IF NOT EXISTS notes ON TABLE student_progress TYPE option<string>;
+DEFINE INDEX IF NOT EXISTS idx_progress_goal ON TABLE student_progress COLUMNS learning_goal;
+
+-- Restore cascade event
+DEFINE EVENT IF NOT EXISTS learning_goal_delete ON TABLE learning_goal WHEN ($after == NONE) THEN {
+    DELETE student_progress WHERE learning_goal == $before.id;
+};
+
+-- Remove title field from learning_goal
 REMOVE FIELD title ON TABLE learning_goal;

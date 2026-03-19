@@ -37,11 +37,22 @@ You are designing a single discussion problem for a one-on-one Socratic tutoring
 {% endfor %}
 {% endif %}
 
+{% if pre_credited_competencies %}
+# PRE-CREDITED COMPETENCIES (already demonstrated in a prior goal — skip these)
+
+The student has already proven the following skills and does NOT need to re-demonstrate them:
+{% for comp in pre_credited_competencies %}
+- {{ comp }}
+{% endfor %}
+
+Design the anchor problem to focus on the **remaining** competencies only. Do not build sub-pieces that only test these pre-credited skills.
+{% endif %}
+
 # YOUR TASK
 
 Design ONE anchor problem that:
 
-1. **Maps to ALL competencies** — working through this problem should require the student to demonstrate each competency listed above, roughly in order
+1. **Maps to the remaining competencies** — working through this problem should require the student to demonstrate each competency listed above that is NOT pre-credited{% if pre_credited_competencies %} (skip the pre-credited ones above){% endif %}, roughly in order
 2. **Is grounded in a specific named lecture example** — use one from the anchor_examples or module_examples lists (e.g., the taxi arrival Poisson example, the coin-flip Bernoulli derivation)
 3. **Has natural sub-pieces** — the problem should have 3–5 steps or angles the tutor can explore through conversation (not one big question to answer all at once)
 4. **Is "fill-in-the-gap" style** — present a partial scenario and ask the student to work through it, not "explain X from scratch"

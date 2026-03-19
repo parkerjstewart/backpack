@@ -1,0 +1,7 @@
+-- Migration 29: Clean up stale student_progress fields left over from migration 12
+-- Migration 22 should have removed these, but the field definitions persisted.
+REMOVE FIELD IF EXISTS learning_goal ON TABLE student_progress;
+REMOVE FIELD IF EXISTS status ON TABLE student_progress;
+REMOVE FIELD IF EXISTS confidence_score ON TABLE student_progress;
+REMOVE FIELD IF EXISTS notes ON TABLE student_progress;
+REMOVE INDEX IF EXISTS idx_progress_goal ON TABLE student_progress;

@@ -493,17 +493,24 @@ export function StudyToolsPanel({ moduleId, moduleName }: StudyToolsPanelProps) 
                 <div className="flex items-center justify-between gap-1">
                   <p className="text-xs font-medium">{label}</p>
                   {id === "podcast" && (
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={(e) => {
                         e.stopPropagation();
                         setPodcastDialogOpen(true);
                       }}
-                      className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.stopPropagation();
+                          setPodcastDialogOpen(true);
+                        }
+                      }}
+                      className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-pointer"
                       title="Customize podcast settings"
                     >
                       <Settings2 className="h-3 w-3" />
-                    </button>
+                    </div>
                   )}
                 </div>
                 {isGenerating && (

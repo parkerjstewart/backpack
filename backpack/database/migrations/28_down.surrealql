@@ -1,0 +1,2 @@
+-- Migration 28 rollback: Remove module_class_insights table
+REMOVE TABLE IF EXISTS module_class_insights;

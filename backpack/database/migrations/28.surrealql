@@ -1,0 +1,9 @@
+-- Migration 28: Create module_class_insights table for instructor class-level summaries
+DEFINE TABLE module_class_insights SCHEMAFULL;
+DEFINE FIELD module ON TABLE module_class_insights TYPE record<module>;
+DEFINE FIELD summary_text ON TABLE module_class_insights TYPE option<string>;
+DEFINE FIELD stats ON TABLE module_class_insights FLEXIBLE TYPE option<object>;
+DEFINE FIELD student_count ON TABLE module_class_insights TYPE option<int>;
+DEFINE FIELD created ON TABLE module_class_insights TYPE option<datetime> DEFAULT time::now();
+DEFINE FIELD updated ON TABLE module_class_insights TYPE option<datetime> DEFAULT time::now();
+DEFINE INDEX idx_class_insights_module ON TABLE module_class_insights COLUMNS module UNIQUE;

@@ -1,16 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
+import { goalBadgeColor } from "@/lib/utils/score-colors";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useLearningGoals, useDeleteModule } from "@/lib/hooks/use-modules";
+import { useClassInsights } from "@/lib/hooks/use-student-progress";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import type { ModuleResponse } from "@/lib/types/api";
+import type { ModuleResponse, StudentProgressWithUser } from "@/lib/types/api";
+
+function getStudentScore(sp: StudentProgressWithUser): number {
+  const goals = sp.latest.goal_insights;
+  if (goals.length === 0) return 0;
+  return goals.reduce((sum, g) => sum + g.final_score, 0) / goals.length;
+}
+
+function getStudentIdPart(sp: StudentProgressWithUser): string {
+  return sp.user.id.includes(":") ? sp.user.id.split(":")[1] : sp.user.id;
+}
 
 interface ModuleStats {
   completed: number;
@@ -30,38 +42,6 @@ interface CourseModuleCardProps {
   showCompleted?: boolean;
 }
 
-// Smooth HSL gradient: 100% = green, 75% = yellow-green, 50% = orange, 25%+ = red
-function goalBadgeColor(score: number): string {
-  const stops = [
-    { pct: 0,   h: 0,   s: 72, l: 71 },
-    { pct: 25,  h: 0,   s: 72, l: 71 },
-    { pct: 50,  h: 30,  s: 90, l: 76 },
-    { pct: 75,  h: 55,  s: 70, l: 74 },
-    { pct: 100, h: 130, s: 60, l: 74 },
-  ];
-
-  const pct = Math.max(0, Math.min(100, score * 100));
-
-  if (pct <= stops[0].pct) return `hsl(${stops[0].h}, ${stops[0].s}%, ${stops[0].l}%)`;
-  const last = stops[stops.length - 1];
-  if (pct >= last.pct) return `hsl(${last.h}, ${last.s}%, ${last.l}%)`;
-
-  let lo = stops[0];
-  let hi = stops[1];
-  for (let i = 0; i < stops.length - 1; i++) {
-    if (pct >= stops[i].pct && pct <= stops[i + 1].pct) {
-      lo = stops[i];
-      hi = stops[i + 1];
-      break;
-    }
-  }
-
-  const t = (pct - lo.pct) / (hi.pct - lo.pct);
-  const h = Math.round(lo.h + t * (hi.h - lo.h));
-  const s = Math.round(lo.s + t * (hi.s - lo.s));
-  const l = Math.round(lo.l + t * (hi.l - lo.l));
-  return `hsl(${h}, ${s}%, ${l}%)`;
-}
 
 function ProgressBar({
   completed,
@@ -116,11 +96,32 @@ function ExpandedCard({
   showCompleted = true,
 }: Omit<CourseModuleCardProps, "variant">) {
   const { data: goals } = useLearningGoals(module.id);
+  const { data: classInsightsData } = useClassInsights(isTeacher ? module.id : undefined);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const deleteModule = useDeleteModule();
 
   const visibleGoals = goals?.slice(0, 4) ?? [];
   const extraCount = (goals?.length ?? 0) - visibleGoals.length;
+
+  // Derive goal scores from class insights when not explicitly provided
+  const resolvedGoalScores = useMemo(() => {
+    if (goalScores && Object.keys(goalScores).length > 0) return goalScores;
+    if (!classInsightsData?.stats?.goal_averages) return {};
+    const map: Record<string, number> = {};
+    for (const ga of classInsightsData.stats.goal_averages) {
+      map[ga.goal_id] = ga.avg_score;
+    }
+    return map;
+  }, [goalScores, classInsightsData]);
+
+  // Bottom 3 students by score for quick links
+  const bottom3Students = useMemo(() => {
+    if (!classInsightsData?.student_progress?.length) return [];
+    const sorted = [...classInsightsData.student_progress].sort(
+      (a, b) => getStudentScore(a) - getStudentScore(b),
+    );
+    return sorted.slice(0, 3);
+  }, [classInsightsData]);
 
   const handleDelete = () => {
     setShowDeleteDialog(false);
@@ -128,10 +129,10 @@ function ExpandedCard({
   };
 
   return (
-    <div className="relative group/card">
+    <div className="relative group/card border border-border rounded-lg bg-white overflow-hidden">
       <Link
         href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(module.id)}`}
-        className="block border border-border rounded-lg px-6 py-4 bg-white hover:bg-secondary transition-colors"
+        className="block px-6 py-4 hover:bg-secondary transition-colors"
       >
         {/* Title row: module name left, paused badge + source count right */}
         <div className="flex items-baseline justify-between gap-4">
@@ -154,7 +155,7 @@ function ExpandedCard({
         {isTeacher && visibleGoals.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-3">
             {visibleGoals.map((goal) => {
-              const score = goalScores?.[goal.id];
+              const score = resolvedGoalScores[goal.id];
               const label = goal.title || goal.description;
               const pctLabel = score !== undefined ? ` (${Math.round(score * 100)}%)` : "";
               const isTruncated = !goal.title;
@@ -192,6 +193,35 @@ function ExpandedCard({
           showCompleted={showCompleted}
         />
       </Link>
+
+      {/* Bottom 3 students quick links — inside the card visually, outside <Link> to allow independent navigation */}
+      {isTeacher && bottom3Students.length > 0 && (
+        <div className="px-6 pb-3 border-t border-border">
+          <div className="flex flex-col gap-0.5 pt-2">
+            {bottom3Students.map((sp) => {
+              const avg = getStudentScore(sp);
+              const pct = Math.round(avg * 100);
+              const studentIdPart = getStudentIdPart(sp);
+              const label = sp.user.name || sp.user.email;
+              return (
+                <Link
+                  key={sp.user.id}
+                  href={`/courses/${encodeURIComponent(courseId)}/students/${encodeURIComponent(studentIdPart)}/modules/${encodeURIComponent(module.id)}/insights`}
+                  className="flex items-center gap-2 py-0.5 w-fit group/student"
+                >
+                  <span className="text-body-sm text-primary group-hover/student:underline">{label}</span>
+                  <span
+                    className="shrink-0 text-xs font-semibold rounded-full px-2 py-0.5"
+                    style={{ backgroundColor: goalBadgeColor(avg) }}
+                  >
+                    {pct}%
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {canDelete && (
         <button

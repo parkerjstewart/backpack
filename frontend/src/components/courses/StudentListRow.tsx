@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { MoreVertical, X, RefreshCw, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { MasteryIndicator } from "./MasteryIndicator";
 import type { ModuleMasteryResponse } from "@/lib/types/api";
+import { useAuthStore } from "@/lib/stores/auth-store";
 
 interface StudentListRowProps {
   variant?: "default" | "pending";
@@ -19,6 +21,8 @@ interface StudentListRowProps {
   email: string;
   avatarUrl?: string | null;
   moduleMastery?: ModuleMasteryResponse[];
+  courseId?: string;
+  studentId?: string;
   onRemove?: () => void;
   onViewDetails?: () => void;
   onCancel?: () => void;
@@ -41,13 +45,25 @@ export function StudentListRow({
   email,
   avatarUrl,
   moduleMastery = [],
+  courseId,
+  studentId,
   onRemove,
   onViewDetails,
   onCancel,
   onResend,
   className,
 }: StudentListRowProps) {
+  const currentUser = useAuthStore((state) => state.currentUser);
   const displayName = name || email.split("@")[0];
+
+  const normalizeUserId = (id?: string | null): string | null => {
+    if (!id) return null;
+    return id.startsWith("user:") ? id : `user:${id}`;
+  };
+
+  const isSelfStudent =
+    normalizeUserId(studentId) !== null &&
+    normalizeUserId(studentId) === normalizeUserId(currentUser?.id);
 
   if (variant === "pending") {
     return (
@@ -114,13 +130,30 @@ export function StudentListRow({
 
       {/* Right: Mastery indicators + Actions menu */}
       <div className="flex items-center gap-3">
-        {moduleMastery.map((mastery, index) => (
-          <MasteryIndicator
-            key={mastery.module_id}
-            moduleNumber={index + 1}
-            status={mastery.status}
-          />
-        ))}
+        {moduleMastery.map((mastery, index) => {
+          const indicator = (
+            <MasteryIndicator
+              key={mastery.module_id}
+              moduleNumber={index + 1}
+              status={mastery.status}
+            />
+          )
+          if (courseId && studentId && mastery.status !== 'incomplete') {
+            const insightsHref = isSelfStudent
+              ? `/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(mastery.module_id)}/insights`
+              : `/courses/${encodeURIComponent(courseId)}/students/${encodeURIComponent(studentId)}/modules/${encodeURIComponent(mastery.module_id)}/insights`
+            return (
+              <Link
+                key={mastery.module_id}
+                href={insightsHref}
+                title={`View ${mastery.module_name ?? `module ${index + 1}`} insights`}
+              >
+                {indicator}
+              </Link>
+            )
+          }
+          return indicator
+        })}
       </div>
 
       {/* Actions menu */}

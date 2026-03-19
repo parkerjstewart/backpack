@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
@@ -23,11 +23,17 @@ from langgraph.types import Command
 from loguru import logger
 from pydantic import BaseModel, Field
 
+import os
+import random
+
+from api.routers.authz import get_current_user_id_from_auth, require_authenticated_user_id, require_teaching_role
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backpack.ai.provision import provision_langchain_model
 from backpack.domain.module import Module
+from backpack.domain.student_progress import StudentProgress
 from backpack.graphs.tutor import tutor_graph
+from backpack.graphs.tutor_insights import generate_class_insights
 from backpack.utils.token_stream import drain_token_queue
 
 router = APIRouter()
@@ -169,6 +175,30 @@ class SessionSummaryResponse(BaseModel):
     narrative: str
 
 
+class GoalInsightResponse(BaseModel):
+    """Per-goal insight in a student progress response."""
+    goal_id: str
+    goal_description: str = ""
+    final_score: float = 0.0
+    score_progression: List[float] = []
+    knowledge_gap: str = ""
+    stumbling_concepts: List[str] = []
+    tutor_nudges: List[str] = []
+    reinforcement_topics: List[str] = []
+    competency_results: List[Dict[str, Any]] = []
+
+
+class StudentProgressResponse(BaseModel):
+    """A single session's progress record for a student."""
+    session_id: str
+    module_id: str
+    overall_summary: Optional[str] = None
+    strongest_goal_id: Optional[str] = None
+    weakest_goal_id: Optional[str] = None
+    goal_insights: List[GoalInsightResponse] = []
+    created: Optional[str] = None
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -200,6 +230,73 @@ def count_goals(state: Dict[str, Any]) -> tuple[int, int]:
     total = len(state.get("learning_goals", []))
     completed = len(state.get("completed_goal_ids", []))
     return completed, total - completed
+
+
+def normalize_user_id(user_id: str) -> str:
+    """Normalize a user identifier to SurrealDB's user:<id> format."""
+    return user_id if user_id.startswith("user:") else f"user:{user_id}"
+
+
+async def _save_session_insights(
+    session_id: str,
+    state_values: Dict[str, Any],
+    authorization: Optional[str],
+) -> None:
+    """Persist session insights to SurrealDB when a session completes.
+
+    Fails silently — insights remain available in the LangGraph checkpoint as fallback.
+    """
+    try:
+        user_id = get_current_user_id_from_auth(authorization)
+        if not user_id:
+            logger.warning(
+                f"No authenticated user for session {session_id}; skipping insight save"
+            )
+            return
+
+        insights = state_values.get("session_insights")
+        if not insights:
+            logger.warning(f"No session_insights in state for session {session_id}")
+            return
+
+        existing = await StudentProgress.get_by_session(session_id)
+        if existing:
+            logger.debug(f"Session insights already saved for {session_id}; skipping duplicate save")
+            return
+
+        module_id = state_values.get("module_id")
+        if not module_id:
+            logger.warning(f"No module_id in state for session {session_id}")
+            return
+
+        progress = StudentProgress(
+            user=user_id,
+            module=module_id,
+            session_id=session_id,
+            overall_summary=insights.get("overall_summary"),
+            strongest_goal_id=insights.get("strongest_goal_id"),
+            weakest_goal_id=insights.get("weakest_goal_id"),
+            goal_insights=insights.get("goal_insights", []),
+        )
+        await progress.save()
+        logger.info(f"Saved session insights for session {session_id}")
+
+        # Fire-and-forget class insights regeneration
+        module_name = state_values.get("module_name", "")
+        asyncio.create_task(
+            _regenerate_class_insights(module_id, module_name)
+        )
+    except Exception as e:
+        logger.error(f"Failed to save session insights for {session_id}: {e}")
+
+
+async def _regenerate_class_insights(module_id: str, module_name: str) -> None:
+    """Regenerate class-level insights after a student completes a session."""
+    try:
+        await asyncio.sleep(1.0)
+        await generate_class_insights(module_id, module_name)
+    except Exception as e:
+        logger.error(f"Failed to regenerate class insights for module {module_id}: {e}")
 
 
 def parse_artifacts(artifacts_raw: List[Any]) -> List[ArtifactResponse]:
@@ -361,11 +458,16 @@ async def get_session(session_id: str):
 
 
 @router.post("/tutor/sessions/{session_id}/respond", response_model=TutorResponsePayload)
-async def submit_response(session_id: str, request: StudentResponseRequest):
+async def submit_response(
+    session_id: str,
+    request: StudentResponseRequest,
+    authorization: Optional[str] = Header(None),
+):
     """Submit a student response and get the tutor's reply.
 
     Resumes the graph with the student's message, evaluates their response,
     and returns either a Socratic follow-up or advances to the next question/goal.
+    When the session completes, persists insights to the database.
     """
     logger.info(f"Submitting response to session: {session_id}")
 
@@ -442,6 +544,13 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
         else:
             phase = "in_progress"
 
+        if phase == "session_complete":
+            await _save_session_insights(
+                session_id=session_id,
+                state_values=state_values,
+                authorization=authorization,
+            )
+
         artifacts_raw = state_values.get("artifacts", [])
         highlighted_id = state_values.get("highlighted_artifact_id")
         artifact_content = None
@@ -477,7 +586,11 @@ async def submit_response(session_id: str, request: StudentResponseRequest):
 
 
 @router.post("/tutor/sessions/{session_id}/respond/stream")
-async def stream_tutor_response(session_id: str, request: StudentResponseRequest):
+async def stream_tutor_response(
+    session_id: str,
+    request: StudentResponseRequest,
+    authorization: Optional[str] = Header(None),
+):
     """Submit a student response and stream the tutor's reply token-by-token via SSE.
 
     Events emitted:
@@ -572,6 +685,13 @@ async def stream_tutor_response(session_id: str, request: StudentResponseRequest
                         artifact_content = art.get("content")
                         break
             phase = "session_complete" if remaining == 0 else ("goal_complete" if not current_goal_id else "in_progress")
+
+        if phase == "session_complete":
+            await _save_session_insights(
+                session_id=session_id,
+                state_values=state_values,
+                authorization=authorization,
+            )
 
         logger.info(
             f"stream [{session_id}]: complete | interrupt={'yes' if interrupt_data else 'no'} "
@@ -919,6 +1039,328 @@ async def export_session(session_id: str):
     except Exception as e:
         logger.error(f"Error exporting session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Class Insights (Instructor)
+# ============================================================================
+
+class UserBriefResponse(BaseModel):
+    id: str
+    name: str = ""
+    email: str = ""
+
+
+class StudentProgressWithUserResponse(BaseModel):
+    user: UserBriefResponse
+    latest: StudentProgressResponse
+
+
+class ClassInsightsStatsResponse(BaseModel):
+    avg_overall_score: float = 0.0
+    goal_averages: List[Dict[str, Any]] = []
+    common_weak_areas: List[str] = []
+    performance_tiers: Dict[str, int] = {}
+
+
+class ClassInsightsResponse(BaseModel):
+    summary_text: Optional[str] = None
+    stats: ClassInsightsStatsResponse = ClassInsightsStatsResponse()
+    student_count: int = 0
+    generated_at: Optional[str] = None
+    student_progress: List[StudentProgressWithUserResponse] = []
+
+
+@router.get(
+    "/tutor/modules/{module_id}/class-insights",
+    response_model=ClassInsightsResponse,
+)
+async def get_class_insights(
+    module_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Instructor view: get aggregated class insights for a module.
+
+    Returns the persisted LLM narrative, aggregate stats, and per-student
+    latest progress records.
+    """
+    user_id = require_authenticated_user_id(authorization)
+
+    try:
+        module = await Module.get(module_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    if not module or not module.course:
+        raise HTTPException(status_code=404, detail="Module not found or has no course")
+
+    course_id = str(module.course)
+    await require_teaching_role(course_id, user_id)
+
+    try:
+        from backpack.domain.student_progress import ModuleClassInsights
+
+        # Fetch persisted class insights
+        class_insights = await ModuleClassInsights.get_for_module(module_id)
+
+        # Fetch per-student latest progress with user info
+        student_rows = await StudentProgress.get_for_module_with_users(module_id)
+
+        student_progress = []
+        for row in student_rows:
+            u = row["user"]
+            p = row["progress"]
+            gi_list = p.get("goal_insights") or []
+            student_progress.append(
+                StudentProgressWithUserResponse(
+                    user=UserBriefResponse(
+                        id=u["id"],
+                        name=u.get("name", ""),
+                        email=u.get("email", ""),
+                    ),
+                    latest=StudentProgressResponse(
+                        session_id=p.get("session_id", ""),
+                        module_id=str(p.get("module", "")),
+                        overall_summary=p.get("overall_summary"),
+                        strongest_goal_id=p.get("strongest_goal_id"),
+                        weakest_goal_id=p.get("weakest_goal_id"),
+                        goal_insights=[
+                            GoalInsightResponse(**gi) for gi in gi_list
+                        ],
+                        created=str(p.get("created")) if p.get("created") else None,
+                    ),
+                )
+            )
+
+        stats = ClassInsightsStatsResponse()
+        generated_at = None
+        summary_text = None
+        student_count = len(student_progress)
+
+        if class_insights:
+            summary_text = class_insights.summary_text
+            generated_at = class_insights.updated
+            student_count = class_insights.student_count or student_count
+            if class_insights.stats:
+                stats = ClassInsightsStatsResponse(**class_insights.stats)
+
+        return ClassInsightsResponse(
+            summary_text=summary_text,
+            stats=stats,
+            student_count=student_count,
+            generated_at=generated_at,
+            student_progress=student_progress,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching class insights for module {module_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/tutor/modules/{module_id}/class-insights/regenerate",
+    status_code=202,
+)
+async def regenerate_class_insights(
+    module_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Instructor action: regenerate the LLM class summary for a module."""
+    user_id = require_authenticated_user_id(authorization)
+
+    try:
+        module = await Module.get(module_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    if not module or not module.course:
+        raise HTTPException(status_code=404, detail="Module not found or has no course")
+
+    course_id = str(module.course)
+    await require_teaching_role(course_id, user_id)
+
+    module_name = module.name if hasattr(module, "name") else ""
+    asyncio.create_task(_regenerate_class_insights(module_id, module_name))
+
+    return {"status": "accepted", "message": "Class insights regeneration started"}
+
+
+@router.get(
+    "/tutor/modules/{module_id}/progress",
+    response_model=List[StudentProgressResponse],
+)
+async def get_student_module_progress(
+    module_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Get a student's session-level progress for a module (most recent first)."""
+    user_id = require_authenticated_user_id(authorization)
+
+    try:
+        records = await StudentProgress.get_for_student(user_id, module_id)
+
+        return [
+            StudentProgressResponse(
+                session_id=r.session_id,
+                module_id=str(r.module),
+                overall_summary=r.overall_summary,
+                strongest_goal_id=r.strongest_goal_id,
+                weakest_goal_id=r.weakest_goal_id,
+                goal_insights=[
+                    GoalInsightResponse(**gi) for gi in (r.goal_insights or [])
+                ],
+                created=str(r.created) if r.created else None,
+            )
+            for r in records
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching student progress for module {module_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/tutor/modules/{module_id}/students/{student_id}/progress",
+    response_model=List[StudentProgressResponse],
+)
+async def get_student_progress_for_instructor(
+    module_id: str,
+    student_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Get a specific student's progress for a module.
+
+    Instructors/TAs can view any student's progress in the course.
+    Students can view only their own progress via this route.
+    """
+    user_id = require_authenticated_user_id(authorization)
+    normalized_requester_id = normalize_user_id(user_id)
+    normalized_student_id = normalize_user_id(student_id)
+
+    # Resolve the module's course for authorization check
+    try:
+        module = await Module.get(module_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    if not module or not module.course:
+        raise HTTPException(status_code=404, detail="Module not found or has no course")
+
+    course_id = str(module.course)
+    if normalized_student_id != normalized_requester_id:
+        await require_teaching_role(course_id, user_id)
+
+    try:
+        records = await StudentProgress.get_for_student(normalized_student_id, module_id)
+        return [
+            StudentProgressResponse(
+                session_id=r.session_id,
+                module_id=str(r.module),
+                overall_summary=r.overall_summary,
+                strongest_goal_id=r.strongest_goal_id,
+                weakest_goal_id=r.weakest_goal_id,
+                goal_insights=[
+                    GoalInsightResponse(**gi) for gi in (r.goal_insights or [])
+                ],
+                created=str(r.created) if r.created else None,
+            )
+            for r in records
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error fetching progress for student {normalized_student_id} "
+            f"in module {module_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tutor/modules/{module_id}/progress/mock", status_code=201)
+async def seed_mock_progress(
+    module_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Seed mock student progress data for a module. Dev only (requires BACKPACK_DEV_MODE=true)."""
+    if not os.getenv("BACKPACK_DEV_MODE", "").lower() in ("true", "1", "yes"):
+        raise HTTPException(status_code=403, detail="Dev mode not enabled. Set BACKPACK_DEV_MODE=true.")
+
+    user_id = require_authenticated_user_id(authorization)
+
+    try:
+        module = await Module.get(module_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    if not module:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    goals = await module.get_learning_goals() if hasattr(module, "get_learning_goals") else []
+
+    # Build realistic mock goal insight dicts
+    def _mock_goal_insight(goal) -> dict:
+        score = round(random.uniform(0.3, 1.0), 2)
+        n_competencies = random.randint(2, 4)
+        statuses = ["mastered", "mastered", "explained", "pending"]
+        random.shuffle(statuses)
+        competency_results = [
+            {
+                "name": f"Competency {i+1}",
+                "status": statuses[i % len(statuses)],
+                "score": round(random.uniform(0.4, 1.0), 2),
+            }
+            for i in range(n_competencies)
+        ]
+        progression_len = random.randint(3, 6)
+        score_progression = sorted(
+            [round(random.uniform(0.2, score), 2) for _ in range(progression_len - 1)] + [score]
+        )
+        goal_id = str(getattr(goal, "id", f"learning_goal:mock_{random.randint(1000,9999)}"))
+        return {
+            "goal_id": goal_id,
+            "goal_description": getattr(goal, "description", "Understanding key concepts"),
+            "final_score": score,
+            "score_progression": score_progression,
+            "knowledge_gap": "Student shows partial understanding but struggles with edge cases.",
+            "stumbling_concepts": ["boundary conditions", "formal definitions"],
+            "tutor_nudges": [
+                "Asked student to consider what happens at the boundary.",
+                "Redirected toward first-principles reasoning.",
+            ],
+            "reinforcement_topics": ["prerequisite topic A", "related concept B"],
+            "competency_results": competency_results,
+        }
+
+    if goals:
+        goal_insights = [_mock_goal_insight(g) for g in goals]
+    else:
+        goal_insights = [
+            _mock_goal_insight(type("G", (), {"id": f"learning_goal:mock_{i}", "description": f"Goal {i+1}"})())
+            for i in range(random.randint(2, 4))
+        ]
+
+    scores = [gi["final_score"] for gi in goal_insights]
+    strongest = goal_insights[scores.index(max(scores))]["goal_id"] if scores else None
+    weakest = goal_insights[scores.index(min(scores))]["goal_id"] if len(set(scores)) > 1 else None
+
+    progress = StudentProgress(
+        user=user_id,
+        module=module_id,
+        session_id=f"mock-session-{uuid.uuid4().hex[:8]}",
+        overall_summary=(
+            "The student demonstrated a solid grasp of foundational concepts but "
+            "encountered difficulty with more advanced applications. "
+            "Continued practice with edge cases is recommended."
+        ),
+        strongest_goal_id=strongest,
+        weakest_goal_id=weakest,
+        goal_insights=goal_insights,
+    )
+    await progress.save()
+
+    return {"status": "created", "session_id": progress.session_id}
 
 
 @router.post("/tutor/sessions/{session_id}/suggestions", response_model=SuggestionsResponse)

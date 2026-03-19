@@ -5,6 +5,7 @@ This test suite focuses on testing graph structures, tools, and validation
 without heavy mocking of the actual processing logic.
 """
 
+import os
 from datetime import datetime
 
 import pytest
@@ -711,6 +712,523 @@ class TestApiSchemas:
             anchor_examples="specific lecture example",
         )
         assert preview.anchor_examples == "specific lecture example"
+
+
+# ============================================================================
+# TEST SUITE 7: Session Insight Generation
+# ============================================================================
+
+
+def _make_goal_data(
+    goal_id="goal:1",
+    description="Understand MLE",
+    competency_statuses=None,
+    trajectory=None,
+):
+    """Build a single goal_data dict for testing generate_insights()."""
+    if competency_statuses is None:
+        competency_statuses = [
+            {
+                "competency": "Can define MLE",
+                "status": "mastered",
+                "score": 0.85,
+                "evidence": ["Correctly defined MLE as maximizing likelihood"],
+                "gap": "",
+                "hypotheses": [],
+                "encounters": 2,
+                "hint_count": 0,
+            },
+            {
+                "competency": "Can set up likelihood",
+                "status": "explained",
+                "score": 0.4,
+                "evidence": ["Struggled with PMF form"],
+                "gap": "Missing Poisson PMF formula",
+                "hypotheses": [{"text": "Formula recall issue", "confidence": "high"}],
+                "encounters": 4,
+                "hint_count": 1,
+            },
+        ]
+    if trajectory is None:
+        trajectory = [
+            {"exchange_number": 1, "understanding_score": 0.3, "misconceptions": [], "breakthroughs": []},
+            {"exchange_number": 2, "understanding_score": 0.5, "misconceptions": [], "breakthroughs": ["Understood MLE concept"]},
+            {"exchange_number": 3, "understanding_score": 0.6, "misconceptions": [], "breakthroughs": []},
+        ]
+    return {
+        "goal_id": goal_id,
+        "description": description,
+        "takeaways": "MLE maximizes the likelihood function",
+        "competencies": "- Can define MLE\n- Can set up likelihood",
+        "competency_statuses": competency_statuses,
+        "trajectory": trajectory,
+        "initial_understanding": trajectory[0]["understanding_score"] if trajectory else None,
+        "final_understanding": trajectory[-1]["understanding_score"] if trajectory else None,
+    }
+
+
+class TestSessionInsightModels:
+    """Test suite for insight-related Pydantic models."""
+
+    def test_competency_result_creation(self):
+        from backpack.graphs.tutor_models import CompetencyResult
+
+        cr = CompetencyResult(name="Can define MLE", status="mastered", score=0.85)
+        assert cr.name == "Can define MLE"
+        assert cr.status == "mastered"
+        assert cr.score == 0.85
+
+    def test_competency_result_score_bounds(self):
+        from backpack.graphs.tutor_models import CompetencyResult
+
+        with pytest.raises(ValueError):
+            CompetencyResult(name="X", status="mastered", score=1.5)
+        with pytest.raises(ValueError):
+            CompetencyResult(name="X", status="mastered", score=-0.1)
+
+    def test_goal_insight_creation(self):
+        from backpack.graphs.tutor_models import CompetencyResult, GoalInsight
+
+        gi = GoalInsight(
+            goal_id="goal:1",
+            goal_description="Understand MLE",
+            final_score=0.625,
+            score_progression=[0.3, 0.5, 0.6],
+            knowledge_gap="Review the Poisson PMF formula.",
+            stumbling_concepts=["Poisson PMF formula recall"],
+            tutor_nudges=["Asked student to recall the general form of a PMF"],
+            reinforcement_topics=["Review Poisson distribution properties"],
+            competency_results=[
+                CompetencyResult(name="Can define MLE", status="mastered", score=0.85),
+                CompetencyResult(name="Can set up likelihood", status="explained", score=0.4),
+            ],
+        )
+        assert gi.final_score == 0.625
+        assert len(gi.score_progression) == 3
+        assert len(gi.competency_results) == 2
+        assert gi.stumbling_concepts == ["Poisson PMF formula recall"]
+        assert gi.tutor_nudges == ["Asked student to recall the general form of a PMF"]
+        assert gi.reinforcement_topics == ["Review Poisson distribution properties"]
+
+    def test_goal_insight_new_fields_default_empty(self):
+        from backpack.graphs.tutor_models import GoalInsight
+
+        gi = GoalInsight(goal_id="g1", goal_description="G1", final_score=0.9)
+        assert gi.stumbling_concepts == []
+        assert gi.tutor_nudges == []
+        assert gi.reinforcement_topics == []
+
+    def test_session_insights_creation(self):
+        from backpack.graphs.tutor_models import GoalInsight, SessionInsights
+
+        si = SessionInsights(
+            goal_insights=[
+                GoalInsight(goal_id="g1", goal_description="G1", final_score=0.8, score_progression=[0.5, 0.8]),
+                GoalInsight(goal_id="g2", goal_description="G2", final_score=0.4, score_progression=[0.3, 0.4]),
+            ],
+            overall_summary="Good session.",
+            strongest_goal_id="g1",
+            weakest_goal_id="g2",
+        )
+        assert len(si.goal_insights) == 2
+        assert si.strongest_goal_id == "g1"
+        assert si.weakest_goal_id == "g2"
+
+    def test_generated_insights_creation(self):
+        from backpack.graphs.tutor_models import GeneratedGoalInsight, GeneratedInsights
+
+        gi = GeneratedInsights(
+            goal_insights=[
+                GeneratedGoalInsight(
+                    goal_id="g1",
+                    knowledge_gap="Review X.",
+                    stumbling_concepts=["concept A"],
+                    tutor_nudges=["Hinted at B"],
+                    reinforcement_topics=["Study C"],
+                )
+            ],
+            overall_summary="You did well.",
+        )
+        assert len(gi.goal_insights) == 1
+        assert gi.overall_summary == "You did well."
+        assert gi.goal_insights[0].stumbling_concepts == ["concept A"]
+        assert gi.goal_insights[0].tutor_nudges == ["Hinted at B"]
+        assert gi.goal_insights[0].reinforcement_topics == ["Study C"]
+
+    def test_generated_goal_insight_empty_gap(self):
+        from backpack.graphs.tutor_models import GeneratedGoalInsight
+
+        gi = GeneratedGoalInsight(goal_id="g1", knowledge_gap="")
+        assert gi.knowledge_gap == ""
+        assert gi.stumbling_concepts == []
+        assert gi.tutor_nudges == []
+        assert gi.reinforcement_topics == []
+
+
+class TestGenerateInsights:
+    """Test suite for the generate_insights() standalone function."""
+
+    def _mock_llm_result(
+        self,
+        goal_ids,
+        gaps=None,
+        summary="Good session.",
+        stumbling=None,
+        nudges=None,
+        reinforcement=None,
+    ):
+        """Build a GeneratedInsights mock return value."""
+        from backpack.graphs.tutor_models import GeneratedGoalInsight, GeneratedInsights
+
+        if gaps is None:
+            gaps = {gid: "" for gid in goal_ids}
+        if stumbling is None:
+            stumbling = {gid: [] for gid in goal_ids}
+        if nudges is None:
+            nudges = {gid: [] for gid in goal_ids}
+        if reinforcement is None:
+            reinforcement = {gid: [] for gid in goal_ids}
+        return GeneratedInsights(
+            goal_insights=[
+                GeneratedGoalInsight(
+                    goal_id=gid,
+                    knowledge_gap=gaps.get(gid, ""),
+                    stumbling_concepts=stumbling.get(gid, []),
+                    tutor_nudges=nudges.get(gid, []),
+                    reinforcement_topics=reinforcement.get(gid, []),
+                )
+                for gid in goal_ids
+            ],
+            overall_summary=summary,
+        )
+
+    def test_single_goal_programmatic_stats(self):
+        """Verify final_score, score_progression, and competency_results are computed correctly."""
+        from unittest.mock import MagicMock, patch
+
+        from backpack.graphs.tutor_insights import generate_insights
+
+        goal_data = [_make_goal_data()]
+        mock_result = self._mock_llm_result(["goal:1"], gaps={"goal:1": "Review PMF."})
+
+        with patch("backpack.graphs.tutor_insights._run_model") as mock_run:
+            mock_model = MagicMock()
+            mock_model.with_structured_output.return_value.invoke.return_value = mock_result
+            mock_run.return_value = mock_model
+
+            insights = generate_insights(goal_data, module_name="Stats 101")
+
+        gi = insights.goal_insights[0]
+        assert gi.goal_id == "goal:1"
+        assert gi.final_score == pytest.approx((0.85 + 0.4) / 2)
+        assert gi.score_progression == [0.3, 0.5, 0.6]
+        assert len(gi.competency_results) == 2
+        assert gi.competency_results[0].name == "Can define MLE"
+        assert gi.competency_results[0].status == "mastered"
+        assert gi.competency_results[1].status == "explained"
+
+    def test_single_goal_llm_merge(self):
+        """Verify LLM-generated fields are merged into GoalInsight."""
+        from unittest.mock import MagicMock, patch
+
+        from backpack.graphs.tutor_insights import generate_insights
+
+        goal_data = [_make_goal_data()]
+        mock_result = self._mock_llm_result(
+            ["goal:1"],
+            gaps={"goal:1": "Review the Poisson PMF formula."},
+            summary="You showed solid MLE intuition but need formula practice.",
+            stumbling={"goal:1": ["Poisson PMF recall", "Product vs sum in likelihood"]},
+            nudges={"goal:1": ["Asked student to write out the PMF for a single observation"]},
+            reinforcement={"goal:1": ["Review Poisson distribution", "Practice likelihood construction"]},
+        )
+
+        with patch("backpack.graphs.tutor_insights._run_model") as mock_run:
+            mock_model = MagicMock()
+            mock_model.with_structured_output.return_value.invoke.return_value = mock_result
+            mock_run.return_value = mock_model
+
+            insights = generate_insights(goal_data, module_name="Stats 101")
+
+        gi = insights.goal_insights[0]
+        assert gi.knowledge_gap == "Review the Poisson PMF formula."
+        assert gi.stumbling_concepts == ["Poisson PMF recall", "Product vs sum in likelihood"]
+        assert gi.tutor_nudges == ["Asked student to write out the PMF for a single observation"]
+        assert gi.reinforcement_topics == ["Review Poisson distribution", "Practice likelihood construction"]
+        assert "MLE" in insights.overall_summary
+
+    def test_multiple_goals_strongest_weakest(self):
+        """Verify strongest/weakest goal identification with multiple goals."""
+        from unittest.mock import MagicMock, patch
+
+        from backpack.graphs.tutor_insights import generate_insights
+
+        strong_comps = [
+            {"competency": "C1", "status": "mastered", "score": 0.9, "evidence": [], "gap": "", "hypotheses": [], "encounters": 1, "hint_count": 0},
+        ]
+        weak_comps = [
+            {"competency": "C2", "status": "explained", "score": 0.3, "evidence": [], "gap": "Big gap", "hypotheses": [], "encounters": 3, "hint_count": 2},
+        ]
+        goal_data = [
+            _make_goal_data(goal_id="goal:strong", description="Strong goal", competency_statuses=strong_comps),
+            _make_goal_data(goal_id="goal:weak", description="Weak goal", competency_statuses=weak_comps),
+        ]
+
+        mock_result = self._mock_llm_result(["goal:strong", "goal:weak"])
+
+        with patch("backpack.graphs.tutor_insights._run_model") as mock_run:
+            mock_model = MagicMock()
+            mock_model.with_structured_output.return_value.invoke.return_value = mock_result
+            mock_run.return_value = mock_model
+
+            insights = generate_insights(goal_data)
+
+        assert insights.strongest_goal_id == "goal:strong"
+        assert insights.weakest_goal_id == "goal:weak"
+        assert insights.goal_insights[0].final_score == pytest.approx(0.9)
+        assert insights.goal_insights[1].final_score == pytest.approx(0.3)
+
+    def test_equal_scores_no_weakest(self):
+        """When all goals have equal final scores, weakest_goal_id is None."""
+        from unittest.mock import MagicMock, patch
+
+        from backpack.graphs.tutor_insights import generate_insights
+
+        same_comps = [
+            {"competency": "C1", "status": "mastered", "score": 0.7, "evidence": [], "gap": "", "hypotheses": [], "encounters": 1, "hint_count": 0},
+        ]
+        goal_data = [
+            _make_goal_data(goal_id="g1", competency_statuses=same_comps),
+            _make_goal_data(goal_id="g2", competency_statuses=same_comps),
+        ]
+        mock_result = self._mock_llm_result(["g1", "g2"])
+
+        with patch("backpack.graphs.tutor_insights._run_model") as mock_run:
+            mock_model = MagicMock()
+            mock_model.with_structured_output.return_value.invoke.return_value = mock_result
+            mock_run.return_value = mock_model
+
+            insights = generate_insights(goal_data)
+
+        assert insights.weakest_goal_id is None
+
+    def test_llm_failure_graceful_fallback(self):
+        """When LLM call fails, programmatic stats are still returned with empty qualitative fields."""
+        from unittest.mock import patch
+
+        from backpack.graphs.tutor_insights import generate_insights
+
+        goal_data = [_make_goal_data()]
+
+        with patch("backpack.graphs.tutor_insights._run_model", side_effect=Exception("no model")):
+            insights = generate_insights(goal_data, module_name="Stats 101")
+
+        gi = insights.goal_insights[0]
+        assert gi.final_score == pytest.approx((0.85 + 0.4) / 2)
+        assert gi.score_progression == [0.3, 0.5, 0.6]
+        assert gi.knowledge_gap == ""
+        assert gi.stumbling_concepts == []
+        assert gi.tutor_nudges == []
+        assert gi.reinforcement_topics == []
+        assert insights.overall_summary == ""
+        assert insights.strongest_goal_id == "goal:1"
+
+    def test_empty_trajectory(self):
+        """Goals with no trajectory produce empty score_progression."""
+        from unittest.mock import MagicMock, patch
+
+        from backpack.graphs.tutor_insights import generate_insights
+
+        goal_data = [_make_goal_data(trajectory=[])]
+        mock_result = self._mock_llm_result(["goal:1"])
+
+        with patch("backpack.graphs.tutor_insights._run_model") as mock_run:
+            mock_model = MagicMock()
+            mock_model.with_structured_output.return_value.invoke.return_value = mock_result
+            mock_run.return_value = mock_model
+
+            insights = generate_insights(goal_data)
+
+        assert insights.goal_insights[0].score_progression == []
+
+    def test_empty_competency_statuses(self):
+        """Goals with no competencies produce final_score of 0.0."""
+        from unittest.mock import MagicMock, patch
+
+        from backpack.graphs.tutor_insights import generate_insights
+
+        goal_data = [_make_goal_data(competency_statuses=[])]
+        mock_result = self._mock_llm_result(["goal:1"])
+
+        with patch("backpack.graphs.tutor_insights._run_model") as mock_run:
+            mock_model = MagicMock()
+            mock_model.with_structured_output.return_value.invoke.return_value = mock_result
+            mock_run.return_value = mock_model
+
+            insights = generate_insights(goal_data)
+
+        assert insights.goal_insights[0].final_score == 0.0
+        assert insights.goal_insights[0].competency_results == []
+
+    def test_messages_passed_to_prompt(self):
+        """Verify that messages are forwarded to the Prompter for template rendering."""
+        from unittest.mock import MagicMock, patch
+
+        from backpack.graphs.tutor_insights import generate_insights
+
+        goal_data = [_make_goal_data()]
+        messages = [
+            {"role": "tutor", "content": "What is MLE?"},
+            {"role": "student", "content": "It maximizes the likelihood."},
+        ]
+        mock_result = self._mock_llm_result(["goal:1"])
+
+        with patch("backpack.graphs.tutor_insights._run_model") as mock_run, \
+             patch("backpack.graphs.tutor_insights.Prompter") as mock_prompter_cls:
+            mock_model = MagicMock()
+            mock_model.with_structured_output.return_value.invoke.return_value = mock_result
+            mock_run.return_value = mock_model
+
+            mock_prompter = MagicMock()
+            mock_prompter.render.return_value = "rendered prompt"
+            mock_prompter_cls.return_value = mock_prompter
+
+            generate_insights(goal_data, module_name="Stats 101", messages=messages)
+
+            render_call = mock_prompter.render.call_args
+            prompt_data = render_call.kwargs.get("data") or render_call.args[0] if render_call.args else render_call.kwargs.get("data")
+            assert prompt_data["messages"] == messages
+
+
+# ============================================================================
+# TEST SUITE 8: Session Insight Generation — LLM Integration
+# ============================================================================
+
+_has_openai_key = bool(os.environ.get("OPENAI_API_KEY"))
+
+
+@pytest.mark.skipif(not _has_openai_key, reason="OPENAI_API_KEY not set")
+class TestGenerateInsightsLLM:
+    """Integration tests that make real LLM calls. Skipped when no API key is available."""
+
+    def test_single_goal_produces_knowledge_gap(self):
+        """LLM should generate a non-empty knowledge_gap for a goal with unexplained competencies."""
+        from backpack.graphs.tutor_insights import generate_insights
+
+        messages = [
+            {"role": "tutor", "content": "Can you explain what MLE stands for and how it works?"},
+            {"role": "student", "content": "MLE is maximum likelihood estimation. It finds the parameter that maximizes the likelihood function."},
+            {"role": "tutor", "content": "Good start! Now, can you write out the likelihood for a Poisson sample?"},
+            {"role": "student", "content": "I think it's... e to the negative lambda times lambda to the x? I'm not sure about the product part."},
+            {"role": "tutor", "content": "You're close — remember the PMF applies to each observation. Think about what happens when you have multiple independent observations."},
+            {"role": "student", "content": "Oh, you multiply them together? So it's a product of the individual PMFs?"},
+        ]
+
+        goal_data = [_make_goal_data()]
+        insights = generate_insights(goal_data, module_name="Intro to Statistics", messages=messages)
+
+        gi = insights.goal_insights[0]
+        assert gi.goal_id == "goal:1"
+        assert gi.final_score == pytest.approx((0.85 + 0.4) / 2)
+        assert gi.score_progression == [0.3, 0.5, 0.6]
+        assert len(gi.knowledge_gap) > 0, "Expected non-empty knowledge_gap for a partially-mastered goal"
+        assert len(gi.stumbling_concepts) > 0, "Expected non-empty stumbling_concepts for a struggling goal"
+        assert len(gi.reinforcement_topics) > 0, "Expected non-empty reinforcement_topics for a struggling goal"
+
+    def test_single_goal_produces_overall_summary_and_nudges(self):
+        """LLM should generate a non-empty overall_summary and tutor_nudges when conversation is provided."""
+        from backpack.graphs.tutor_insights import generate_insights
+
+        messages = [
+            {"role": "tutor", "content": "Let's explore MLE. What do you know about it?"},
+            {"role": "student", "content": "It's a way to estimate parameters."},
+            {"role": "tutor", "content": "Right. Can you think about what 'maximum' means in this context? What are we maximizing?"},
+            {"role": "student", "content": "Oh, we maximize the probability of seeing our data given the parameter."},
+        ]
+
+        goal_data = [_make_goal_data()]
+        insights = generate_insights(goal_data, module_name="Intro to Statistics", messages=messages)
+
+        assert len(insights.overall_summary) > 10, "Expected a substantive overall_summary"
+        gi = insights.goal_insights[0]
+        assert isinstance(gi.tutor_nudges, list), "tutor_nudges should be a list"
+
+    def test_fully_mastered_goal_has_empty_gap(self):
+        """When all competencies are mastered with a clean trajectory, knowledge_gap should be empty."""
+        from backpack.graphs.tutor_insights import generate_insights
+
+        mastered_comps = [
+            {
+                "competency": "Can define MLE",
+                "status": "mastered",
+                "score": 0.9,
+                "evidence": ["Clear definition provided on first attempt"],
+                "gap": "",
+                "hypotheses": [],
+                "encounters": 1,
+                "hint_count": 0,
+            },
+            {
+                "competency": "Can set up likelihood",
+                "status": "mastered",
+                "score": 0.85,
+                "evidence": ["Correctly wrote Poisson PMF and multiplied without help"],
+                "gap": "",
+                "hypotheses": [],
+                "encounters": 1,
+                "hint_count": 0,
+            },
+        ]
+        clean_trajectory = [
+            {"exchange_number": 1, "understanding_score": 0.85, "misconceptions": [], "breakthroughs": ["Immediately grasped MLE concept"]},
+            {"exchange_number": 2, "understanding_score": 0.9, "misconceptions": [], "breakthroughs": ["Set up likelihood correctly"]},
+        ]
+        goal_data = [_make_goal_data(competency_statuses=mastered_comps, trajectory=clean_trajectory)]
+        insights = generate_insights(goal_data, module_name="Intro to Statistics")
+
+        gi = insights.goal_insights[0]
+        assert gi.knowledge_gap == "", f"Expected empty knowledge_gap for fully mastered goal, got: '{gi.knowledge_gap}'"
+        # stumbling_concepts and reinforcement_topics may still appear —
+        # the LLM can suggest further study even for mastered goals
+        assert isinstance(gi.stumbling_concepts, list)
+        assert isinstance(gi.reinforcement_topics, list)
+
+    def test_multiple_goals_produces_correct_ids_and_new_fields(self):
+        """LLM should return goal_insights with matching goal_ids and populated new fields."""
+        from backpack.graphs.tutor_insights import generate_insights
+
+        strong_comps = [
+            {"competency": "C1", "status": "mastered", "score": 0.9, "evidence": ["Nailed it"], "gap": "", "hypotheses": [], "encounters": 1, "hint_count": 0},
+        ]
+        weak_comps = [
+            {"competency": "C2", "status": "explained", "score": 0.3, "evidence": ["Struggled"], "gap": "Core concept gap", "hypotheses": [{"text": "Missing prerequisite", "confidence": "high"}], "encounters": 4, "hint_count": 2},
+        ]
+        goal_data = [
+            _make_goal_data(goal_id="goal:strong", description="Strong goal", competency_statuses=strong_comps),
+            _make_goal_data(goal_id="goal:weak", description="Weak goal", competency_statuses=weak_comps),
+        ]
+
+        messages = [
+            {"role": "tutor", "content": "Let's start with the strong goal. Can you explain it?"},
+            {"role": "student", "content": "Yes, I understand it well. Here is my explanation."},
+            {"role": "tutor", "content": "Great! Now let's move to the weak goal. What do you know?"},
+            {"role": "student", "content": "I'm not really sure about this one."},
+            {"role": "tutor", "content": "Think about the prerequisite concept first. What is the foundation?"},
+            {"role": "student", "content": "I think I see now, but I'm still confused about the core part."},
+        ]
+
+        insights = generate_insights(goal_data, module_name="Test Module", messages=messages)
+
+        assert len(insights.goal_insights) == 2
+        ids = {gi.goal_id for gi in insights.goal_insights}
+        assert ids == {"goal:strong", "goal:weak"}
+        assert insights.strongest_goal_id == "goal:strong"
+        assert insights.weakest_goal_id == "goal:weak"
+
+        weak_insight = next(gi for gi in insights.goal_insights if gi.goal_id == "goal:weak")
+        assert len(weak_insight.knowledge_gap) > 0
+        assert len(weak_insight.stumbling_concepts) > 0, "Expected stumbling_concepts for the weak goal"
+        assert len(weak_insight.reinforcement_topics) > 0, "Expected reinforcement_topics for the weak goal"
 
 
 if __name__ == "__main__":
