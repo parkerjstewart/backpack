@@ -106,8 +106,9 @@ export default function ReviewPage() {
   useEffect(() => {
     if (!isSessionComplete || !module?.course_id) return
     const timer = setTimeout(() => {
+      const courseId = String(module.course_id)
       router.push(
-        `/courses/${encodeURIComponent(module.course_id)}/modules/${encodeURIComponent(moduleId)}/insights`
+        `/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(moduleId)}/insights`
       )
     }, 2000)
     return () => clearTimeout(timer)

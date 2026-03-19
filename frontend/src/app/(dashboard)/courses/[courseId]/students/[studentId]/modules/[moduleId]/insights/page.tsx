@@ -15,6 +15,7 @@ import { useCourse } from '@/lib/hooks/use-courses'
 import { useModule, useLearningGoals } from '@/lib/hooks/use-modules'
 import { useStudentProgressForStudent } from '@/lib/hooks/use-student-progress'
 import { usersApi } from '@/lib/api/users'
+import { normalizeCourseMembershipRole } from '@/lib/permissions/course'
 
 export default function InstructorStudentInsightsPage() {
   const params = useParams()
@@ -50,7 +51,7 @@ export default function InstructorStudentInsightsPage() {
             <CourseHeader
               courseId={courseId}
               courseName={course.title}
-              membershipRole={course.membership_role}
+              membershipRole={normalizeCourseMembershipRole(course.membership_role)}
               moduleName={module?.name}
               moduleId={moduleId}
               pageName={`${studentName}'s Insights`}
