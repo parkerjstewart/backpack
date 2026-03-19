@@ -266,6 +266,7 @@ function TeacherView({
           data={classInsightsData}
           courseId={courseId}
           moduleId={moduleId}
+          learningGoals={learningGoals}
         />
       )}
 
@@ -452,6 +453,7 @@ function StudentView({
           progress={latestProgress}
           courseId={courseId}
           moduleId={moduleId}
+          href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(moduleId)}/insights`}
         />
       )}
 

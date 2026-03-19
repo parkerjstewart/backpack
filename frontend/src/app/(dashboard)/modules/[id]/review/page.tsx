@@ -103,6 +103,16 @@ export default function ReviewPage() {
     }
   }, [moduleId, initializeSession])
 
+  useEffect(() => {
+    if (!isSessionComplete || !module?.course_id) return
+    const timer = setTimeout(() => {
+      router.push(
+        `/courses/${encodeURIComponent(module.course_id)}/modules/${encodeURIComponent(moduleId)}/insights`
+      )
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [isSessionComplete, module, moduleId, router])
+
   const handleTryAgain = useCallback(() => {
     resetSession()
   }, [resetSession])

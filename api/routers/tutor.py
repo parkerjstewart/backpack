@@ -232,6 +232,11 @@ def count_goals(state: Dict[str, Any]) -> tuple[int, int]:
     return completed, total - completed
 
 
+def normalize_user_id(user_id: str) -> str:
+    """Normalize a user identifier to SurrealDB's user:<id> format."""
+    return user_id if user_id.startswith("user:") else f"user:{user_id}"
+
+
 async def _save_session_insights(
     session_id: str,
     state_values: Dict[str, Any],
@@ -252,6 +257,11 @@ async def _save_session_insights(
         insights = state_values.get("session_insights")
         if not insights:
             logger.warning(f"No session_insights in state for session {session_id}")
+            return
+
+        existing = await StudentProgress.get_by_session(session_id)
+        if existing:
+            logger.debug(f"Session insights already saved for {session_id}; skipping duplicate save")
             return
 
         module_id = state_values.get("module_id")
@@ -283,6 +293,7 @@ async def _save_session_insights(
 async def _regenerate_class_insights(module_id: str, module_name: str) -> None:
     """Regenerate class-level insights after a student completes a session."""
     try:
+        await asyncio.sleep(1.0)
         await generate_class_insights(module_id, module_name)
     except Exception as e:
         logger.error(f"Failed to regenerate class insights for module {module_id}: {e}")
@@ -1219,8 +1230,14 @@ async def get_student_progress_for_instructor(
     student_id: str,
     authorization: Optional[str] = Header(None),
 ):
-    """Instructor view: get a specific student's progress for a module."""
+    """Get a specific student's progress for a module.
+
+    Instructors/TAs can view any student's progress in the course.
+    Students can view only their own progress via this route.
+    """
     user_id = require_authenticated_user_id(authorization)
+    normalized_requester_id = normalize_user_id(user_id)
+    normalized_student_id = normalize_user_id(student_id)
 
     # Resolve the module's course for authorization check
     try:
@@ -1232,10 +1249,11 @@ async def get_student_progress_for_instructor(
         raise HTTPException(status_code=404, detail="Module not found or has no course")
 
     course_id = str(module.course)
-    await require_teaching_role(course_id, user_id)
+    if normalized_student_id != normalized_requester_id:
+        await require_teaching_role(course_id, user_id)
 
     try:
-        records = await StudentProgress.get_for_student(student_id, module_id)
+        records = await StudentProgress.get_for_student(normalized_student_id, module_id)
         return [
             StudentProgressResponse(
                 session_id=r.session_id,
@@ -1253,7 +1271,10 @@ async def get_student_progress_for_instructor(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching progress for student {student_id} in module {module_id}: {e}")
+        logger.error(
+            f"Error fetching progress for student {normalized_student_id} "
+            f"in module {module_id}: {e}"
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 

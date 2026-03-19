@@ -200,6 +200,9 @@ async def generate_class_insights(
 
     records = await StudentProgress.get_for_module(module_id)
     if not records:
+        await asyncio.sleep(1.5)
+        records = await StudentProgress.get_for_module(module_id)
+    if not records:
         logger.info(f"No student progress records for module {module_id}")
         return
 

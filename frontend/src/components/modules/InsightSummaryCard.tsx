@@ -1,13 +1,15 @@
 'use client'
 
-import { useState } from 'react'
-import { TrendingUp, TrendingDown, ChevronDown } from 'lucide-react'
+import Link from 'next/link'
+import { ChevronRight } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { goalBadgeColor } from '@/lib/utils/score-colors'
-import { InsightsSummaryPanel } from '@/components/insights/InsightsSummaryPanel'
-import { PracticeRecommendations } from '@/components/insights/PracticeRecommendations'
-import { GoalInsightDetail } from '@/components/insights/GoalInsightDetail'
-import { cn } from '@/lib/utils'
+import { useLearningGoals } from '@/lib/hooks/use-modules'
 import type { StudentProgressResponse } from '@/lib/types/api'
 
 interface InsightSummaryCardProps {
@@ -15,17 +17,19 @@ interface InsightSummaryCardProps {
   courseId: string
   moduleId: string
   studentName?: string
-  defaultExpanded?: boolean
-  hideHeader?: boolean
+  href: string
 }
 
 export function InsightSummaryCard({
   progress,
+  moduleId,
   studentName,
-  defaultExpanded = false,
-  hideHeader = false,
+  href,
 }: InsightSummaryCardProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded)
+  const { data: learningGoals } = useLearningGoals(moduleId)
+  const goalTitleMap = Object.fromEntries(
+    (learningGoals ?? []).map((g) => [g.id, g.title])
+  )
 
   const sessionDate = progress.created
     ? new Date(progress.created).toLocaleDateString(undefined, {
@@ -43,147 +47,70 @@ export function InsightSummaryCard({
 
   const overallPct = Math.round(overallScore * 100)
 
-  const isAlwaysExpanded = hideHeader || defaultExpanded
-
   return (
-    <Card className="border-border overflow-hidden">
-      {!hideHeader && (
-        <button
-          type="button"
-          className="w-full text-left p-6 hover:bg-secondary transition-colors"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-        >
-          {/* Title row */}
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <div>
-              <h2 className="font-heading text-2xl font-medium tracking-[-0.24px] text-primary">
-                {studentName ? `${studentName}'s Session Insights` : 'Your Session Insights'}
-              </h2>
-              {sessionDate && (
-                <p className="text-sm text-muted-foreground mt-0.5">{sessionDate}</p>
-              )}
-            </div>
-            <ChevronDown
-              className={cn(
-                'h-5 w-5 text-muted-foreground shrink-0 transition-transform duration-200',
-                expanded && 'rotate-180'
-              )}
-            />
-          </div>
-
-          {/* Overall score bar */}
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-xs font-medium text-muted-foreground w-14 shrink-0">Overall</span>
-            <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${overallPct}%`,
-                  backgroundColor: goalBadgeColor(overallScore),
-                }}
-              />
-            </div>
-            <span
-              className="shrink-0 text-xs font-semibold rounded-full px-2.5 py-0.5"
-              style={{ backgroundColor: goalBadgeColor(overallScore) }}
-            >
-              {overallPct}%
-            </span>
-          </div>
-
-          {/* Per-goal rows */}
-          {progress.goal_insights.length > 0 && (
-            <div className="space-y-2">
-              {progress.goal_insights.map((goal) => {
-                const isStrongest = goal.goal_id === progress.strongest_goal_id
-                const isWeakest = goal.goal_id === progress.weakest_goal_id
-                const masteredCount = goal.competency_results.filter(
-                  (c) => c.status === 'mastered' || c.status === 'explained'
-                ).length
-                const totalCount = goal.competency_results.length
-
-                return (
-                  <div
-                    key={goal.goal_id}
-                    className="flex items-center gap-3 rounded-md bg-background/60 px-4 py-2.5"
-                  >
-                    <span
-                      className="shrink-0 w-12 text-center text-xs font-semibold rounded-full px-2 py-0.5"
-                      style={{ backgroundColor: goalBadgeColor(goal.final_score) }}
-                    >
-                      {Math.round(goal.final_score * 100)}%
-                    </span>
-                    <span className="flex-1 text-sm text-primary truncate">
-                      {goal.goal_description}
-                    </span>
-                    {totalCount > 0 && (
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {masteredCount}/{totalCount} competencies
-                      </span>
-                    )}
-                    {isStrongest && (
-                      <TrendingUp className="shrink-0 h-4 w-4 text-sage-600" aria-label="Strongest goal" />
-                    )}
-                    {isWeakest && (
-                      <TrendingDown className="shrink-0 h-4 w-4 text-coral-500" aria-label="Needs work" />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </button>
-      )}
-
-      {/* Expandable body */}
-      <div
-        className={cn(
-          'grid transition-[grid-template-rows] duration-300 ease-in-out',
-          (expanded || isAlwaysExpanded) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
-        )}
-      >
-        <div className={isAlwaysExpanded ? '' : 'overflow-hidden'}>
-          <div className={cn(
-            'px-6 pb-6 pt-2 space-y-6',
-            !hideHeader && 'border-t border-border'
-          )}>
-            {/* Two-column top: summary panel + practice recommendations */}
-            <div className="grid grid-cols-1 sm:grid-cols-[3fr_2fr] gap-6 items-start">
-              <div className="bg-secondary rounded-lg p-4">
-                <InsightsSummaryPanel
-                  goalInsights={progress.goal_insights}
-                  overallSummary={progress.overall_summary}
-                  strongestGoalId={progress.strongest_goal_id}
-                  weakestGoalId={progress.weakest_goal_id}
-                />
-              </div>
-              <div className="bg-secondary rounded-lg p-4">
-                <PracticeRecommendations goalInsights={progress.goal_insights} />
-              </div>
-            </div>
-
-            {/* Breakdown */}
-            {progress.goal_insights.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Breakdown
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {progress.goal_insights.map((goal) => (
-                    <GoalInsightDetail
-                      key={goal.goal_id}
-                      goal={goal}
-                      isStrongest={goal.goal_id === progress.strongest_goal_id}
-                      isWeakest={goal.goal_id === progress.weakest_goal_id}
-                    />
-                  ))}
-                </div>
-              </div>
+    <Card className="border-border overflow-hidden py-0 hover:bg-secondary transition-colors cursor-pointer">
+      <Link href={href} className="block w-full text-left p-6">
+        {/* Title row */}
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-card-title text-primary">
+              {studentName ? `${studentName}'s Session Insights` : 'Your Session Insights'}
+            </h2>
+            {sessionDate && (
+              <p className="text-sm text-muted-foreground mt-0.5">{sessionDate}</p>
             )}
           </div>
+          <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
         </div>
-      </div>
+
+        {/* Overall score bar */}
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-xs font-medium text-muted-foreground w-14 shrink-0">Overall</span>
+          <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${overallPct}%`,
+                backgroundColor: goalBadgeColor(overallScore),
+              }}
+            />
+          </div>
+          <span
+            className="shrink-0 text-xs font-semibold rounded-full px-2.5 py-0.5"
+            style={{ backgroundColor: goalBadgeColor(overallScore) }}
+          >
+            {overallPct}%
+          </span>
+        </div>
+
+        {/* Per-goal badges */}
+        {progress.goal_insights.length > 0 && (
+          <div className="flex overflow-x-auto gap-2 pb-1">
+            {progress.goal_insights.map((goal) => {
+              const pct = Math.round(goal.final_score * 100)
+              const title = goalTitleMap[goal.goal_id]
+              const label = title
+                ? `${title} · ${pct}%`
+                : `${pct}%`
+              return (
+                <Tooltip key={goal.goal_id}>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="shrink-0 inline-block rounded-lg px-2.5 py-1.5 text-body-sm text-primary cursor-default whitespace-nowrap"
+                      style={{ backgroundColor: goalBadgeColor(goal.final_score) }}
+                    >
+                      {label}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    {goal.goal_description}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            })}
+          </div>
+        )}
+      </Link>
     </Card>
   )
 }

@@ -13,6 +13,7 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { MasteryIndicator } from "./MasteryIndicator";
 import type { ModuleMasteryResponse } from "@/lib/types/api";
+import { useAuthStore } from "@/lib/stores/auth-store";
 
 interface StudentListRowProps {
   variant?: "default" | "pending";
@@ -52,7 +53,17 @@ export function StudentListRow({
   onResend,
   className,
 }: StudentListRowProps) {
+  const currentUser = useAuthStore((state) => state.currentUser);
   const displayName = name || email.split("@")[0];
+
+  const normalizeUserId = (id?: string | null): string | null => {
+    if (!id) return null;
+    return id.startsWith("user:") ? id : `user:${id}`;
+  };
+
+  const isSelfStudent =
+    normalizeUserId(studentId) !== null &&
+    normalizeUserId(studentId) === normalizeUserId(currentUser?.id);
 
   if (variant === "pending") {
     return (
@@ -128,10 +139,13 @@ export function StudentListRow({
             />
           )
           if (courseId && studentId && mastery.status !== 'incomplete') {
+            const insightsHref = isSelfStudent
+              ? `/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(mastery.module_id)}/insights`
+              : `/courses/${encodeURIComponent(courseId)}/students/${encodeURIComponent(studentId)}/modules/${encodeURIComponent(mastery.module_id)}/insights`
             return (
               <Link
                 key={mastery.module_id}
-                href={`/courses/${encodeURIComponent(courseId)}/students/${encodeURIComponent(studentId)}/modules/${encodeURIComponent(mastery.module_id)}/insights`}
+                href={insightsHref}
                 title={`View ${mastery.module_name ?? `module ${index + 1}`} insights`}
               >
                 {indicator}

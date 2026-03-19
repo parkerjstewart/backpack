@@ -33,18 +33,13 @@ export function PracticeRecommendations({ goalInsights }: PracticeRecommendation
   if (items.length === 0) return null
 
   return (
-    <div className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Get more practice with
-      </h3>
-      <ul className="space-y-1.5">
+    <ul className="space-y-1.5">
         {items.map((item, i) => (
           <li key={i} className="flex items-start gap-2 text-sm text-foreground">
             <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-muted-foreground shrink-0" />
             {item}
           </li>
         ))}
-      </ul>
-    </div>
+    </ul>
   )
 }

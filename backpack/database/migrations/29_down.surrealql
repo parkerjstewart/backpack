@@ -1,0 +1,6 @@
+-- Migration 29 rollback: Restore old student_progress fields
+DEFINE FIELD IF NOT EXISTS learning_goal ON TABLE student_progress TYPE record<learning_goal>;
+DEFINE FIELD IF NOT EXISTS status ON TABLE student_progress TYPE string DEFAULT 'not_started';
+DEFINE FIELD IF NOT EXISTS confidence_score ON TABLE student_progress TYPE option<float>;
+DEFINE FIELD IF NOT EXISTS notes ON TABLE student_progress TYPE option<string>;
+DEFINE INDEX IF NOT EXISTS idx_progress_goal ON TABLE student_progress COLUMNS learning_goal;

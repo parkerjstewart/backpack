@@ -1,0 +1,10 @@
+-- Migration 30 rollback: Remove reconciled session-level fields/indexes
+REMOVE INDEX IF EXISTS idx_progress_session ON TABLE student_progress;
+REMOVE INDEX IF EXISTS idx_progress_module ON TABLE student_progress;
+
+REMOVE FIELD IF EXISTS module ON TABLE student_progress;
+REMOVE FIELD IF EXISTS session_id ON TABLE student_progress;
+REMOVE FIELD IF EXISTS overall_summary ON TABLE student_progress;
+REMOVE FIELD IF EXISTS strongest_goal_id ON TABLE student_progress;
+REMOVE FIELD IF EXISTS weakest_goal_id ON TABLE student_progress;
+REMOVE FIELD IF EXISTS updated ON TABLE student_progress;

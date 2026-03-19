@@ -9,6 +9,7 @@ interface InsightsSummaryPanelProps {
   overallSummary: string | null
   strongestGoalId: string | null
   weakestGoalId: string | null
+  goalTitleMap?: Record<string, string>
 }
 
 export function InsightsSummaryPanel({
@@ -16,6 +17,7 @@ export function InsightsSummaryPanel({
   overallSummary,
   strongestGoalId,
   weakestGoalId,
+  goalTitleMap = {},
 }: InsightsSummaryPanelProps) {
   const overallScore =
     goalInsights.length > 0
@@ -82,6 +84,7 @@ export function InsightsSummaryPanel({
           {goalInsights.map((goal) => {
             const isStrongest = goal.goal_id === strongestGoalId
             const isWeakest = goal.goal_id === weakestGoalId
+            const title = goalTitleMap[goal.goal_id]
             return (
               <div key={goal.goal_id} className="flex items-start gap-2">
                 <span
@@ -90,9 +93,16 @@ export function InsightsSummaryPanel({
                 >
                   {Math.round(goal.final_score * 100)}%
                 </span>
-                <span className="text-sm text-primary min-w-0 break-words flex-1">
-                  {goal.goal_description}
-                </span>
+                <div className="min-w-0 flex-1">
+                  {title && (
+                    <span className="text-sm font-semibold text-primary leading-snug">
+                      {title}
+                    </span>
+                  )}
+                  <p className="text-sm text-muted-foreground min-w-0 break-words leading-snug">
+                    {goal.goal_description}
+                  </p>
+                </div>
                 {isStrongest && (
                   <TrendingUp className="shrink-0 h-3.5 w-3.5 text-sage-600" aria-label="Strongest" />
                 )}

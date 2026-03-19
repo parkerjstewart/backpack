@@ -18,46 +18,33 @@ export function CompetencyResultsTable({ results }: CompetencyResultsTableProps)
   if (!results || results.length === 0) return null
 
   return (
-    <div className="overflow-hidden rounded-md border border-border">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border bg-secondary">
-            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Competency</th>
-            <th className="text-left px-4 py-2 font-medium text-muted-foreground w-28">Status</th>
-            <th className="text-left px-4 py-2 font-medium text-muted-foreground w-36">Score</th>
-          </tr>
-        </thead>
-        <tbody>
-          {results.map((c, i) => {
-            const statusMeta = STATUS_LABELS[c.status] ?? { label: c.status, className: 'bg-secondary text-muted-foreground' }
-            const pct = Math.round(c.score * 100)
-            return (
-              <tr key={i} className="border-b border-border last:border-0">
-                <td className="px-4 py-2.5 text-primary">{c.name}</td>
-                <td className="px-4 py-2.5">
-                  <span className={`inline-block text-xs rounded-full px-2 py-0.5 font-medium ${statusMeta.className}`}>
-                    {statusMeta.label}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${pct}%`,
-                          backgroundColor: goalBadgeColor(c.score),
-                        }}
-                      />
-                    </div>
-                    <span className="text-xs text-muted-foreground w-8 text-right">{pct}%</span>
-                  </div>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+    <ul className="space-y-3">
+      {results.map((c, i) => {
+        const statusMeta = STATUS_LABELS[c.status] ?? { label: c.status, className: 'bg-secondary text-muted-foreground' }
+        const pct = Math.round(c.score * 100)
+        return (
+          <li key={i} className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+            <span className="text-sm text-primary flex-1 min-w-0">{c.name}</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${statusMeta.className}`}>
+                {statusMeta.label}
+              </span>
+              <div className="flex items-center gap-2 w-24">
+                <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden min-w-[48px]">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${pct}%`,
+                      backgroundColor: goalBadgeColor(c.score),
+                    }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground w-7 text-right">{pct}%</span>
+              </div>
+            </div>
+          </li>
+        )
+      })}
+    </ul>
   )
 }

@@ -10,6 +10,8 @@ interface CourseHeaderProps {
   courseName: string;
   membershipRole?: CourseMembershipRole;
   moduleName?: string;
+  moduleId?: string;
+  pageName?: string;
 }
 
 interface Tab {
@@ -23,16 +25,20 @@ interface Tab {
  * Displays course name on the left and tabs (Modules | Students | Insights | Settings)
  * on the right. Should be used on all course subpages for consistent navigation.
  */
-export function CourseHeader({ courseId, courseName, membershipRole, moduleName }: CourseHeaderProps) {
+export function CourseHeader({ courseId, courseName, membershipRole, moduleName, moduleId, pageName }: CourseHeaderProps) {
   const pathname = usePathname();
   const permissions = getCoursePermissions(membershipRole);
 
   // Note: Don't manually encode courseId - Next.js Link handles URL encoding automatically
   const tabs: Tab[] = [
     { label: "Modules", href: `/courses/${courseId}` },
-    { label: "Students", href: `/courses/${courseId}/students` },
   ];
-  tabs.push({ label: "Settings", href: `/courses/${courseId}/settings` });
+  if (permissions.canManageMembers) {
+    tabs.push({ label: "Students", href: `/courses/${courseId}/students` });
+  }
+  if (permissions.canManageCourseSettings) {
+    tabs.push({ label: "Settings", href: `/courses/${courseId}/settings` });
+  }
 
   const isActiveTab = (href: string) => {
     // Decode pathname to handle URL-encoded characters (e.g. %3A for : in SurrealDB IDs)
@@ -53,22 +59,33 @@ export function CourseHeader({ courseId, courseName, membershipRole, moduleName 
 
   return (
     <div className="flex items-center justify-between border-b border-border py-2">
-      {/* Course name (or breadcrumb when inside a module) */}
-      {moduleName ? (
-        <h1 className="text-section text-primary flex items-baseline gap-2">
-          <Link href={`/courses/${courseId}`} className="hover:opacity-70 transition-opacity">
-            {courseName}
-          </Link>
-          <span className="text-muted-foreground">›</span>
-          <span>{moduleName}</span>
-        </h1>
-      ) : (
-        <h1 className="text-section text-primary">
-          <Link href={`/courses/${courseId}`} className="hover:opacity-70 transition-opacity">
-            {courseName}
-          </Link>
-        </h1>
-      )}
+      {/* Course name (or breadcrumb when inside a module/page) */}
+      <h1 className="text-section text-primary flex items-baseline gap-2 flex-wrap">
+        <Link href={`/courses/${courseId}`} className="hover:opacity-70 transition-opacity">
+          {courseName}
+        </Link>
+        {moduleName && (
+          <>
+            <span className="text-muted-foreground">›</span>
+            {moduleId && pageName ? (
+              <Link
+                href={`/courses/${courseId}/modules/${moduleId}`}
+                className="hover:opacity-70 transition-opacity"
+              >
+                {moduleName}
+              </Link>
+            ) : (
+              <span>{moduleName}</span>
+            )}
+          </>
+        )}
+        {pageName && (
+          <>
+            <span className="text-muted-foreground">›</span>
+            <span className="text-primary">{pageName}</span>
+          </>
+        )}
+      </h1>
 
       {/* Tab navigation */}
       <nav className="flex items-center gap-1">
