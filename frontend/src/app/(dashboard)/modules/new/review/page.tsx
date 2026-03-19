@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
+import { toast } from "sonner";
 
 import { Button, IconButton } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -278,9 +279,10 @@ export default function ModuleReviewPage() {
     setShowDeleteModal(true);
   };
 
-  // Handle confirm - save module as draft, link sources, then navigate to try-tutor
+  // Handle confirm - save module as draft, link sources, then navigate to try tutor
   const handleConfirm = async () => {
     if (!name.trim()) {
+      toast.error("Please add a module name before continuing.");
       return;
     }
 
@@ -293,28 +295,40 @@ export default function ModuleReviewPage() {
         status: "draft",
       });
 
-      await Promise.allSettled(
+      const sourceResults = await Promise.allSettled(
         pendingSourceIds.map((sourceId) =>
           modulesApi.addSource(createdModule.id, sourceId)
         )
       );
 
-      for (const goal of learningGoals) {
-        await modulesApi.createLearningGoal(createdModule.id, {
-          description: goal.description,
-          title: goal.title || undefined,
-          takeaways: goal.takeaways || undefined,
-          competencies: goal.competencies || undefined,
-          order: goal.order,
-        });
-      }
+      const goalResults = await Promise.allSettled(
+        learningGoals.map((goal) =>
+          modulesApi.createLearningGoal(createdModule.id, {
+            description: goal.description,
+            title: goal.title || undefined,
+            takeaways: goal.takeaways || undefined,
+            competencies: goal.competencies || undefined,
+            order: goal.order,
+          })
+        )
+      );
 
       if (overview) {
-        await modulesApi.update(createdModule.id, { overview });
+        await modulesApi.update(createdModule.id, { overview }).catch(() => {
+          // Keep going even if overview save fails; user can edit in module page.
+        });
       }
 
       if (targetCourseId) {
         assignModuleToCourse(createdModule.id, targetCourseId);
+      }
+
+      const sourceFailures = sourceResults.filter((r) => r.status === "rejected").length;
+      const goalFailures = goalResults.filter((r) => r.status === "rejected").length;
+      if (sourceFailures > 0 || goalFailures > 0) {
+        toast.warning(
+          `Module created, but ${sourceFailures} source link(s) and ${goalFailures} learning goal(s) failed. You can retry from the module page.`,
+        );
       }
 
       setDraftModuleId(createdModule.id);
@@ -325,6 +339,7 @@ export default function ModuleReviewPage() {
       if (axiosErr?.response?.data) {
         console.error("Server response:", JSON.stringify(axiosErr.response.data));
       }
+      toast.error("Failed to create module. Please try again.");
     } finally {
       setIsConfirming(false);
     }

@@ -320,7 +320,9 @@ export interface PreviewModuleContentRequest {
 
 export interface LearningGoalPreview {
   description: string
-  title: string
+  // Keep optional for backward compatibility with older UI mappings
+  // that only provided description/takeaways/competencies.
+  title?: string
   takeaways: string
   competencies: string
 }
@@ -451,6 +453,8 @@ export interface InvitationResponse {
 
 export interface CreateInvitationRequest {
   email: string
+  // Older invite flows may still provide/display a name.
+  name?: string
   role?: 'student' | 'instructor' | 'ta'
 }
 

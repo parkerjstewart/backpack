@@ -10,9 +10,9 @@ const nextConfig: NextConfig = {
   // Experimental features
   // Type assertion needed: proxyClientMaxBodySize is valid in Next.js 15 but types lag behind
   experimental: {
-    // Increase proxy body size limit for file uploads (default is 10MB)
-    // This allows larger files to be uploaded through the /api/* rewrite proxy to FastAPI
-    proxyClientMaxBodySize: '100mb',
+    // Increase proxy body size limit for file uploads (default is 10MB).
+    // Kept aligned with .platform/nginx/conf.d/upload-limits.conf.
+    proxyClientMaxBodySize: '50mb',
   } as NextConfig['experimental'],
 
   // API Rewrites: Proxy /api/* requests to FastAPI backend
