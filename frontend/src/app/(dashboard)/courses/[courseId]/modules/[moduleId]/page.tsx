@@ -33,10 +33,13 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { StudyToolsPanel } from "@/components/modules/StudyToolsPanel";
+import { InsightSummaryCard } from "@/components/modules/InsightSummaryCard";
+import { InstructorInsightsCard } from "@/components/modules/InstructorInsightsCard";
 import { MathMarkdown } from "@/components/ui/math-markdown";
 import { LearningGoalResponse, SourceListResponse } from "@/lib/types/api";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useModalManager } from "@/lib/hooks/use-modal-manager";
+import { useStudentProgress, useClassInsights } from "@/lib/hooks/use-student-progress";
 
 // ─── Read-only learning goals ────────────────────────────────────────────────
 
@@ -159,6 +162,7 @@ function TeacherView({
   const deleteSource = useDeleteSource();
   const deleteModule = useDeleteModule();
   const retrySource = useRetrySource();
+  const { data: classInsightsData } = useClassInsights(moduleId);
 
   const handleDeleteSource = async (sourceId: string) => {
     await deleteSource.mutateAsync(sourceId);
@@ -258,6 +262,16 @@ function TeacherView({
           )}
         </div>
       </div>
+
+      {/* Class Insights (instructor) */}
+      {classInsightsData && classInsightsData.student_count > 0 && (
+        <InstructorInsightsCard
+          data={classInsightsData}
+          courseId={courseId}
+          moduleId={moduleId}
+          learningGoals={learningGoals}
+        />
+      )}
 
       {/* Overview */}
       {overviewContent && (
@@ -397,6 +411,8 @@ function StudentView({
   const { openModal } = useModalManager();
   const overviewContent = moduleOverview || moduleDescription;
   const isPaused = moduleStatus === "paused";
+  const { data: progressData } = useStudentProgress(moduleId);
+  const latestProgress = progressData?.[0] ?? null;
 
   return (
     <div className="flex flex-col gap-8 pb-8">
@@ -415,14 +431,14 @@ function StudentView({
               <PauseCircle className="h-4 w-4 flex-shrink-0" />
               This module is not currently available for tutoring.
             </div>
-          ) : (
+          ) : !latestProgress ? (
             <Button asChild>
               <Link href={`/modules/${encodeURIComponent(moduleId)}/review`}>
                 <GraduationCap className="h-4 w-4" />
                 Start Tutor
               </Link>
             </Button>
-          )}
+          ) : null}
           <Button variant="secondary" asChild>
             <Link
               href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(moduleId)}/chat`}
@@ -433,6 +449,16 @@ function StudentView({
           </Button>
         </div>
       </div>
+
+      {/* Insight summary (above overview, only when progress exists) */}
+      {latestProgress && (
+        <InsightSummaryCard
+          progress={latestProgress}
+          courseId={courseId}
+          moduleId={moduleId}
+          href={`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(moduleId)}/insights`}
+        />
+      )}
 
       {/* Overview */}
       {overviewContent && (

@@ -210,7 +210,9 @@ export function useTutor({ moduleId }: UseTutorParams) {
       }
       setStreamingMessage('')
       setArtifacts(finalPayload.artifacts ?? [])
-      setMessages(prev => [...prev, tutorMessage])
+      if (finalPayload.phase !== 'session_complete') {
+        setMessages(prev => [...prev, tutorMessage])
+      }
 
       // Fire-and-forget: fetch debug state after each exchange
       tutorApi.getDebugState(sessionId).then(setLatestDebugInfo).catch(() => {})

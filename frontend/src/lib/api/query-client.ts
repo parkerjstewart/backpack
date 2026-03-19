@@ -33,4 +33,7 @@ export const QUERY_KEYS = {
   episodeProfiles: ['podcasts', 'episode-profiles'] as const,
   speakerProfiles: ['podcasts', 'speaker-profiles'] as const,
   studyToolResults: (moduleId: string) => ['study-tools', moduleId] as const,
+  studentProgress: (moduleId: string) => ['student-progress', moduleId] as const,
+  studentProgressForStudent: (moduleId: string, studentId: string) => ['student-progress', moduleId, studentId] as const,
+  classInsights: (moduleId: string) => ['class-insights', moduleId] as const,
 }

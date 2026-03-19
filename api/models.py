@@ -652,6 +652,47 @@ class StudentWithMasteryResponse(BaseModel):
 
 
 # ============================================
+# Course Insights API models (instructor view)
+# ============================================
+
+
+class GoalAverageResponse(BaseModel):
+    """Class-level average for a single learning goal across all students."""
+    goal_id: str
+    goal_description: str = ""
+    avg_score: float = 0.0
+    students_with_gaps: int = 0
+
+
+class StudentSessionSummary(BaseModel):
+    """A single student's latest session summary for a module."""
+    user_id: str
+    user_name: Optional[str] = None
+    user_email: str = ""
+    session_id: str
+    overall_summary: Optional[str] = None
+    strongest_goal_id: Optional[str] = None
+    weakest_goal_id: Optional[str] = None
+    goal_insights: List[Dict[str, Any]] = Field(default_factory=list)
+    created: Optional[str] = None
+
+
+class ModuleInsightsResponse(BaseModel):
+    """Aggregated insights for one module in a course."""
+    module_id: str
+    module_name: str
+    student_progress: List[StudentSessionSummary] = Field(default_factory=list)
+    goal_averages: List[GoalAverageResponse] = Field(default_factory=list)
+
+
+class CourseInsightsResponse(BaseModel):
+    """Top-level response for instructor course insights."""
+    course_id: str
+    course_title: str
+    modules: List[ModuleInsightsResponse] = Field(default_factory=list)
+
+
+# ============================================
 # Invitation API models
 # ============================================
 class CreateInvitationRequest(BaseModel):

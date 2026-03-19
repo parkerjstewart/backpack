@@ -10,11 +10,15 @@ from loguru import logger
 from api.models import (
     AddCourseMemberRequest,
     CourseCreate,
+    CourseInsightsResponse,
     CourseMemberResponse,
     CourseResponse,
     CourseUpdate,
+    GoalAverageResponse,
+    ModuleInsightsResponse,
     ModuleMasteryResponse,
     ModuleReorderRequest,
+    StudentSessionSummary,
     StudentWithMasteryResponse,
 )
 from api.routers.authz import (
@@ -27,8 +31,9 @@ from api.routers.authz import (
 )
 from backpack.database.repository import ensure_record_id, repo_query
 from backpack.domain.course import Course, User
-from backpack.domain.module import Module
 from backpack.domain.invitation import Invitation
+from backpack.domain.module import Module
+from backpack.domain.student_progress import StudentProgress
 
 router = APIRouter()
 
@@ -278,7 +283,14 @@ async def delete_course(course_id: str, authorization: Optional[str] = Header(No
 
 @router.get("/courses/{course_id}/students", response_model=List[StudentWithMasteryResponse])
 async def get_course_students(course_id: str, authorization: Optional[str] = Header(None)):
-    """Get all students in a course with their module mastery."""
+    """Get all students in a course with their module mastery.
+
+    Mastery is derived from the latest session's goal_insights per module:
+    - All goals with final_score >= 0.65 -> "mastered"
+    - Any goal with final_score < 0.4 -> "struggling"
+    - Has records but mixed -> "progressing"
+    - No records -> "incomplete"
+    """
     try:
         user_id = require_authenticated_user_id(authorization)
         await require_course_membership_role(course_id, user_id)
@@ -288,50 +300,32 @@ async def get_course_students(course_id: str, authorization: Optional[str] = Hea
             raise HTTPException(status_code=404, detail="Course not found")
 
         students = await course.get_students()
-
-        # Get modules for mastery tracking
         modules = await course.get_modules()
 
         result = []
         for s in students:
             user = s.get("user", {})
-            user_id = str(user.get("id", ""))
+            uid = str(user.get("id", ""))
 
-            # Get mastery for each module
             mastery_list = []
             for module in modules:
-                # Query progress for this student on this module's goals
-                progress = await repo_query(
-                    """
-                    SELECT
-                        count() as total,
-                        count(IF status = 'mastered' THEN 1 ELSE NONE END) as mastered,
-                        count(IF status = 'struggling' THEN 1 ELSE NONE END) as struggling
-                    FROM student_progress
-                    WHERE user = $user_id
-                      AND learning_goal.module = $module_id
-                    GROUP ALL
-                    """,
-                    {
-                        "user_id": ensure_record_id(user_id),
-                        "module_id": ensure_record_id(module.id),
-                    },
+                latest = await StudentProgress.get_latest_for_student(
+                    uid, str(module.id)
                 )
 
-                # Determine status
-                p = progress[0] if progress else {"total": 0, "mastered": 0, "struggling": 0}
-                total = p.get("total", 0)
-                mastered = p.get("mastered", 0)
-                struggling = p.get("struggling", 0)
-
-                if total == 0:
+                if not latest or not latest.goal_insights:
                     status = "incomplete"
-                elif struggling > 0:
-                    status = "struggling"
-                elif mastered == total:
-                    status = "mastered"
                 else:
-                    status = "progressing"
+                    scores = [
+                        gi.get("final_score", 0.0)
+                        for gi in latest.goal_insights
+                    ]
+                    if any(sc < 0.4 for sc in scores):
+                        status = "struggling"
+                    elif all(sc >= 0.65 for sc in scores):
+                        status = "mastered"
+                    else:
+                        status = "progressing"
 
                 mastery_list.append(
                     ModuleMasteryResponse(
@@ -343,7 +337,7 @@ async def get_course_students(course_id: str, authorization: Optional[str] = Hea
 
             result.append(
                 StudentWithMasteryResponse(
-                    id=user_id,
+                    id=uid,
                     email=user.get("email", ""),
                     name=user.get("name"),
                     avatar_url=user.get("avatar_url"),
@@ -396,7 +390,11 @@ async def get_course_teaching_team(
 async def get_course_needs_attention(
     course_id: str, authorization: Optional[str] = Header(None)
 ):
-    """Get students who need attention (struggling with learning goals)."""
+    """Get students who need attention based on their latest session insights.
+
+    A student needs attention if any learning goal in their latest session
+    has a final_score below 0.4.
+    """
     try:
         user_id = require_authenticated_user_id(authorization)
         await require_teaching_role(course_id, user_id)
@@ -405,24 +403,150 @@ async def get_course_needs_attention(
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
 
-        students = await course.get_students_needing_attention()
+        students = await course.get_students()
+        modules = await course.get_modules()
 
-        return [
-            CourseMemberResponse(
-                id=str(s.get("user", {}).get("id", "")),
-                email=s.get("user", {}).get("email", ""),
-                name=s.get("user", {}).get("name"),
-                avatar_url=s.get("user", {}).get("avatar_url"),
-                role="student",
-                enrolled_at="",  # Not available from this query
-            )
-            for s in students
-        ]
+        attention_needed = []
+        seen_user_ids: set[str] = set()
+
+        for s in students:
+            user = s.get("user", {})
+            uid = str(user.get("id", ""))
+
+            for module in modules:
+                if uid in seen_user_ids:
+                    break
+                latest = await StudentProgress.get_latest_for_student(
+                    uid, str(module.id)
+                )
+                if latest and latest.goal_insights:
+                    has_struggling = any(
+                        gi.get("final_score", 0.0) < 0.4
+                        for gi in latest.goal_insights
+                    )
+                    if has_struggling:
+                        seen_user_ids.add(uid)
+                        attention_needed.append(
+                            CourseMemberResponse(
+                                id=uid,
+                                email=user.get("email", ""),
+                                name=user.get("name"),
+                                avatar_url=user.get("avatar_url"),
+                                role="student",
+                                enrolled_at="",
+                            )
+                        )
+
+        return attention_needed
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting students needing attention for course {course_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching students: {str(e)}")
+
+
+@router.get("/courses/{course_id}/insights", response_model=CourseInsightsResponse)
+async def get_course_insights(
+    course_id: str, authorization: Optional[str] = Header(None)
+):
+    """Get aggregated session insights for all modules and students in a course."""
+    try:
+        user_id = require_authenticated_user_id(authorization)
+        await require_teaching_role(course_id, user_id)
+
+        course = await Course.get(course_id)
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        modules = await course.get_modules()
+        students = await course.get_students()
+
+        # Build a lookup of user info keyed by user ID
+        user_lookup: dict[str, dict] = {}
+        for s in students:
+            u = s.get("user", {})
+            uid = str(u.get("id", ""))
+            user_lookup[uid] = u
+
+        module_insights_list = []
+        for module in modules:
+            mid = str(module.id)
+            all_progress = await StudentProgress.get_for_module(mid)
+
+            # Group by user and keep only the latest session per student
+            latest_by_user: dict[str, StudentProgress] = {}
+            for p in all_progress:
+                uid = str(p.user)
+                if uid not in latest_by_user:
+                    latest_by_user[uid] = p
+
+            # Build per-student summaries
+            student_summaries = []
+            for uid, p in latest_by_user.items():
+                u = user_lookup.get(uid, {})
+                student_summaries.append(
+                    StudentSessionSummary(
+                        user_id=uid,
+                        user_name=u.get("name"),
+                        user_email=u.get("email", ""),
+                        session_id=p.session_id,
+                        overall_summary=p.overall_summary,
+                        strongest_goal_id=p.strongest_goal_id,
+                        weakest_goal_id=p.weakest_goal_id,
+                        goal_insights=p.goal_insights or [],
+                        created=str(p.created) if p.created else None,
+                    )
+                )
+
+            # Aggregate class-level goal averages from latest sessions
+            goal_scores: dict[str, list[float]] = {}
+            goal_descs: dict[str, str] = {}
+            goal_gap_count: dict[str, int] = {}
+            for p in latest_by_user.values():
+                for gi in (p.goal_insights or []):
+                    gid = gi.get("goal_id", "")
+                    if not gid:
+                        continue
+                    score = gi.get("final_score", 0.0)
+                    goal_scores.setdefault(gid, []).append(score)
+                    if not goal_descs.get(gid):
+                        goal_descs[gid] = gi.get("goal_description", "")
+                    if gi.get("knowledge_gap"):
+                        goal_gap_count[gid] = goal_gap_count.get(gid, 0) + 1
+
+            goal_averages = []
+            for gid, scores in goal_scores.items():
+                avg = sum(scores) / len(scores) if scores else 0.0
+                goal_averages.append(
+                    GoalAverageResponse(
+                        goal_id=gid,
+                        goal_description=goal_descs.get(gid, ""),
+                        avg_score=round(avg, 3),
+                        students_with_gaps=goal_gap_count.get(gid, 0),
+                    )
+                )
+
+            module_insights_list.append(
+                ModuleInsightsResponse(
+                    module_id=mid,
+                    module_name=module.name,
+                    student_progress=student_summaries,
+                    goal_averages=goal_averages,
+                )
+            )
+
+        return CourseInsightsResponse(
+            course_id=course_id,
+            course_title=course.title,
+            modules=module_insights_list,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting insights for course {course_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching course insights: {str(e)}"
+        )
 
 
 @router.post("/courses/{course_id}/members", response_model=CourseMemberResponse)

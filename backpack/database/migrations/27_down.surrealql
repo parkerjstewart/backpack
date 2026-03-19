@@ -1,0 +1,3 @@
+-- Revert goal_insights back to strict TYPE option<array>
+REMOVE FIELD IF EXISTS goal_insights ON TABLE student_progress;
+DEFINE FIELD goal_insights ON TABLE student_progress TYPE option<array>;

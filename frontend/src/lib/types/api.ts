@@ -602,3 +602,59 @@ export interface TutorDebugInfo {
   competencies_total: number | null
   evaluator_action: string | null
 }
+
+// ============================================
+// Student Progress / Insight Types
+// ============================================
+
+export interface CompetencyResult {
+  name: string
+  status: string // 'mastered' | 'explained' | 'pending' | 'active'
+  score: number
+}
+
+export interface GoalInsightResponse {
+  goal_id: string
+  goal_description: string
+  final_score: number
+  score_progression: number[]
+  knowledge_gap: string
+  stumbling_concepts: string[]
+  tutor_nudges: string[]
+  reinforcement_topics: string[]
+  competency_results: CompetencyResult[]
+}
+
+export interface StudentProgressResponse {
+  session_id: string
+  module_id: string
+  overall_summary: string | null
+  strongest_goal_id: string | null
+  weakest_goal_id: string | null
+  goal_insights: GoalInsightResponse[]
+  created: string | null
+}
+
+// ============================================
+// Class Insights (Instructor)
+// ============================================
+
+export interface StudentProgressWithUser {
+  user: { id: string; name: string; email: string }
+  latest: StudentProgressResponse
+}
+
+export interface ClassInsightsStats {
+  avg_overall_score: number
+  goal_averages: { goal_id: string; goal_description: string; avg_score: number; student_count: number }[]
+  common_weak_areas: string[]
+  performance_tiers: { mastered: number; progressing: number; struggling: number }
+}
+
+export interface ClassInsightsResponse {
+  summary_text: string | null
+  stats: ClassInsightsStats
+  student_count: number
+  generated_at: string | null
+  student_progress: StudentProgressWithUser[]
+}

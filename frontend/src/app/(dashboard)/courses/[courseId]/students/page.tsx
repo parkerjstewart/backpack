@@ -261,6 +261,8 @@ export default function CourseStudentsPage() {
                     email={student.email}
                     avatarUrl={student.avatar_url}
                     moduleMastery={student.module_mastery}
+                    courseId={courseId}
+                    studentId={student.id}
                     onRemove={
                       permissions.canManageMembers
                         ? () => removeMember.mutate(student.id)

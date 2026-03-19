@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Artifact, VoiceContextPayload, VoiceServerEvent } from '@/lib/types/api'
+import { getApiUrl } from '@/lib/config'
 
 interface UseVoiceSessionParams {
   getContextPayload: () => Promise<VoiceContextPayload | null>
@@ -152,8 +153,18 @@ export function useVoiceSession({
     if (!token) {
       throw new Error('Authentication required for voice chat')
     }
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${window.location.host}/api/voice/realtime?token=${encodeURIComponent(token)}`
+
+    const apiUrl = await getApiUrl()
+    let url: string
+    if (apiUrl) {
+      const parsed = new URL(apiUrl)
+      const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:'
+      url = `${wsProtocol}//${parsed.host}/api/voice/realtime?token=${encodeURIComponent(token)}`
+    } else {
+      // Rewrites mode — rely on reverse proxy to handle WebSocket upgrades
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      url = `${wsProtocol}//${window.location.host}/api/voice/realtime?token=${encodeURIComponent(token)}`
+    }
     const ws = new WebSocket(url)
     wsRef.current = ws
 

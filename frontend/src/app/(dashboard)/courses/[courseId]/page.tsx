@@ -237,7 +237,7 @@ export default function CoursePage() {
             )}
           />
 
-          <div className="flex flex-col gap-8 items-center justify-center px-4">
+          <div className="flex flex-col gap-8 items-center justify-center">
             {permissions?.canCreateModules && (
               <Button size="wide" onClick={() => setCreateDialogOpen(true)}>
                 <Plus className="size-6" />
