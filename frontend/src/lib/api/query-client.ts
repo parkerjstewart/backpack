@@ -35,4 +35,5 @@ export const QUERY_KEYS = {
   studyToolResults: (moduleId: string) => ['study-tools', moduleId] as const,
   studentProgress: (moduleId: string) => ['student-progress', moduleId] as const,
   studentProgressForStudent: (moduleId: string, studentId: string) => ['student-progress', moduleId, studentId] as const,
+  classInsights: (moduleId: string) => ['class-insights', moduleId] as const,
 }

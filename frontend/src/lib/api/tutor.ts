@@ -6,6 +6,7 @@ import {
   TutorSessionStateResponse,
   TutorDebugInfo,
   StudentProgressResponse,
+  ClassInsightsResponse,
 } from '@/lib/types/api'
 
 export type TutorStreamEvent =
@@ -151,6 +152,22 @@ export const tutorApi = {
   seedMockProgress: async (moduleId: string) => {
     const response = await apiClient.post(
       `/tutor/modules/${moduleId}/progress/mock`
+    )
+    return response.data
+  },
+
+  // Instructor: get aggregated class insights for a module
+  getClassInsights: async (moduleId: string) => {
+    const response = await apiClient.get<ClassInsightsResponse>(
+      `/tutor/modules/${moduleId}/class-insights`
+    )
+    return response.data
+  },
+
+  // Instructor: regenerate the LLM class summary for a module
+  regenerateClassInsights: async (moduleId: string) => {
+    const response = await apiClient.post(
+      `/tutor/modules/${moduleId}/class-insights/regenerate`
     )
     return response.data
   },

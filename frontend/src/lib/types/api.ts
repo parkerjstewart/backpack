@@ -630,3 +630,27 @@ export interface StudentProgressResponse {
   goal_insights: GoalInsightResponse[]
   created: string | null
 }
+
+// ============================================
+// Class Insights (Instructor)
+// ============================================
+
+export interface StudentProgressWithUser {
+  user: { id: string; name: string; email: string }
+  latest: StudentProgressResponse
+}
+
+export interface ClassInsightsStats {
+  avg_overall_score: number
+  goal_averages: { goal_id: string; goal_description: string; avg_score: number; student_count: number }[]
+  common_weak_areas: string[]
+  performance_tiers: { mastered: number; progressing: number; struggling: number }
+}
+
+export interface ClassInsightsResponse {
+  summary_text: string | null
+  stats: ClassInsightsStats
+  student_count: number
+  generated_at: string | null
+  student_progress: StudentProgressWithUser[]
+}

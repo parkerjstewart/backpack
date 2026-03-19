@@ -31,11 +31,12 @@ import {
 } from "lucide-react";
 import { StudyToolsPanel } from "@/components/modules/StudyToolsPanel";
 import { InsightSummaryCard } from "@/components/modules/InsightSummaryCard";
+import { InstructorInsightsCard } from "@/components/modules/InstructorInsightsCard";
 import { MathMarkdown } from "@/components/ui/math-markdown";
 import { LearningGoalResponse, SourceListResponse } from "@/lib/types/api";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useModalManager } from "@/lib/hooks/use-modal-manager";
-import { useStudentProgress } from "@/lib/hooks/use-student-progress";
+import { useStudentProgress, useClassInsights } from "@/lib/hooks/use-student-progress";
 
 // ─── Read-only learning goals ────────────────────────────────────────────────
 
@@ -158,6 +159,7 @@ function TeacherView({
   const deleteSource = useDeleteSource();
   const deleteModule = useDeleteModule();
   const retrySource = useRetrySource();
+  const { data: classInsightsData } = useClassInsights(moduleId);
 
   const handleDeleteSource = async (sourceId: string) => {
     await deleteSource.mutateAsync(sourceId);
@@ -257,6 +259,15 @@ function TeacherView({
           )}
         </div>
       </div>
+
+      {/* Class Insights (instructor) */}
+      {classInsightsData && classInsightsData.student_count > 0 && (
+        <InstructorInsightsCard
+          data={classInsightsData}
+          courseId={courseId}
+          moduleId={moduleId}
+        />
+      )}
 
       {/* Overview */}
       {overviewContent && (

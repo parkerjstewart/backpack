@@ -33,6 +33,7 @@ from backpack.ai.provision import provision_langchain_model
 from backpack.domain.module import Module
 from backpack.domain.student_progress import StudentProgress
 from backpack.graphs.tutor import tutor_graph
+from backpack.graphs.tutor_insights import generate_class_insights
 from backpack.utils.token_stream import drain_token_queue
 
 router = APIRouter()
@@ -269,8 +270,22 @@ async def _save_session_insights(
         )
         await progress.save()
         logger.info(f"Saved session insights for session {session_id}")
+
+        # Fire-and-forget class insights regeneration
+        module_name = state_values.get("module_name", "")
+        asyncio.create_task(
+            _regenerate_class_insights(module_id, module_name)
+        )
     except Exception as e:
         logger.error(f"Failed to save session insights for {session_id}: {e}")
+
+
+async def _regenerate_class_insights(module_id: str, module_name: str) -> None:
+    """Regenerate class-level insights after a student completes a session."""
+    try:
+        await generate_class_insights(module_id, module_name)
+    except Exception as e:
+        logger.error(f"Failed to regenerate class insights for module {module_id}: {e}")
 
 
 def parse_artifacts(artifacts_raw: List[Any]) -> List[ArtifactResponse]:
@@ -1015,6 +1030,151 @@ async def export_session(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# Class Insights (Instructor)
+# ============================================================================
+
+class UserBriefResponse(BaseModel):
+    id: str
+    name: str = ""
+    email: str = ""
+
+
+class StudentProgressWithUserResponse(BaseModel):
+    user: UserBriefResponse
+    latest: StudentProgressResponse
+
+
+class ClassInsightsStatsResponse(BaseModel):
+    avg_overall_score: float = 0.0
+    goal_averages: List[Dict[str, Any]] = []
+    common_weak_areas: List[str] = []
+    performance_tiers: Dict[str, int] = {}
+
+
+class ClassInsightsResponse(BaseModel):
+    summary_text: Optional[str] = None
+    stats: ClassInsightsStatsResponse = ClassInsightsStatsResponse()
+    student_count: int = 0
+    generated_at: Optional[str] = None
+    student_progress: List[StudentProgressWithUserResponse] = []
+
+
+@router.get(
+    "/tutor/modules/{module_id}/class-insights",
+    response_model=ClassInsightsResponse,
+)
+async def get_class_insights(
+    module_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Instructor view: get aggregated class insights for a module.
+
+    Returns the persisted LLM narrative, aggregate stats, and per-student
+    latest progress records.
+    """
+    user_id = require_authenticated_user_id(authorization)
+
+    try:
+        module = await Module.get(module_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    if not module or not module.course:
+        raise HTTPException(status_code=404, detail="Module not found or has no course")
+
+    course_id = str(module.course)
+    await require_teaching_role(course_id, user_id)
+
+    try:
+        from backpack.domain.student_progress import ModuleClassInsights
+
+        # Fetch persisted class insights
+        class_insights = await ModuleClassInsights.get_for_module(module_id)
+
+        # Fetch per-student latest progress with user info
+        student_rows = await StudentProgress.get_for_module_with_users(module_id)
+
+        student_progress = []
+        for row in student_rows:
+            u = row["user"]
+            p = row["progress"]
+            gi_list = p.get("goal_insights") or []
+            student_progress.append(
+                StudentProgressWithUserResponse(
+                    user=UserBriefResponse(
+                        id=u["id"],
+                        name=u.get("name", ""),
+                        email=u.get("email", ""),
+                    ),
+                    latest=StudentProgressResponse(
+                        session_id=p.get("session_id", ""),
+                        module_id=str(p.get("module", "")),
+                        overall_summary=p.get("overall_summary"),
+                        strongest_goal_id=p.get("strongest_goal_id"),
+                        weakest_goal_id=p.get("weakest_goal_id"),
+                        goal_insights=[
+                            GoalInsightResponse(**gi) for gi in gi_list
+                        ],
+                        created=str(p.get("created")) if p.get("created") else None,
+                    ),
+                )
+            )
+
+        stats = ClassInsightsStatsResponse()
+        generated_at = None
+        summary_text = None
+        student_count = len(student_progress)
+
+        if class_insights:
+            summary_text = class_insights.summary_text
+            generated_at = class_insights.updated
+            student_count = class_insights.student_count or student_count
+            if class_insights.stats:
+                stats = ClassInsightsStatsResponse(**class_insights.stats)
+
+        return ClassInsightsResponse(
+            summary_text=summary_text,
+            stats=stats,
+            student_count=student_count,
+            generated_at=generated_at,
+            student_progress=student_progress,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching class insights for module {module_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/tutor/modules/{module_id}/class-insights/regenerate",
+    status_code=202,
+)
+async def regenerate_class_insights(
+    module_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Instructor action: regenerate the LLM class summary for a module."""
+    user_id = require_authenticated_user_id(authorization)
+
+    try:
+        module = await Module.get(module_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    if not module or not module.course:
+        raise HTTPException(status_code=404, detail="Module not found or has no course")
+
+    course_id = str(module.course)
+    await require_teaching_role(course_id, user_id)
+
+    module_name = module.name if hasattr(module, "name") else ""
+    asyncio.create_task(_regenerate_class_insights(module_id, module_name))
+
+    return {"status": "accepted", "message": "Class insights regeneration started"}
+
+
 @router.get(
     "/tutor/modules/{module_id}/progress",
     response_model=List[StudentProgressResponse],
@@ -1071,7 +1231,7 @@ async def get_student_progress_for_instructor(
     if not module or not module.course:
         raise HTTPException(status_code=404, detail="Module not found or has no course")
 
-    course_id = str(module.course).split(":")[1] if ":" in str(module.course) else str(module.course)
+    course_id = str(module.course)
     await require_teaching_role(course_id, user_id)
 
     try:

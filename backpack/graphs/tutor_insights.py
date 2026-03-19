@@ -178,3 +178,167 @@ def generate_insights(
         f"strongest={strongest_goal_id}, weakest={weakest_goal_id}"
     )
     return insights
+
+
+async def generate_class_insights(
+    module_id: str,
+    module_name: str = "",
+    model_id: Optional[str] = None,
+) -> None:
+    """Aggregate all student progress for a module and generate a class-level summary.
+
+    Fetches all StudentProgress records, groups by student (latest session each),
+    computes aggregate stats, generates an LLM narrative, and persists to
+    ModuleClassInsights.
+    """
+    from backpack.domain.student_progress import (
+        ModuleClassInsights,
+        StudentProgress,
+    )
+
+    logger.info(f"Generating class insights for module {module_id}")
+
+    records = await StudentProgress.get_for_module(module_id)
+    if not records:
+        logger.info(f"No student progress records for module {module_id}")
+        return
+
+    # Group by user — keep only the latest session per student
+    latest_by_user: Dict[str, Any] = {}
+    for r in records:
+        uid = str(r.user)
+        if uid not in latest_by_user:
+            latest_by_user[uid] = r
+
+    student_count = len(latest_by_user)
+
+    # Compute per-goal averages across students
+    goal_scores: Dict[str, List[float]] = {}
+    goal_descriptions: Dict[str, str] = {}
+    all_weak_areas: List[str] = []
+
+    for progress in latest_by_user.values():
+        for gi in progress.goal_insights or []:
+            gid = gi.get("goal_id", "")
+            score = gi.get("final_score", 0.0)
+            if gid:
+                goal_scores.setdefault(gid, []).append(score)
+                if gid not in goal_descriptions:
+                    goal_descriptions[gid] = gi.get("goal_description", "")
+            all_weak_areas.extend(gi.get("reinforcement_topics", []))
+            all_weak_areas.extend(gi.get("stumbling_concepts", []))
+
+    goal_averages = []
+    for gid, scores in goal_scores.items():
+        goal_averages.append({
+            "goal_id": gid,
+            "description": goal_descriptions.get(gid, ""),
+            "avg_score": sum(scores) / len(scores) if scores else 0.0,
+            "student_count": len(scores),
+        })
+
+    # Common weak areas — deduplicate by lowercase, keep top 8 by frequency
+    area_counts: Dict[str, int] = {}
+    area_canonical: Dict[str, str] = {}
+    for area in all_weak_areas:
+        key = area.lower().strip()
+        if key:
+            area_counts[key] = area_counts.get(key, 0) + 1
+            if key not in area_canonical:
+                area_canonical[key] = area
+    common_weak_areas = [
+        area_canonical[k]
+        for k, _ in sorted(area_counts.items(), key=lambda x: -x[1])[:8]
+    ]
+
+    # Performance tiers
+    mastered = 0
+    struggling = 0
+    progressing = 0
+    for progress in latest_by_user.values():
+        gi_list = progress.goal_insights or []
+        if not gi_list:
+            continue
+        scores = [g.get("final_score", 0.0) for g in gi_list]
+        if all(s >= 0.65 for s in scores):
+            mastered += 1
+        elif any(s < 0.4 for s in scores):
+            struggling += 1
+        else:
+            progressing += 1
+
+    performance_tiers = {
+        "mastered": mastered,
+        "progressing": progressing,
+        "struggling": struggling,
+    }
+
+    avg_overall = 0.0
+    if goal_averages:
+        avg_overall = sum(g["avg_score"] for g in goal_averages) / len(goal_averages)
+
+    stats = {
+        "avg_overall_score": avg_overall,
+        "goal_averages": goal_averages,
+        "common_weak_areas": common_weak_areas,
+        "performance_tiers": performance_tiers,
+    }
+
+    # Build per-student summaries for the LLM prompt
+    student_summaries = []
+    for progress in latest_by_user.values():
+        gi_list = progress.goal_insights or []
+        scores = [g.get("final_score", 0.0) for g in gi_list]
+        avg = sum(scores) / len(scores) if scores else 0.0
+        student_summaries.append({
+            "name": str(progress.user).split(":")[-1],
+            "avg_score": avg,
+            "summary": progress.overall_summary or "",
+        })
+
+    # LLM call
+    prompt_data = {
+        "module_name": module_name,
+        "student_count": student_count,
+        "goal_averages": goal_averages,
+        "common_weak_areas": common_weak_areas,
+        "performance_tiers": performance_tiers,
+        "student_summaries": student_summaries,
+    }
+    prompt = Prompter(prompt_template="tutor/class_insights").render(data=prompt_data)
+
+    summary_text = ""
+    try:
+        model = await provision_langchain_model(
+            prompt,
+            model_id,
+            "tools",
+            max_tokens=1000,
+            reasoning_effort="low",
+        )
+        result = model.invoke(prompt)
+        summary_text = result.content if hasattr(result, "content") else str(result)
+        logger.info("Class insight LLM call succeeded")
+    except Exception as e:
+        logger.error(f"Class insight LLM call failed: {e}")
+
+    # Persist
+    existing = await ModuleClassInsights.get_for_module(module_id)
+    if existing:
+        existing.summary_text = summary_text
+        existing.stats = stats
+        existing.student_count = student_count
+        await existing.save()
+    else:
+        record = ModuleClassInsights(
+            module=module_id,
+            summary_text=summary_text,
+            stats=stats,
+            student_count=student_count,
+        )
+        await record.save()
+
+    logger.info(
+        f"Class insights saved for module {module_id}: "
+        f"{student_count} students, avg={avg_overall:.0%}"
+    )
